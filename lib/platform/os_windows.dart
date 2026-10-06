@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 
+import '../core/logger.dart';
 import 'os.dart';
 
 /// Windows: как здесь устроено всё, что описано в `os.dart`.
@@ -367,9 +368,9 @@ class WindowsOs implements Os {
   @override
   Future<String> toWav(String src, String dst) async {
     final bundledFfmpeg = join(engineDir, 'ffmpeg.exe');
-    final ffmpeg = File(bundledFfmpeg).existsSync()
-        ? bundledFfmpeg
-        : (findExecutable('ffmpeg') ?? 'ffmpeg');
+    final systemFfmpeg = findExecutable('ffmpeg');
+    final hasBundled = File(bundledFfmpeg).existsSync();
+    var ffmpeg = hasBundled ? bundledFfmpeg : (systemFfmpeg ?? 'ffmpeg');
 
     Directory? staging;
     var input = processPath(src);
@@ -390,7 +391,7 @@ class WindowsOs implements Os {
         output = 'output.wav';
         workingDirectory = staging.path;
       }
-      final r = await Process.run(ffmpeg, [
+      final ffmpegArgs = [
         '-y',
         '-i',
         input,
@@ -402,10 +403,37 @@ class WindowsOs implements Os {
         '-c:a',
         'pcm_s16le',
         output,
-      ], workingDirectory: workingDirectory);
+      ];
+      var r = await Process.run(
+        ffmpeg,
+        ffmpegArgs,
+        workingDirectory: workingDirectory,
+      );
+
+      // Если встроенный ffmpeg завершился из-за отсутствия DLL (-1073741515 / 0xC0000135)
+      // или другой ошибки запуска, и в системе есть свой ffmpeg — пробуем его.
+      if (r.exitCode != 0 && hasBundled && systemFfmpeg != null && systemFfmpeg != bundledFfmpeg) {
+        Log.warn(
+          'OS',
+          'Встроенный ffmpeg завершился с кодом ${r.exitCode}, '
+          'пробуем системный ffmpeg: $systemFfmpeg',
+        );
+        ffmpeg = systemFfmpeg;
+        r = await Process.run(
+          ffmpeg,
+          ffmpegArgs,
+          workingDirectory: workingDirectory,
+        );
+      }
+
       if (r.exitCode != 0) {
-        throw StateError('ffmpeg не преобразовал аудио (${r.exitCode}): '
-            '${(r.stderr as String).trim()}');
+        final errText = (r.stderr as String).trim();
+        final isDllNotFound = r.exitCode == -1073741515 || r.exitCode == 0xC0000135;
+        final detail = isDllNotFound
+            ? 'не найдена библиотека DLL (STATUS_DLL_NOT_FOUND 0xC0000135). $errText'
+            : errText;
+        Log.error('OS', 'ffmpeg не преобразовал аудио (${r.exitCode}): $detail');
+        throw StateError('ffmpeg не преобразовал аудио (${r.exitCode}): $detail');
       }
       if (staging != null) {
         final made = File(join(staging.path, output));
@@ -418,7 +446,8 @@ class WindowsOs implements Os {
         throw StateError('ffmpeg завершился без выходного WAV-файла');
       }
       return dst;
-    } catch (error) {
+    } catch (error, st) {
+      Log.error('OS', 'Не удалось подготовить звук из $src: $error', error, st);
       throw StateError('Не удалось подготовить звук из $src: $error');
     } finally {
       try {

@@ -407,17 +407,33 @@ class _SettingsBodyState extends State<SettingsBody>
     decoration: BoxDecoration(
       border: Border(bottom: BorderSide(color: Surface.hairline(context))),
     ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final t in _settingsTabs(l10n))
-          _TabButton(
-            label: t.label,
-            icon: t.icon,
-            selected: s.tab == t.id,
-            onTap: () => _cubit.setTab(t.id),
-          ),
-      ],
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final row = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final t in _settingsTabs(l10n))
+              _TabButton(
+                label: t.label,
+                icon: t.icon,
+                selected: s.tab == t.id,
+                onTap: () => _cubit.setTab(t.id),
+              ),
+          ],
+        );
+        // Если окно достаточно широкое (стандартный размер 580/680),
+        // центрируем вкладки без дополнительного Scrollable.
+        // При сильном сужении окна даём горизонтальную прокрутку,
+        // чтобы ни одна вкладка не обрезалась и не терялась.
+        if (constraints.maxWidth >= 530) {
+          return row;
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: Gap.inner),
+          child: row,
+        );
+      },
     ),
   );
 

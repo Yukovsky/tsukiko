@@ -21,7 +21,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 VERSION=7.1.5
-BUILD_ID="$VERSION-audio2"
+BUILD_ID="$VERSION-audio3"
 SHA=de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f
 
 OUT=windows/Engine
@@ -49,6 +49,9 @@ fi
 cd "$SRC"
 # --disable-everything и поимённый список: полный ffmpeg весит под сотню
 # мегабайт и тянет кодеки, которые нам не нужны ни на что.
+# --extra-cflags="-static" и --extra-ldflags="-static" обязательны:
+# без них MinGW GCC динамически цепляет libwinpthread-1.dll, и на чистой
+# Windows без MSYS2 ffmpeg падает с ошибкой -1073741515 (0xC0000135).
 ./configure \
   --disable-everything \
   --disable-network \
@@ -58,6 +61,9 @@ cd "$SRC"
   --disable-shared \
   --enable-static \
   --enable-small \
+  --extra-cflags="-static" \
+  --extra-ldflags="-static" \
+  --pkg-config-flags="--static" \
   --enable-protocol=file \
   --enable-demuxer=wav,ogg,matroska,mov,mp3,flac,aac,aiff,asf,w64 \
   --enable-decoder=opus,vorbis,aac,mp3,mp2,ac3,eac3,flac,alac,wmav1,wmav2,wmapro,wmalossless,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8,pcm_alaw,pcm_mulaw \
@@ -71,6 +77,14 @@ make -j "$(nproc 2>/dev/null || echo 4)"
 
 cd - >/dev/null
 cp "$SRC/ffmpeg.exe" "$OUT/ffmpeg.exe"
+# Если осталась зависимость от libwinpthread-1.dll (динамическая линковка), кладём её рядом
+for dll in /mingw64/bin/libwinpthread-1.dll /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libwinpthread-1.dll; do
+  if [ -f "$dll" ]; then
+    cp "$dll" "$OUT/libwinpthread-1.dll"
+    echo "Скопирована $dll -> $OUT/libwinpthread-1.dll"
+    break
+  fi
+done
 # LGPL обязывает возить с собой текст лицензии.
 cp "$SRC/COPYING.LGPLv2.1" "$OUT/ffmpeg-LICENSE.txt"
 echo "$BUILD_ID" > "$STAMP"

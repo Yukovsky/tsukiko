@@ -470,5 +470,39 @@ void main() {
       expect(cubit.lastLibraryPath, '/Users/test/Audio');
       await tester.pumpWidget(const SizedBox());
     });
+
+    testWidgets('при узком окне вкладки настроек прокручиваются горизонтально без обрезания', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(380, 500));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      tester.platformDispatcher.localesTestValue = const [Locale('ru')];
+      final cubit = _FakeSettingsCubit(SettingsState(tab: 'transcriber'));
+      addTearDown(cubit.close);
+
+      await tester.pumpWidget(
+        MacosApp(
+          locale: const Locale('ru'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: BlocProvider<SettingsCubit>.value(
+            value: cubit,
+            child: const SettingsBody(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // На узком экране (380 логических пикселей) активен SingleChildScrollView в полосе вкладок
+      expect(find.byType(SingleChildScrollView), findsOneWidget);
+      // Все 5 вкладок существуют в дереве и не вызывают переполнения (RenderFlex overflow)
+      expect(find.text('Расшифровщик'), findsOneWidget);
+      expect(find.text('Диктовка'), findsOneWidget);
+      expect(find.text('Словарь'), findsOneWidget);
+      expect(find.text('Модели'), findsOneWidget);
+      expect(find.text('Приложение'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }

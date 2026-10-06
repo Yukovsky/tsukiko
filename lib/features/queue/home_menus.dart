@@ -231,6 +231,10 @@ extension _Menus on _HomeViewState {
             onSelected: () =>
                 revealInFinder(s.libraryPath, createIfMissing: true),
           ),
+          PlatformMenuItem(
+            label: l10n.menuOpenLogsFolder,
+            onSelected: () => Log.openLogsFolder(),
+          ),
           PlatformMenuItem(label: l10n.menuAbout(appName), onSelected: _about),
         ],
       ),

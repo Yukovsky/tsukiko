@@ -135,6 +135,7 @@ jobs:
         with:
           path: |
             windows/Engine/ffmpeg.exe
+            windows/Engine/libwinpthread-1.dll
             windows/Engine/ffmpeg-LICENSE.txt
             windows/Engine/.ffmpeg-version
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('tool/build-ffmpeg.sh') }}
@@ -162,6 +163,7 @@ jobs:
         with:
           path: |
             windows/Engine/ffmpeg.exe
+            windows/Engine/libwinpthread-1.dll
             windows/Engine/ffmpeg-LICENSE.txt
             windows/Engine/.ffmpeg-version
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('tool/build-ffmpeg.sh') }}

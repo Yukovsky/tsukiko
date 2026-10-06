@@ -101,5 +101,16 @@ void main() {
       // вовсе — значит в нём могут быть и пробелы, и кавычки, и что угодно.
       expect(cmd.join(' '), isNot(contains(r'C:\')));
     });
+
+    test('toWav бросает информативное исключение при ошибке подготовки звука', () async {
+      expect(
+        () => win.toWav(r'C:\nonexistent\audio.aac', r'C:\nonexistent\audio.wav'),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Не удалось подготовить звук'),
+        )),
+      );
+    });
   });
 }

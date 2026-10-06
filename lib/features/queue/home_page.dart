@@ -1348,6 +1348,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
       if (job.error != null) ...[
         const MenuAction.separator(),
         MenuAction(l10n.menuCopyErrorText, onSelected: () => _copyError(job)),
+        MenuAction(l10n.menuOpenLogsFolder, onSelected: () => Log.openLogsFolder()),
       ],
       const MenuAction.separator(),
       // «Заново» — только про то, что уже считали. Нераспознанную запись
@@ -1698,11 +1699,23 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           SectionTitle(l10n.sectionEngineError),
           EngineErrorBox(text: err),
           const SizedBox(height: Gap.inner),
-          PushButton(
-            controlSize: ControlSize.regular,
-            secondary: true,
-            onPressed: () => _copyError(s.lead!),
-            child: Text(l10n.menuCopyErrorText),
+          Wrap(
+            spacing: Gap.control,
+            runSpacing: Gap.tight,
+            children: [
+              PushButton(
+                controlSize: ControlSize.regular,
+                secondary: true,
+                onPressed: () => _copyError(s.lead!),
+                child: Text(l10n.menuCopyErrorText),
+              ),
+              PushButton(
+                controlSize: ControlSize.regular,
+                secondary: true,
+                onPressed: () => Log.openLogsFolder(),
+                child: Text(l10n.menuOpenLogsFolder),
+              ),
+            ],
           ),
           Hint(l10n.hintEngineError),
         ],

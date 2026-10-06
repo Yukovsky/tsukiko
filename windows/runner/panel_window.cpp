@@ -1,6 +1,7 @@
 #include "panel_window.h"
 
 #include <dwmapi.h>
+#include <flutter_windows.h>
 #include <shellapi.h>
 
 #include <optional>
@@ -29,9 +30,10 @@ constexpr int kHudWidth = 372;
 constexpr int kHudHeight = 52;
 
 constexpr wchar_t kSettingsClassName[] = L"TsukikoSettingsWindow";
-// Тот же размер, что и на macOS: раскладка настроек сходится именно в нём.
-constexpr int kSettingsWidth = 580;
-constexpr int kSettingsHeight = 560;
+// Базовый логический размер окна настроек для масштабирования под системный DPI.
+// В него свободно помещаются все 5 вкладок без обрезания.
+constexpr int kSettingsBaseWidth = 680;
+constexpr int kSettingsBaseHeight = 620;
 
 }  // namespace
 
@@ -192,21 +194,37 @@ void SettingsWindow::Show(
   wc.hIcon = AppIcon();
   RegisterClassW(&wc);
 
-  // Ни развернуть, ни растянуть: раскладка настроек рассчитана на один
-  // размер, как и на macOS.
-  RECT rect = {0, 0, kSettingsWidth, kSettingsHeight};
-  AdjustWindowRect(&rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, FALSE);
+  // Масштабируем базовый размер под реальный DPI монитора: на 125%-175% экранах
+  // окно больше не сжимается в маленький нечитаемый квадрат.
+  POINT pt = {0, 0};
+  HMONITOR monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+  MONITORINFO mi = {sizeof(mi)};
+  GetMonitorInfoW(monitor, &mi);
+  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+  double scale = (dpi > 0) ? (dpi / 96.0) : 1.0;
+
+  int client_width = static_cast<int>(kSettingsBaseWidth * scale);
+  int client_height = static_cast<int>(kSettingsBaseHeight * scale);
+
+  RECT rect = {0, 0, client_width, client_height};
+  AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+  int win_width = rect.right - rect.left;
+  int win_height = rect.bottom - rect.top;
+
+  int x = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - win_width) / 2;
+  int y = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - win_height) / 2;
+
+  // WS_OVERLAPPEDWINDOW даёт возможность свободно растягивать окно и разворачивать его на весь экран.
   window_ = CreateWindowExW(
       0, kSettingsClassName, L"Настройки",
-      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
-      CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr,
-      nullptr, GetModuleHandle(nullptr), this);
+      WS_OVERLAPPEDWINDOW, x, y, win_width, win_height,
+      nullptr, nullptr, GetModuleHandle(nullptr), this);
   if (!window_) return;
 
   flutter::DartProject project = base;
   project.set_dart_entrypoint("settingsMain");
   controller_ = std::make_unique<flutter::FlutterViewController>(
-      kSettingsWidth, kSettingsHeight, project);
+      client_width, client_height, project);
   if (!controller_->engine() || !controller_->view()) {
     controller_ = nullptr;
     DestroyWindow(window_);
@@ -216,7 +234,7 @@ void SettingsWindow::Show(
   RegisterPlugins(controller_->engine());
   HWND view = controller_->view()->GetNativeWindow();
   SetParent(view, window_);
-  MoveWindow(view, 0, 0, kSettingsWidth, kSettingsHeight, TRUE);
+  MoveWindow(view, 0, 0, client_width, client_height, TRUE);
   ShowWindow(view, SW_SHOW);
   on_ready(controller_->engine()->messenger());
 
@@ -239,6 +257,33 @@ LRESULT CALLBACK SettingsWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam,
     // что и на macOS.
     if (message == WM_CLOSE) {
       ShowWindow(hwnd, SW_HIDE);
+      return 0;
+    }
+    // Растягивание окна и реакция на изменение размеров / разворачивание
+    if (message == WM_SIZE) {
+      if (self->controller_ && self->controller_->view()) {
+        HWND view = self->controller_->view()->GetNativeWindow();
+        RECT client_rect;
+        GetClientRect(hwnd, &client_rect);
+        MoveWindow(view, 0, 0, client_rect.right - client_rect.left,
+                   client_rect.bottom - client_rect.top, TRUE);
+      }
+      return 0;
+    }
+    if (message == WM_DPICHANGED) {
+      auto* new_rect = reinterpret_cast<RECT*>(lparam);
+      SetWindowPos(hwnd, nullptr, new_rect->left, new_rect->top,
+                   new_rect->right - new_rect->left,
+                   new_rect->bottom - new_rect->top,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+      return 0;
+    }
+    if (message == WM_GETMINMAXINFO) {
+      auto* minmax = reinterpret_cast<MINMAXINFO*>(lparam);
+      UINT dpi = GetDpiForWindow(hwnd);
+      double scale = (dpi > 0) ? (dpi / 96.0) : 1.0;
+      minmax->ptMinTrackSize.x = static_cast<LONG>(520 * scale);
+      minmax->ptMinTrackSize.y = static_cast<LONG>(460 * scale);
       return 0;
     }
     // Клавиатура достаётся виду Flutter, а не пустой рамке вокруг него:
