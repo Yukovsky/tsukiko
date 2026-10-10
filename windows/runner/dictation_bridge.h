@@ -53,6 +53,9 @@ class DictationBridge {
                           int taps);
   void SendReloadSettings();
   void SendTab(const std::string& tab);
+  void SendSystemSleep();
+  void SendSystemWake();
+  void ResetKeyState();
 
   void* GetEncoder() const { return ma_encoder_; }
 

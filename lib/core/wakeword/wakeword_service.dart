@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../logger.dart';
@@ -48,6 +49,10 @@ class WakeWordService {
   DateTime? _lastAudioFrameAt;
   bool _restartingAudio = false;
   Completer<void>? _audioRestartDone;
+  bool _isSuspendedForSleep = false;
+  bool get isSuspendedForSleep => _isSuspendedForSleep;
+  int _consecutiveSilentRestarts = 0;
+  static const int _maxRapidRestarts = 3;
   DictationSettings? _settings;
   SpeakerProfile? _profile;
   WakeDiagnosticsSession? _diagnostics;
@@ -214,14 +219,7 @@ class WakeWordService {
       _listenToAudio(stream, generation);
       _state = WakeWordListeningState.listeningWakeWord;
       _triggeredInCurrentState = false;
-      _audioWatchdog?.cancel();
-      _audioWatchdog = Timer.periodic(const Duration(seconds: 2), (_) {
-        final last = _lastAudioFrameAt;
-        if (last != null &&
-            DateTime.now().difference(last) >= const Duration(seconds: 3)) {
-          unawaited(_restartAudioStream(generation));
-        }
-      });
+      _startWatchdog(generation);
       Log.info(
         'WakeWord',
         'WakeWord service listening for "${settings.wakeWord}"',
@@ -231,6 +229,80 @@ class WakeWordService {
       Log.error('WakeWord', 'Failed to start audio stream: $e', e, st);
       await stop();
       return false;
+    }
+  }
+
+  void _startWatchdog(int generation) {
+    _audioWatchdog?.cancel();
+    _audioWatchdog = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_isSuspendedForSleep ||
+          _state == WakeWordListeningState.disabled ||
+          generation != _operationGeneration) {
+        return;
+      }
+      final last = _lastAudioFrameAt;
+      if (last != null) {
+        final elapsed = DateTime.now().difference(last);
+        final Duration threshold;
+        if (_consecutiveSilentRestarts >= _maxRapidRestarts) {
+          final backoffSeconds = math.min(
+            60,
+            10 *
+                (1 <<
+                    math.min(
+                      3,
+                      _consecutiveSilentRestarts - _maxRapidRestarts,
+                    )),
+          );
+          threshold = Duration(seconds: backoffSeconds);
+        } else {
+          threshold = const Duration(seconds: 3);
+        }
+        if (elapsed >= threshold) {
+          unawaited(_restartAudioStream(generation));
+        }
+      }
+    });
+  }
+
+  /// Приостановить прослушивание аудио на время системного сна.
+  /// Освобождает микрофон, отменяет watchdog и останавливает аудиопоток,
+  /// предотвращая цикличный рестарт стрима и утечку системных ресурсов.
+  Future<void> pauseForSleep() async {
+    if (_isSuspendedForSleep || _state == WakeWordListeningState.disabled) return;
+    _isSuspendedForSleep = true;
+    _audioWatchdog?.cancel();
+    _audioWatchdog = null;
+    await _audioSub?.cancel();
+    _audioSub = null;
+    await _audioSource.stopStream();
+    _engine.resetKeywordStream();
+    _consecutiveSilentRestarts = 0;
+    Log.info('WakeWord', 'Audio listening paused for system sleep');
+  }
+
+  /// Возобновить прослушивание аудио после пробуждения системы.
+  Future<void> resumeFromSleep() async {
+    if (!_isSuspendedForSleep) return;
+    _isSuspendedForSleep = false;
+    _consecutiveSilentRestarts = 0;
+    if (_state == WakeWordListeningState.disabled ||
+        _settings == null ||
+        !_settings!.wakeWordEnabled) {
+      return;
+    }
+    Log.info('WakeWord', 'Resuming audio listening after system wake');
+    try {
+      final generation = _operationGeneration;
+      final stream = await _audioSource.startStream(sampleRate: 16000);
+      if (_operationGeneration != generation || _isSuspendedForSleep) {
+        await _audioSource.stopStream();
+        return;
+      }
+      _listenToAudio(stream, generation);
+      _startWatchdog(generation);
+    } catch (e) {
+      Log.error('WakeWord', 'Failed to resume audio stream after wake: $e');
     }
   }
 
@@ -248,24 +320,34 @@ class WakeWordService {
 
   Future<void> _restartAudioStream(int generation) async {
     if (_restartingAudio ||
+        _isSuspendedForSleep ||
         _state == WakeWordListeningState.disabled ||
         generation != _operationGeneration) {
       return;
     }
     _restartingAudio = true;
     _audioRestartDone = Completer<void>();
-    _diagnostics?.event('audio_stream_restarting');
-    Log.warn('WakeWord', 'Audio stream stopped delivering samples; restarting');
+    _consecutiveSilentRestarts++;
+    _lastAudioFrameAt = DateTime.now();
+    _diagnostics?.event('audio_stream_restarting', {
+      'attempt': _consecutiveSilentRestarts,
+    });
+    Log.warn(
+      'WakeWord',
+      'Audio stream stopped delivering samples (attempt $_consecutiveSilentRestarts); restarting',
+    );
     try {
       await _audioSub?.cancel();
       _audioSub = null;
       await _audioSource.stopStream();
       if (_state == WakeWordListeningState.disabled ||
+          _isSuspendedForSleep ||
           generation != _operationGeneration) {
         return;
       }
       final stream = await _audioSource.startStream(sampleRate: 16000);
       if (_state == WakeWordListeningState.disabled ||
+          _isSuspendedForSleep ||
           generation != _operationGeneration) {
         await _audioSource.stopStream();
         return;
@@ -333,6 +415,7 @@ class WakeWordService {
   void _onAudioFrame(Float32List samples) {
     if (_state == WakeWordListeningState.disabled || samples.isEmpty) return;
     _lastAudioFrameAt = DateTime.now();
+    _consecutiveSilentRestarts = 0;
 
     final diagnostics = _diagnostics;
     if (diagnostics != null) {
@@ -524,6 +607,8 @@ class WakeWordService {
     _audioWatchdog?.cancel();
     _audioWatchdog = null;
     _lastAudioFrameAt = null;
+    _isSuspendedForSleep = false;
+    _consecutiveSilentRestarts = 0;
     _state = WakeWordListeningState.disabled;
     _triggeredInCurrentState = false;
     _wakeSuspended = false;

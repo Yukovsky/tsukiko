@@ -155,4 +155,29 @@ void main() {
       expect(await bridge.currentHudState(), HudState.hidden);
     });
   });
+
+  group('система: сон и пробуждение', () {
+    test('транслирует события systemSleep и systemWake', () async {
+      var slept = false;
+      var woke = false;
+      bridge.systemSleep.listen((_) => slept = true);
+      bridge.systemWake.listen((_) => woke = true);
+
+      const codec = StandardMethodCodec();
+      await binding.defaultBinaryMessenger.handlePlatformMessage(
+        'tsukiko/dictation',
+        codec.encodeMethodCall(const MethodCall('systemSleep')),
+        (_) {},
+      );
+      expect(slept, isTrue);
+      expect(woke, isFalse);
+
+      await binding.defaultBinaryMessenger.handlePlatformMessage(
+        'tsukiko/dictation',
+        codec.encodeMethodCall(const MethodCall('systemWake')),
+        (_) {},
+      );
+      expect(woke, isTrue);
+    });
+  });
 }

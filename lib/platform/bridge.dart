@@ -96,6 +96,8 @@ class NativeBridge {
   final _shown = StreamController<void>.broadcast();
   final _hidden = StreamController<void>.broadcast();
   final _hudActions = StreamController<String>.broadcast();
+  final _systemSleep = StreamController<void>.broadcast();
+  final _systemWake = StreamController<void>.broadcast();
 
   /// Состояние плавающей панели записи. Слушает её собственный изолят —
   /// тот, что её рисует. На macOS панель нарисована на SwiftUI, и этот
@@ -189,6 +191,10 @@ class NativeBridge {
         return await onWakeDiagnostics?.call(
           (call.arguments as Map).cast<String, dynamic>(),
         );
+      case 'systemSleep':
+        _systemSleep.add(null);
+      case 'systemWake':
+        _systemWake.add(null);
     }
     return null;
   }
@@ -198,6 +204,10 @@ class NativeBridge {
   Stream<void> get panelShown => _shown.stream;
 
   Stream<void> get panelHidden => _hidden.stream;
+
+  Stream<void> get systemSleep => _systemSleep.stream;
+
+  Stream<void> get systemWake => _systemWake.stream;
 
   /// Убрать файл в Корзину, а не стереть насовсем. Промах по кнопке
   /// «Удалить» после часа речи иначе стоил бы этого часа: из Корзины

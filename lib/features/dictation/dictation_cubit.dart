@@ -108,6 +108,8 @@ class DictationCubit extends Cubit<DictationState> {
     bridge.onWakeDiagnostics = _handleWakeDiagnostics;
     // Те же настройки правит окно настроек — там они и живут.
     bridge.settingsReloaded.listen((_) => _reloadSettings());
+    bridge.systemSleep.listen((_) => unawaited(_onSystemSleep()));
+    bridge.systemWake.listen((_) => unawaited(_onSystemWake()));
 
     unawaited(_apply());
     unawaited(_ensureVad());
@@ -366,6 +368,19 @@ class DictationCubit extends Cubit<DictationState> {
   Future<void> _sweepOrphans() async {
     final freed = await sweepOurServers();
     if (freed > 0) _emit(state.copyWith(sweptMb: freed));
+  }
+
+  Future<void> _onSystemSleep() async {
+    Log.info('Dictation', 'System sleep detected; pausing audio and wake word');
+    if (state.recording) {
+      await cancel();
+    }
+    await _wakeWordService?.pauseForSleep();
+  }
+
+  Future<void> _onSystemWake() async {
+    Log.info('Dictation', 'System wake detected; resuming wake word');
+    await _wakeWordService?.resumeFromSleep();
   }
 
   Future<void> _apply({bool rebind = true}) async {

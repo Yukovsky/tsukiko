@@ -932,6 +932,18 @@ void DictationBridge::ShowContextMenu() {
 }
 
 bool DictationBridge::HandleWindowMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  if (message == WM_POWERBROADCAST) {
+    if (wparam == PBT_APMSUSPEND) {
+      ResetKeyState();
+      SendSystemSleep();
+      return true;
+    }
+    if (wparam == PBT_APMRESUMEAUTOMATIC || wparam == PBT_APMRESUMESUSPEND) {
+      ResetKeyState();
+      SendSystemWake();
+      return true;
+    }
+  }
   if (message == WM_APP + 66) {
     if (hud_ && !hud_->editing()) { hud_editor_channel_.reset(); hud_->ReleaseEditor(); }
     return true;
@@ -1408,6 +1420,25 @@ void DictationBridge::SendReloadSettings() {
 void DictationBridge::SendTab(const std::string& tab) {
   if (!channel_) return;
   channel_->InvokeMethod("tab", std::make_unique<flutter::EncodableValue>(tab));
+}
+
+void DictationBridge::ResetKeyState() {
+  held_keys_.clear();
+  hold_state_ = TapState{};
+  toggle_state_ = TapState{};
+  cancel_state_ = TapState{};
+}
+
+void DictationBridge::SendSystemSleep() {
+  if (channel_) channel_->InvokeMethod("systemSleep", nullptr);
+  if (panel_channel_) panel_channel_->InvokeMethod("systemSleep", nullptr);
+  if (settings_channel_) settings_channel_->InvokeMethod("systemSleep", nullptr);
+}
+
+void DictationBridge::SendSystemWake() {
+  if (channel_) channel_->InvokeMethod("systemWake", nullptr);
+  if (panel_channel_) panel_channel_->InvokeMethod("systemWake", nullptr);
+  if (settings_channel_) settings_channel_->InvokeMethod("systemWake", nullptr);
 }
 
 // ── Аудио запись через miniaudio ──────────────────────────────────────────

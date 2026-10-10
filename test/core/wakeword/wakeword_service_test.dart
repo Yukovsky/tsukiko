@@ -642,4 +642,28 @@ void main() {
       await verified.dispose();
     });
   });
+
+  group('WakeWordService - системный сон и пробуждение', () {
+    test('pauseForSleep останавливает аудиопоток и выставляет isSuspendedForSleep', () async {
+      final settings = DictationSettings(
+        wakeWordEnabled: true,
+        wakeWord: 'привет',
+      );
+      final ok = await service.start(settings: settings);
+      expect(ok, isTrue);
+      expect(service.isRunning, isTrue);
+      expect(service.isSuspendedForSleep, isFalse);
+
+      await service.pauseForSleep();
+      expect(service.isSuspendedForSleep, isTrue);
+
+      // Повторный вызов идемпотентен
+      await service.pauseForSleep();
+      expect(service.isSuspendedForSleep, isTrue);
+
+      await service.resumeFromSleep();
+      expect(service.isSuspendedForSleep, isFalse);
+      expect(service.isRunning, isTrue);
+    });
+  });
 }

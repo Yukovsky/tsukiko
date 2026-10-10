@@ -814,12 +814,18 @@ final class DictationBridge: NSObject {
   private func handleSystemSleepOrLock(reason: String) {
     NSLog("tsukiko: перехватчик ввода: событие ухода в сон/блокировки (\(reason))")
     resetKeyState()
+    for ch in channels {
+      ch.invokeMethod("systemSleep", arguments: ["reason": reason])
+    }
   }
 
   private func handleSystemWakeOrUnlock(reason: String) {
     NSLog("tsukiko: перехватчик ввода: событие пробуждения/разблокировки (\(reason))")
     resetKeyState()
     ensureTap()
+    for ch in channels {
+      ch.invokeMethod("systemWake", arguments: ["reason": reason])
+    }
   }
 
   private func startWatchdog() {
