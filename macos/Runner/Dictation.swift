@@ -313,6 +313,8 @@ final class DictationBridge: NSObject {
 
   private var tap: CFMachPort?
   private var tapSource: CFRunLoopSource?
+  private var lifecycleObservers: [NSObjectProtocol] = []
+  private var watchdogTimer: Timer?
 
   /// Что зажато прямо сейчас и что мы поглотили как своё.
   private var heldModifiers = Set<String>()
@@ -390,6 +392,8 @@ final class DictationBridge: NSObject {
         self?.channel?.invokeMethod("panelHidden", arguments: nil)
       })
     installTap()
+    setupLifecycleObservers()
+    startWatchdog()
 
     // Полтора гигабайта в памяти нельзя оставлять сиротой, а до
     // переопределений делегата приложения здесь не достучаться.
@@ -637,11 +641,58 @@ final class DictationBridge: NSObject {
 
   // MARK: перехват клавиш
 
+  /// Полный сброс зажатых клавиш и состояний триггеров.
+  /// Вызывается при переключении сессии, блокировке экрана, уходе в сон и пробуждении,
+  /// чтобы устранить залипание «призрачных» модификаторов.
+  private func resetKeyState() {
+    heldModifiers.removeAll()
+    heldKeys.removeAll()
+    swallowed.removeAll()
+    holdState = TapState()
+    toggleState = TapState()
+    cancelState = TapState()
+    captureKeys.removeAll()
+    captureMods.removeAll()
+    captureStartedAt = nil
+    pendingCapture = nil
+  }
+
   /// Без разрешения tap не создаётся вовсе. Раньше это значило «перезапустите
   /// приложение»: пробовали ровно один раз, на старте. Пробуем снова каждый
   /// раз, когда о разрешениях спрашивают, — а спрашивают, пока их нет.
+  /// Также проверяет здоровье тап-порта: если порт инвалидирован или отключен WindowServer
+  /// после сна, восстанавливает его или пересоздаёт заново.
   private func ensureTap() {
-    guard tap == nil else { return }
+    if let currentTap = tap {
+      guard CFMachPortIsValid(currentTap) else {
+        NSLog("tsukiko: перехватчик ввода: CFMachPort невалиден, переустанавливаем...")
+        reinstallTap()
+        return
+      }
+      if !CGEvent.tapIsEnabled(tap: currentTap) {
+        NSLog("tsukiko: перехватчик ввода: tap отключен WindowServer, включаем обратно...")
+        CGEvent.tapEnable(tap: currentTap, enable: true)
+      }
+      return
+    }
+    installTap()
+  }
+
+  /// Полное удаление старого тапа из RunLoop перед повторной установкой.
+  private func teardownTap() {
+    if let source = tapSource {
+      CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+      tapSource = nil
+    }
+    if let port = tap {
+      CGEvent.tapEnable(tap: port, enable: false)
+      CFMachPortInvalidate(port)
+      tap = nil
+    }
+  }
+
+  private func reinstallTap() {
+    teardownTap()
     installTap()
   }
 
@@ -680,6 +731,105 @@ final class DictationBridge: NSObject {
     tapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
     CFRunLoopAddSource(CFRunLoopGetCurrent(), tapSource, .commonModes)
     CGEvent.tapEnable(tap: tap, enable: true)
+    NSLog("tsukiko: перехватчик ввода успешно установлен и активирован")
+  }
+
+  // MARK: жизненный цикл и защита от сна
+
+  private func setupLifecycleObservers() {
+    guard lifecycleObservers.isEmpty else { return }
+
+    let wsCenter = NSWorkspace.shared.notificationCenter
+    let distCenter = DistributedNotificationCenter.default()
+
+    // 1. Уход в сон и выключение дисплеев
+    lifecycleObservers.append(
+      wsCenter.addObserver(
+        forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemSleepOrLock(reason: "willSleep")
+      }
+    )
+    lifecycleObservers.append(
+      wsCenter.addObserver(
+        forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemSleepOrLock(reason: "screensDidSleep")
+      }
+    )
+    lifecycleObservers.append(
+      wsCenter.addObserver(
+        forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemSleepOrLock(reason: "sessionDidResignActive")
+      }
+    )
+
+    // 2. Блокировка экрана (при закрытии крышки или Cmd+Ctrl+Q)
+    lifecycleObservers.append(
+      distCenter.addObserver(
+        forName: NSNotification.Name("com.apple.screenIsLocked"),
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemSleepOrLock(reason: "screenIsLocked")
+      }
+    )
+
+    // 3. Пробуждение системы и включение дисплеев
+    lifecycleObservers.append(
+      wsCenter.addObserver(
+        forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemWakeOrUnlock(reason: "didWake")
+      }
+    )
+    lifecycleObservers.append(
+      wsCenter.addObserver(
+        forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemWakeOrUnlock(reason: "screensDidWake")
+      }
+    )
+    lifecycleObservers.append(
+      wsCenter.addObserver(
+        forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemWakeOrUnlock(reason: "sessionDidBecomeActive")
+      }
+    )
+
+    // 4. Разблокировка экрана
+    lifecycleObservers.append(
+      distCenter.addObserver(
+        forName: NSNotification.Name("com.apple.screenIsUnlocked"),
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.handleSystemWakeOrUnlock(reason: "screenIsUnlocked")
+      }
+    )
+  }
+
+  private func handleSystemSleepOrLock(reason: String) {
+    NSLog("tsukiko: перехватчик ввода: событие ухода в сон/блокировки (\(reason))")
+    resetKeyState()
+  }
+
+  private func handleSystemWakeOrUnlock(reason: String) {
+    NSLog("tsukiko: перехватчик ввода: событие пробуждения/разблокировки (\(reason))")
+    resetKeyState()
+    ensureTap()
+  }
+
+  private func startWatchdog() {
+    watchdogTimer?.invalidate()
+    let timer = Timer(timeInterval: 30.0, repeats: true) { [weak self] _ in
+      self?.ensureTap()
+    }
+    timer.tolerance = 10.0
+    RunLoop.main.add(timer, forMode: .common)
+    watchdogTimer = timer
   }
 
   private func onEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -687,13 +837,9 @@ final class DictationBridge: NSObject {
     // Не включить его заново — значит потерять хоткей до перезапуска
     // приложения; именно этим и болеют соседние диктовки.
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
-      heldModifiers = []
-      heldKeys = []
-      swallowed = []
-      holdState = TapState()
-      toggleState = TapState()
-      cancelState = TapState()
+      NSLog("tsukiko: перехватчик ввода: событие \(type.rawValue), восстанавливаем...")
+      ensureTap()
+      resetKeyState()
       return Unmanaged.passUnretained(event)
     }
 
@@ -722,6 +868,15 @@ final class DictationBridge: NSObject {
         heldModifiers = Set(heldModifiers.filter { modifierFamily($0) != family })
       }
     }
+
+    // Сверка с аппаратным источником истины: если в flags отсутствует
+    // маска семейства, ни одного модификатора этого семейства в памяти быть не может.
+    for (family, mask) in modifierFlags {
+      if !flags.contains(mask) {
+        heldModifiers = Set(heldModifiers.filter { modifierFamily($0) != family })
+      }
+    }
+
     let mods = modNames(flags, physical: heldModifiers)
 
     // Что зажато прямо сейчас. Без этого «сочетание» ограничивалось одной
