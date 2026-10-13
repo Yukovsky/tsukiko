@@ -1123,6 +1123,21 @@ bool DictationBridge::TapState::Update(bool raw, bool is_double,
 
   const ULONGLONG held = now - pressed_at;
   pressed_at = 0;
+  // Сочетание не отпустили, а набрали поверх лишнее: AltGr+8 ради «₽»,
+  // Alt+Tab, Ctrl+C. Это не стук. Прежде такой выход взводил двойное,
+  // а отпускание лишней клавиши при всё ещё зажатом Alt считалось вторым
+  // стуком — и набранный «₽» включал запись. Пока набор не отпустят
+  // целиком, он больше не нажатие. Уже сработавшее сочетание выключается,
+  // как и раньше: что это отмена, решает вызывающий.
+  if (base_held) {
+    armed_at = 0;
+    if (!active) {
+      suppressed = true;
+      return false;
+    }
+    active = false;
+    return true;
+  }
   // Короткое нажатие, которое ничего не включило, — это первый стук.
   // Затянувшееся или уже сработавшее взводит не больше, чем один раз.
   armed_at = (!active && held < kTapMaxHoldMs) ? now : 0;
@@ -1183,6 +1198,28 @@ LRESULT CALLBACK DictationBridge::LowLevelKeyboardProc(int nCode, WPARAM wParam,
       return CallNextHookEx(nullptr, nCode, wParam, lParam);
     }
 
+    // Правый Alt на раскладках с AltGr — а это и русская (AltGr+8 = «₽»),
+    // и почти все европейские — приходит парой: система сама подкладывает
+    // перед ним левый Ctrl со скан-кодом 0x21D и отпускает его перед
+    // отпусканием Alt. Для перехватчика это выглядело как «Ctrl+Alt»:
+    // «R Alt» совпадал лишь в миг отпускания фантомного Ctrl, то есть
+    // в конце нажатия. «R Alt дважды» срабатывал только при очень быстрых
+    // стуках (окно двойного считалось от конца первого нажатия до конца
+    // второго), а «R Ctrl + R Alt» не совпадал вовсе, пока Alt держат.
+    // Фантомный Ctrl пропускаем дальше, но в сочетания не считаем.
+    // Настоящий левый Ctrl (скан-код 0x1D) по-прежнему считается.
+    static bool altgr_ctrl_down = false;
+    static bool real_left_ctrl_down = false;
+    if (kbd->vkCode == VK_LCONTROL && (kbd->scanCode & 0x200) != 0) {
+      if (isDown) altgr_ctrl_down = true;
+      if (isUp) altgr_ctrl_down = false;
+      return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    if (vk == VK_LCONTROL) {
+      if (isDown) real_left_ctrl_down = true;
+      if (isUp) real_left_ctrl_down = false;
+    }
+
     // Зажата ли клавиша — с поправкой на само это событие.
     //
     // Отсюда росли все три беды разом: «сработало не с первого раза»,
@@ -1200,7 +1237,12 @@ LRESULT CALLBACK DictationBridge::LowLevelKeyboardProc(int nCode, WPARAM wParam,
     // него позже, когда клавиши могли уже отпустить.
     auto pressed = [](int k) { return (GetAsyncKeyState(k) & 0x8000) != 0; };
     auto held = [&](int k) -> bool {
-      if (k != vk) return pressed(k);
+      if (k != vk) {
+        // Пока держится фантомный Ctrl от AltGr, таблица состояний считает
+        // левый Ctrl нажатым — верим своему учёту настоящих нажатий.
+        if (k == VK_LCONTROL && altgr_ctrl_down) return real_left_ctrl_down;
+        return pressed(k);
+      }
       if (isDown) return true;
       if (!isUp) return pressed(k);
       return false;
