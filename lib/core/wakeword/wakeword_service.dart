@@ -318,8 +318,12 @@ class WakeWordService {
     );
   }
 
+  static const _audioCallTimeout = Duration(seconds: 10);
+  bool _audioWedged = false;
+
   Future<void> _restartAudioStream(int generation) async {
     if (_restartingAudio ||
+        _audioWedged ||
         _isSuspendedForSleep ||
         _state == WakeWordListeningState.disabled ||
         generation != _operationGeneration) {
@@ -339,13 +343,15 @@ class WakeWordService {
     try {
       await _audioSub?.cancel();
       _audioSub = null;
-      await _audioSource.stopStream();
+      await _audioSource.stopStream().timeout(_audioCallTimeout);
       if (_state == WakeWordListeningState.disabled ||
           _isSuspendedForSleep ||
           generation != _operationGeneration) {
         return;
       }
-      final stream = await _audioSource.startStream(sampleRate: 16000);
+      final stream = await _audioSource
+          .startStream(sampleRate: 16000)
+          .timeout(_audioCallTimeout);
       if (_state == WakeWordListeningState.disabled ||
           _isSuspendedForSleep ||
           generation != _operationGeneration) {
@@ -355,6 +361,20 @@ class WakeWordService {
       _engine.resetKeywordStream();
       _listenToAudio(stream, generation);
       _diagnostics?.event('audio_stream_restarted');
+    } on TimeoutException catch (error, stack) {
+      // The native recorder queue is shared and serial: a call that never
+      // returns blocks every later one. More restarts would only pile up
+      // behind it (and each one leaks), so stop trying until relaunch.
+      _audioWedged = true;
+      _audioWatchdog?.cancel();
+      _audioWatchdog = null;
+      Log.error(
+        'WakeWord',
+        'Microphone call hung; wake word paused until the app is relaunched',
+        error,
+        stack,
+      );
+      _diagnostics?.event('audio_stream_wedged');
     } catch (error, stack) {
       Log.error(
         'WakeWord',

@@ -558,12 +558,11 @@ packages:
     source: hosted
     version: "2.1.2"
   record_macos:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: record_macos
-      sha256: ced7495abf3d683e8a7dbe8fc96df8ea5722837a26f922b7cb7c5de11661bb46
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/record_macos"
+      relative: true
+    source: path
     version: "2.1.1"
   record_platform_interface:
     dependency: transitive
