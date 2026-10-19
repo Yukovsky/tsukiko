@@ -175,3 +175,14 @@ class _TempOs implements Os {
   @override
   void onTerminate(void Function() onSignal) {}
 }
+
+/// Подмена папок на весь запуск файла: ставится из flutter_test_config.dart.
+///
+/// Тест, не вызвавший [useTempSupportDir], иначе писал бы журнал, настройки
+/// и историю в настоящую папку пользователя. Каждый тестовый файл идёт в
+/// своём изоляте, так что временная папка у каждого своя.
+void installTempOsForFile() {
+  final root = Directory.systemTemp.createTempSync('tsukiko-test-file');
+  os = _TempOs(os, root.path);
+  Directory(os.modelsDir).createSync(recursive: true);
+}
