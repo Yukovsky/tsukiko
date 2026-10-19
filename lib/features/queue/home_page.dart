@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io' show Directory, File, Platform, stderr;
 import 'dart:ui' show ImageFilter;
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show listEquals;
@@ -73,7 +72,7 @@ class _HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
-  static const _windowsFileInput = MethodChannel('tsukiko/file_input');
+  static const _fileInput = MethodChannel('tsukiko/file_input');
   // Только про окно: очередь, настройки и распознавание живут в блоке.
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
@@ -81,7 +80,10 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   final _transcriptScroll = ScrollController();
 
   bool _dragging = false,
-      _draggingQueue = false,
+          // Тащат то, что очередь не возьмёт: вуаль говорит об этом сразу,
+          // а не после броска.
+          _dragRejected =
+          false,
       _scrolled = false,
       _findOpen = false;
   String _query = '';
@@ -104,20 +106,26 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    if (Platform.isWindows) {
-      _windowsFileInput.setMethodCallHandler((call) async {
-        if (!mounted) return;
-        if (call.method == 'fileDragEntered') {
-          setState(() => _dragging = true);
-        } else if (call.method == 'fileDragExited') {
-          setState(() => _dragging = false);
-        } else if (call.method == 'filesDropped') {
-          setState(() => _dragging = false);
-          final paths = (call.arguments as List).whereType<String>();
-          if (paths.isNotEmpty) _send(FilesAdded(paths));
-        }
-      });
-    }
+    // Перетаскивание принимает раннер (FileDropTarget на Windows,
+    // FileDropView на macOS): он видит тип файла ещё при наведении.
+    _fileInput.setMethodCallHandler((call) async {
+      if (!mounted) return;
+      if (call.method == 'fileDragEntered') {
+        setState(() {
+          _dragging = true;
+          _dragRejected = call.arguments == false;
+        });
+      } else if (call.method == 'fileDragExited') {
+        setState(() => _dragging = false);
+      } else if (call.method == 'filesDropped') {
+        setState(() => _dragging = false);
+        final paths = (call.arguments as List).whereType<String>();
+        if (paths.isNotEmpty) _send(FilesAdded(paths));
+      }
+    });
+    _fileInput
+        .invokeMethod('setDropExtensions', [...audioExt, ...transcriptExt])
+        .catchError((Object _) => null);
     WidgetsBinding.instance.addObserver(this);
     _transcriptScroll.addListener(() {
       final scrolled =
@@ -135,7 +143,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    if (Platform.isWindows) _windowsFileInput.setMethodCallHandler(null);
+    _fileInput.setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
     _searchCtrl.dispose();
     _searchFocus.dispose();
@@ -480,7 +488,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   Future<void> _pickFiles() async {
     if (Platform.isWindows) {
       try {
-        final paths = await _windowsFileInput.invokeListMethod<String>(
+        final paths = await _fileInput.invokeListMethod<String>(
           'pickAudioFiles',
         );
         if (mounted && paths != null && paths.isNotEmpty) {
@@ -758,7 +766,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
 
   /// Настроение кота выводится из того, что приложение делает прямо сейчас.
   Mood _mood(QueueState s, Job? job) => moodFor(
-    dragging: _dragging || _draggingQueue,
+    dragging: _dragging && !_dragRejected,
     running: s.running,
     jobActive: job?.active ?? false,
     hasJobs: job != null,
@@ -811,7 +819,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   Widget _windowBody(QueueState s) {
     if (os.hasWindowMaterial) return _macosWindow(s);
     return WindowsPaneLayout(
-      leftBuilder: (context, controller) => _queue(s, controller),
+      leftBuilder: (context, controller) => _queueList(s, controller),
       leftBottom: _queueButtons(s),
       center: _contentScaffold(s),
       rightBuilder: (context, controller) => _inspector(s, controller),
@@ -833,7 +841,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
         // Там, где материала окна нет, боковая колонка остаётся
         // прозрачной — то есть чёрной. Красим сами.
         decoration: Surface.sidebarDecoration(context),
-        builder: (context, controller) => _queue(s, controller),
+        builder: (context, controller) => _queueList(s, controller),
         bottom: _queueButtons(s),
       ),
       endSidebar: Sidebar(
@@ -1199,39 +1207,6 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
 
   // ── очередь ───────────────────────────────────────────────────────────────
 
-  /// Колонка очереди принимает файлы наравне с окном расшифровки.
-  ///
-  /// Не принимала — и это сбивало: под списком написано «перетащите сюда
-  /// аудио», а брошенное мимо середины окна пропадало. Место, которое
-  /// зовёт бросить файл, обязано его брать.
-  Widget _queue(QueueState s, ScrollController controller) => DropTarget(
-    onDragEntered: (_) => setState(() => _draggingQueue = true),
-    onDragExited: (_) => setState(() => _draggingQueue = false),
-    onDragDone: (details) {
-      setState(() => _draggingQueue = false);
-      _send(FilesAdded(details.files.map((f) => f.path)));
-    },
-    child: Stack(
-      children: [
-        Positioned.fill(
-          child: AnimatedOpacity(
-            duration: Motion.dur(context, Motion.toss),
-            curve: Motion.curve(context, Motion.tossCurve),
-            opacity: _draggingQueue ? 0.0 : 1.0,
-            child: _queueList(s, controller),
-          ),
-        ),
-        Positioned.fill(
-          child: DropVeil(
-            active: _draggingQueue,
-            compact: true,
-            title: l10n.dropVeilHint,
-          ),
-        ),
-      ],
-    ),
-  );
-
   Widget _queueList(QueueState s, ScrollController controller) {
     if (s.jobs.isEmpty) {
       return Center(
@@ -1348,7 +1323,10 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
       if (job.error != null) ...[
         const MenuAction.separator(),
         MenuAction(l10n.menuCopyErrorText, onSelected: () => _copyError(job)),
-        MenuAction(l10n.menuOpenLogsFolder, onSelected: () => Log.openLogsFolder()),
+        MenuAction(
+          l10n.menuOpenLogsFolder,
+          onSelected: () => Log.openLogsFolder(),
+        ),
       ],
       const MenuAction.separator(),
       // «Заново» — только про то, что уже считали. Нераспознанную запись
@@ -1528,32 +1506,26 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
       }
     }
 
-    return DropTarget(
-      onDragEntered: (_) => setState(() => _dragging = true),
-      onDragExited: (_) => setState(() => _dragging = false),
-      onDragDone: (details) {
-        setState(() => _dragging = false);
-        _send(FilesAdded(details.files.map((f) => f.path)));
-      },
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: AnimatedOpacity(
-              duration: Motion.dur(context, Motion.toss),
-              curve: Motion.curve(context, Motion.tossCurve),
-              opacity: _dragging ? 0.0 : 1.0,
-              child: content,
-            ),
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: AnimatedOpacity(
+            duration: Motion.dur(context, Motion.toss),
+            curve: Motion.curve(context, Motion.tossCurve),
+            opacity: _dragging ? 0.0 : 1.0,
+            child: content,
           ),
-          Positioned.fill(
-            child: DropVeil(
-              active: _dragging,
-              title: l10n.dropVeilHint,
-              subtitle: l10n.subtitleDropAudioHere,
-            ),
+        ),
+        Positioned.fill(
+          child: DropVeil(
+            active: _dragging,
+            title: _dragRejected
+                ? l10n.statusUnsupportedFiles
+                : l10n.dropVeilHint,
+            subtitle: l10n.subtitleDropAudioHere,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

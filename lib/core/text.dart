@@ -5,6 +5,8 @@
 /// которую придётся трогать при переводе на другой язык.
 library;
 
+import 'dart:io' show Platform;
+
 import 'app_locale.dart';
 import 'languages.dart';
 
@@ -17,9 +19,29 @@ export '../platform/os.dart' show appName, bundleId;
 /// Расшифровки, которые приложение умеет открывать, живут рядом с обходом
 /// библиотеки: та ищет их на диске, а сюда бы за списком тянуть переводы.
 export 'library.dart' show transcriptExt;
-const audioExt = {
+
+final audioExt = {
   '.ogg', '.oga', '.opus', '.mp3', '.m4a', '.aac', '.wav', '.aiff', '.aif',
   '.caf', '.flac', '.mp4', '.mov', '.m4b', '.wma',
+  // На Windows звук достаёт встроенный ffmpeg (tool/build-ffmpeg.sh), и он
+  // разбирает больше, чем afconvert на macOS. Список держать вровень с его
+  // --enable-demuxer.
+  if (Platform.isWindows) ...{
+    '.aifc',
+    '.mkv',
+    '.webm',
+    '.mka',
+    '.m4v',
+    '.3gp',
+    '.3g2',
+    '.wmv',
+    '.avi',
+    '.ts',
+    '.mts',
+    '.m2ts',
+    '.amr',
+    '.w64',
+  },
 };
 
 /// Языки называются так, как их называют их носители, — как в системных

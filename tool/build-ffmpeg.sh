@@ -65,8 +65,8 @@ cd "$SRC"
   --extra-ldflags="-static" \
   --pkg-config-flags="--static" \
   --enable-protocol=file \
-  --enable-demuxer=wav,ogg,matroska,mov,mp3,flac,aac,aiff,asf,w64 \
-  --enable-decoder=opus,vorbis,aac,mp3,mp2,ac3,eac3,flac,alac,wmav1,wmav2,wmapro,wmalossless,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8,pcm_alaw,pcm_mulaw \
+  --enable-demuxer=wav,ogg,matroska,mov,mp3,flac,aac,aiff,asf,w64,avi,mpegts,caf,amr \
+  --enable-decoder=opus,vorbis,aac,mp3,mp2,ac3,eac3,flac,alac,wmav1,wmav2,wmapro,wmalossless,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_f64le,pcm_s16be,pcm_s24be,pcm_s32be,pcm_f32be,pcm_f64be,pcm_s8,pcm_u8,pcm_alaw,pcm_mulaw,adpcm_ima_wav,adpcm_ms,amrnb,amrwb \
   --enable-parser=opus,vorbis,aac,mpegaudio,ac3,flac \
   --enable-muxer=wav \
   --enable-encoder=pcm_s16le \

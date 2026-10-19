@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import UniformTypeIdentifiers
 import macos_window_utils
 
 class MainFlutterWindow: NSWindow {
@@ -15,6 +16,7 @@ class MainFlutterWindow: NSWindow {
     MainFlutterWindowManipulator.start(mainFlutterWindow: self)
 
     RegisterGeneratedPlugins(registry: macOSWindowUtilsViewController.flutterViewController)
+    FileDropView.install(on: macOSWindowUtilsViewController.flutterViewController)
 
     // Инспектор тоже говорит с прослойкой — например, чтобы убрать значок
     // из Dock. Своего движка у него нет общего с панелью, поэтому канал
@@ -71,5 +73,131 @@ class MainFlutterWindow: NSWindow {
       forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main
     ) { _ in launchOnce() }
     DispatchQueue.main.async { launchOnce() }
+  }
+}
+
+/// Приём файлов перетаскиванием. Тот же канал и те же вызовы, что у
+/// FileDropTarget в Windows-раннере.
+///
+/// Раньше это делал desktop_drop, а он узнаёт, что тащат, только при
+/// броске: «Отпустите, чтобы добавить в очередь» выходило и над JPEG.
+/// Здесь тип проверяется при наведении, по расширениям, которые присылает
+/// очередь: неподходящий файл получает курсор-запрет и честную подпись.
+final class FileDropView: NSView {
+  private let channel: FlutterMethodChannel
+  private var extensions: Set<String> = []
+  private var supported = false
+
+  static func install(on controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(
+      name: "tsukiko/file_input", binaryMessenger: controller.engine.binaryMessenger)
+    let view = FileDropView(channel: channel, frame: controller.view.bounds)
+    view.autoresizingMask = [.width, .height]
+    view.registerForDraggedTypes(
+      [.fileURL] + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) })
+    controller.view.addSubview(view)
+    channel.setMethodCallHandler { [weak view] call, result in
+      guard call.method == "setDropExtensions", let list = call.arguments as? [String] else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      view?.extensions = Set(list.map { $0.lowercased() })
+      result(nil)
+    }
+  }
+
+  private init(channel: FlutterMethodChannel, frame: NSRect) {
+    self.channel = channel
+    super.init(frame: frame)
+  }
+
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  private func takes(_ ext: String) -> Bool {
+    extensions.isEmpty || extensions.contains("." + ext.lowercased())
+  }
+
+  private func fileURLs(_ pasteboard: NSPasteboard) -> [URL] {
+    pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+      as? [URL] ?? []
+  }
+
+  private func promises(_ pasteboard: NSPasteboard) -> [NSFilePromiseReceiver] {
+    pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil)
+      as? [NSFilePromiseReceiver] ?? []
+  }
+
+  /// Папку берём целиком: очередь сама выберет из неё звук.
+  private func accepts(_ pasteboard: NSPasteboard) -> Bool {
+    let urls = fileURLs(pasteboard)
+    if !urls.isEmpty {
+      return urls.contains { url in
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+          || takes(url.pathExtension)
+      }
+    }
+    // Обещанные файлы (Почта, Фото, браузеры) ещё не лежат на диске — есть
+    // только тип. Отказываем, лишь когда тип известен и точно не наш.
+    return promises(pasteboard).contains { receiver in
+      receiver.fileTypes.contains { id in
+        guard let type = UTType(id) else { return true }
+        if type.conforms(to: .audiovisualContent) { return true }
+        if let ext = type.preferredFilenameExtension, takes(ext) { return true }
+        return type == .data || type == .item || type == .content
+      }
+    }
+  }
+
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    supported = accepts(sender.draggingPasteboard)
+    channel.invokeMethod("fileDragEntered", arguments: supported)
+    return supported ? .copy : []
+  }
+
+  override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+    supported ? .copy : []
+  }
+
+  override func draggingExited(_ sender: NSDraggingInfo?) {
+    supported = false
+    channel.invokeMethod("fileDragExited", arguments: nil)
+  }
+
+  override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { supported }
+
+  override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    supported = false
+    channel.invokeMethod("fileDragExited", arguments: nil)
+    let pasteboard = sender.draggingPasteboard
+    let urls = fileURLs(pasteboard)
+    if !urls.isEmpty {
+      channel.invokeMethod("filesDropped", arguments: urls.map(\.path))
+      return true
+    }
+    let receivers = promises(pasteboard)
+    guard !receivers.isEmpty else { return false }
+    // Своя папка на каждый бросок: одноимённые файлы не затрут друг друга.
+    let destination = FileManager.default.temporaryDirectory
+      .appendingPathComponent("Drops/\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    let queue = OperationQueue()
+    let lock = NSLock()
+    var paths: [String] = []
+    // Обработчик зовётся по разу на каждый обещанный файл, а не на receiver.
+    var left = receivers.reduce(0) { $0 + max(1, $1.fileTypes.count) }
+    for receiver in receivers {
+      receiver.receivePromisedFiles(atDestination: destination, options: [:], operationQueue: queue) {
+        [channel] url, error in
+        lock.lock()
+        if error == nil { paths.append(url.path) }
+        left -= 1
+        let done = left == 0 ? paths : nil
+        lock.unlock()
+        if let done {
+          DispatchQueue.main.async { channel.invokeMethod("filesDropped", arguments: done) }
+        }
+      }
+    }
+    return true
   }
 }

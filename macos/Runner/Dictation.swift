@@ -1159,9 +1159,11 @@ final class DictationBridge: NSObject {
 
   // MARK: вставка текста
 
-  /// Буфер обмена — чужая вещь: положили своё, вставили, вернули как было.
-  /// Сохраняем все типы данных, а не только строку, иначе скопированная
-  /// картинка после диктовки превращалась бы в текст.
+  /// Текст остаётся в буфере обмена, как и на Windows. Раньше прежний буфер
+  /// возвращали через 0,4 с, и это была гонка: занятое приложение читало
+  /// буфер позже и вставляло старое содержимое вместо расшифровки, а
+  /// менеджер истории буфера (опрос раз в ~0,5 с) не успевал её увидеть.
+  /// Прежняя копия никуда не делась — она в истории буфера.
   ///
   /// Возвращает, дошло ли дело до нажатия ⌘V. False значит, что текст
   /// в чужое окно не попал, и вызывающая сторона обязана этим заняться:
@@ -1175,37 +1177,9 @@ final class DictationBridge: NSObject {
     // копию ради нажатия, которое всё равно не состоится.
     guard AXIsProcessTrusted() else { return false }
     let pb = NSPasteboard.general
-    let saved: [[NSPasteboard.PasteboardType: Data]] =
-      pb.pasteboardItems?.map { item in
-        var bag = [NSPasteboard.PasteboardType: Data]()
-        for type in item.types {
-          if let data = item.data(forType: type) { bag[type] = data }
-        }
-        return bag
-      } ?? []
-
     pb.clearContents()
     pb.setString(text, forType: .string)
-    let change = pb.changeCount
-    let sent = sendCommandV()
-
-    // Вернуть буфер сразу нельзя: приложение-получатель читает его уже
-    // после того, как ⌘V дошло до него. Если нажатие не состоялось,
-    // возвращать нечего и ждать нечего — но и оставлять свой текст
-    // в буфере правильно: вызывающая сторона на это и рассчитывает.
-    guard sent else { return false }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-      guard pb.changeCount == change else { return }
-      pb.clearContents()
-      guard !saved.isEmpty else { return }
-      let items = saved.map { bag -> NSPasteboardItem in
-        let item = NSPasteboardItem()
-        for (type, data) in bag { item.setData(data, forType: type) }
-        return item
-      }
-      pb.writeObjects(items)
-    }
-    return true
+    return sendCommandV()
   }
 
   /// Возвращает, удалось ли отправить нажатие. Молча провалиться здесь

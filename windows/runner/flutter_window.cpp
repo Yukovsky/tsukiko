@@ -2,6 +2,10 @@
 
 #include <optional>
 #include <cwchar>
+#include <cwctype>
+#include <set>
+#include <string>
+#include <vector>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <ole2.h>
@@ -13,6 +17,78 @@
 #include "utils.h"
 
 namespace {
+
+// Что очередь берёт в работу: присылает Dart (audioExt и transcriptExt),
+// строчными и с точкой. Пока список не пришёл, принимаем всё — решит очередь.
+std::set<std::wstring> g_drop_extensions;
+
+std::wstring Utf16FromUtf8(const std::string& utf8) {
+  const int length = MultiByteToWideChar(CP_UTF8, 0, utf8.data(),
+                                         static_cast<int>(utf8.size()), nullptr, 0);
+  std::wstring out(length, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()),
+                      out.data(), length);
+  return out;
+}
+
+// Папку берём целиком: очередь сама выберет из неё звук.
+bool DropTakes(const std::wstring& path) {
+  if (g_drop_extensions.empty()) return true;
+  const DWORD attributes = GetFileAttributesW(path.c_str());
+  if (attributes != INVALID_FILE_ATTRIBUTES &&
+      (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+    return true;
+  }
+  const size_t dot = path.find_last_of(L".\\/");
+  if (dot == std::wstring::npos || path[dot] != L'.') return false;
+  std::wstring ext = path.substr(dot);
+  for (auto& c : ext) c = static_cast<wchar_t>(std::towlower(c));
+  return g_drop_extensions.count(ext) > 0;
+}
+
+std::vector<std::wstring> DroppedPaths(HDROP drop) {
+  std::vector<std::wstring> paths;
+  const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+  for (UINT i = 0; i < count; ++i) {
+    const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+    std::wstring path(length + 1, L'\0');
+    DragQueryFileW(drop, i, path.data(), length + 1);
+    path.resize(length);
+    paths.push_back(std::move(path));
+  }
+  return paths;
+}
+
+std::vector<std::wstring> DataObjectPaths(IDataObject* data) {
+  FORMATETC format{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+  STGMEDIUM medium{};
+  if (!data || data->GetData(&format, &medium) != S_OK) return {};
+  auto paths = DroppedPaths(reinterpret_cast<HDROP>(medium.hGlobal));
+  ReleaseStgMedium(&medium);
+  return paths;
+}
+
+flutter::EncodableList ToEncodable(const std::vector<std::wstring>& paths) {
+  flutter::EncodableList list;
+  for (const auto& path : paths) list.emplace_back(Utf8FromUtf16(path.c_str()));
+  return list;
+}
+
+// Проводник работает без повышения, и в окно, запущенное от администратора,
+// Windows не пускает OLE-перетаскивание (а WM_DROPFILES — без фильтра
+// сообщений): курсор перечёркнут, приложение не узнаёт ничего. Так бывало после установщика
+// «для всех пользователей» — его «Запустить tsukiko» наследовал права.
+bool IsElevated() {
+  HANDLE token = nullptr;
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return false;
+  TOKEN_ELEVATION elevation{};
+  DWORD size = 0;
+  const bool elevated =
+      GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size) &&
+      elevation.TokenIsElevated;
+  CloseHandle(token);
+  return elevated;
+}
 
 // Свой OLE target нужен, чтобы видеть начало перетаскивания. WM_DROPFILES
 // сообщает только о завершённом drop, поэтому анимация Flutter не появлялась.
@@ -38,46 +114,47 @@ class FileDropTarget final : public IDropTarget {
     return left;
   }
 
+  // Тип проверяем сразу, а не после броска: неподходящий файл получает
+  // перечёркнутый курсор, а окно говорит, что такие не берёт.
   HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL,
                                       DWORD* effect) override {
-    FORMATETC format{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
-    accepts_ = data && data->QueryGetData(&format) == S_OK;
-    *effect = accepts_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
-    if (accepts_) Notify("fileDragEntered");
+    const auto paths = DataObjectPaths(data);
+    hovering_ = !paths.empty();
+    supported_ = false;
+    for (const auto& path : paths) {
+      if (DropTakes(path)) {
+        supported_ = true;
+        break;
+      }
+    }
+    *effect = supported_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    if (hovering_) {
+      channel_->InvokeMethod("fileDragEntered",
+                             std::make_unique<flutter::EncodableValue>(supported_));
+    }
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL, DWORD* effect) override {
-    *effect = accepts_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    *effect = supported_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE DragLeave() override {
-    if (accepts_) Notify("fileDragExited");
-    accepts_ = false;
+    if (hovering_) Notify("fileDragExited");
+    hovering_ = supported_ = false;
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL,
                                 DWORD* effect) override {
     *effect = DROPEFFECT_NONE;
-    if (!accepts_ || !data) return S_OK;
-    Notify("fileDragExited");
-    accepts_ = false;
-    FORMATETC format{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
-    STGMEDIUM medium{};
-    if (data->GetData(&format, &medium) != S_OK) return S_OK;
-    flutter::EncodableList paths;
-    HDROP drop = reinterpret_cast<HDROP>(medium.hGlobal);
-    const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-    for (UINT i = 0; i < count; ++i) {
-      const UINT length = DragQueryFileW(drop, i, nullptr, 0);
-      std::wstring path(length + 1, L'\0');
-      DragQueryFileW(drop, i, path.data(), length + 1);
-      paths.emplace_back(Utf8FromUtf16(path.c_str()));
-    }
-    ReleaseStgMedium(&medium);
+    if (hovering_) Notify("fileDragExited");
+    const bool supported = supported_;
+    hovering_ = supported_ = false;
+    if (!supported) return S_OK;
+    const auto paths = DataObjectPaths(data);
     if (!paths.empty()) {
       *effect = DROPEFFECT_COPY;
       channel_->InvokeMethod(
-          "filesDropped", std::make_unique<flutter::EncodableValue>(paths));
+          "filesDropped", std::make_unique<flutter::EncodableValue>(ToEncodable(paths)));
     }
     return S_OK;
   }
@@ -88,14 +165,16 @@ class FileDropTarget final : public IDropTarget {
   }
   flutter::MethodChannel<flutter::EncodableValue>* channel_;
   ULONG refs_ = 1;
-  bool accepts_ = false;
+  bool hovering_ = false;
+  bool supported_ = false;
 };
 
 flutter::EncodableList PickAudioFiles(HWND owner, DWORD* error) {
   std::wstring buffer(65536, L'\0');
   // GetOpenFileNameW uses a double-NUL-terminated filter list.
   static constexpr wchar_t filter[] =
-      L"Audio and video\0*.ogg;*.oga;*.opus;*.mp3;*.m4a;*.aac;*.wav;*.aiff;*.aif;*.caf;*.flac;*.mp4;*.mov;*.m4b;*.wma\0"
+      L"Audio and video\0*.ogg;*.oga;*.opus;*.mp3;*.m4a;*.aac;*.wav;*.aiff;*.aif;*.aifc;*.caf;*.flac;*.mp4;*.mov;*.m4b;*.wma;"
+      L"*.mkv;*.webm;*.mka;*.m4v;*.3gp;*.3g2;*.wmv;*.avi;*.ts;*.mts;*.m2ts;*.amr;*.w64\0"
       L"All files\0*.*\0";
   OPENFILENAMEW dialog{};
   dialog.lStructSize = sizeof(dialog);
@@ -151,7 +230,17 @@ bool FlutterWindow::OnCreate() {
       flutter_controller_->engine()->messenger(), "tsukiko/file_input",
       &flutter::StandardMethodCodec::GetInstance());
   file_input_->SetMethodCallHandler([this](const auto& call, auto result) {
-    if (call.method_name() == "pickAudioFiles") {
+    if (call.method_name() == "setDropExtensions") {
+      g_drop_extensions.clear();
+      if (const auto* list = std::get_if<flutter::EncodableList>(call.arguments())) {
+        for (const auto& item : *list) {
+          if (const auto* ext = std::get_if<std::string>(&item)) {
+            g_drop_extensions.insert(Utf16FromUtf8(*ext));
+          }
+        }
+      }
+      result->Success();
+    } else if (call.method_name() == "pickAudioFiles") {
       DWORD error = 0;
       auto paths = PickAudioFiles(GetHandle(), &error);
       if (error != 0) {
@@ -181,10 +270,21 @@ bool FlutterWindow::OnCreate() {
   // only this view's target with one that reports hover and reads full paths.
   file_drop_window_ = flutter_controller_->view()->GetNativeWindow();
   RevokeDragDrop(file_drop_window_);
-  file_drop_target_ = new FileDropTarget(file_input_.get());
-  if (RegisterDragDrop(file_drop_window_, file_drop_target_) != S_OK) {
-    file_drop_target_->Release();
-    file_drop_target_ = nullptr;
+  if (!IsElevated()) {
+    file_drop_target_ = new FileDropTarget(file_input_.get());
+    if (RegisterDragDrop(file_drop_window_, file_drop_target_) != S_OK) {
+      file_drop_target_->Release();
+      file_drop_target_ = nullptr;
+    }
+  }
+  if (!file_drop_target_) {
+    // Запасной путь: без подсветки при наведении, но файл дойдёт. От
+    // администратора WM_DROPFILES пропускаем через фильтр сообщений сами
+    // (0x0049 — WM_COPYGLOBALDATA, им Проводник передаёт список файлов).
+    for (const UINT message : {static_cast<UINT>(WM_DROPFILES),
+                               static_cast<UINT>(WM_COPYDATA), 0x0049u}) {
+      ChangeWindowMessageFilterEx(file_drop_window_, message, MSGFLT_ALLOW, nullptr);
+    }
     SetWindowSubclass(file_drop_window_, FileDropProc, 1,
                       reinterpret_cast<DWORD_PTR>(this));
     DragAcceptFiles(file_drop_window_, TRUE);
@@ -249,18 +349,13 @@ LRESULT CALLBACK FlutterWindow::FileDropProc(HWND window, UINT message,
   }
   auto* self = reinterpret_cast<FlutterWindow*>(context);
   HDROP drop = reinterpret_cast<HDROP>(wparam);
-  flutter::EncodableList paths;
-  const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-  for (UINT i = 0; i < count; ++i) {
-    const UINT length = DragQueryFileW(drop, i, nullptr, 0);
-    std::wstring path(length + 1, L'\0');
-    DragQueryFileW(drop, i, path.data(), length + 1);
-    paths.emplace_back(Utf8FromUtf16(path.c_str()));
-  }
+  const auto paths = DroppedPaths(drop);
   DragFinish(drop);
+  // Без наведения тип не проверить заранее — отбирает очередь, и про
+  // неподходящие файлы она скажет сама.
   if (self->file_input_ && !paths.empty()) {
     self->file_input_->InvokeMethod(
-        "filesDropped", std::make_unique<flutter::EncodableValue>(paths));
+        "filesDropped", std::make_unique<flutter::EncodableValue>(ToEncodable(paths)));
   }
   return 0;
 }
