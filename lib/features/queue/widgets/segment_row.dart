@@ -265,8 +265,18 @@ class SegmentRowState extends State<SegmentRow>
 /// Полог при перетаскивании: материал приходит с лёгким перелётом —
 /// жест уже нёс импульс.
 class DropVeil extends StatelessWidget {
-  const DropVeil({super.key, required this.active, this.title, this.subtitle});
+  const DropVeil({
+    super.key,
+    required this.active,
+    this.compact = false,
+    this.title,
+    this.subtitle,
+  });
   final bool active;
+
+  /// Узкая колонка очереди: коту в ней не поместиться, и он там не нужен —
+  /// подсветки края и подписи хватает, чтобы понять, что файл здесь примут.
+  final bool compact;
 
   /// Заголовок действия (по умолчанию — dropVeilHint).
   final String? title;
@@ -289,14 +299,16 @@ class DropVeil extends StatelessWidget {
           curve: Motion.curve(context, Motion.tossCurve),
           scale: active ? 1 : 0.97,
           child: Container(
-            // Снизу вчетверо больше, чем с боков: там лежит нижняя
-            // полоса окна, и вуаль не должна залезать под неё.
-            margin: const EdgeInsets.fromLTRB(
-              Gap.item,
-              Gap.item,
-              Gap.item,
-              Gap.item * 4,
-            ),
+            margin: compact
+                ? const EdgeInsets.all(Gap.inner)
+                // Снизу вчетверо больше, чем с боков: там лежит нижняя
+                // полоса окна, и вуаль не должна залезать под неё.
+                : const EdgeInsets.fromLTRB(
+                    Gap.item,
+                    Gap.item,
+                    Gap.item,
+                    Gap.item * 4,
+                  ),
             decoration: BoxDecoration(
               color: isDark
                   ? accent.withValues(alpha: 0.15)
@@ -320,26 +332,38 @@ class DropVeil extends StatelessWidget {
                 filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: Gap.section,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? Gap.inner : Gap.section,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Кот тянется навстречу файлу. Высота 138 совпадает
-                        // с MascotPlaceholder, чтобы переход ощущался естественным.
-                        const Mascot(
-                          mood: Mood.surprised,
-                          height: 138,
-                          interactive: false,
-                        ),
-                        const SizedBox(height: Gap.item),
+                        if (compact) ...[
+                          Icon(
+                            CupertinoIcons.arrow_down_doc_fill,
+                            size: 28,
+                            color: accent,
+                          ),
+                          const SizedBox(height: Gap.inner),
+                        ] else ...[
+                          // Кот тянется навстречу файлу. Высота 138 совпадает
+                          // с MascotPlaceholder, чтобы переход ощущался естественным.
+                          const Mascot(
+                            mood: Mood.surprised,
+                            height: 138,
+                            interactive: false,
+                          ),
+                          const SizedBox(height: Gap.item),
+                        ],
                         Text(
                           title ?? l10n.dropVeilHint,
                           textAlign: TextAlign.center,
-                          style: Type.emptyTitle.copyWith(color: accent),
+                          style: (compact ? Type.caption : Type.emptyTitle).copyWith(
+                            color: accent,
+                            fontWeight: compact ? FontWeight.w600 : null,
+                          ),
                         ),
-                        if (subtitle != null) ...[
+                        if (!compact && subtitle != null) ...[
                           const SizedBox(height: Gap.hint),
                           Text(
                             subtitle!,

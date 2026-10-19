@@ -15,17 +15,20 @@ import '../platform/os.dart';
 /// а «отклик» (за сколько дойти) и «затухание» (насколько перелетит).
 
 class SpringCurve extends Curve {
-  SpringCurve({required this.duration, double response = 0.4, double dampingRatio = 1.0})
-      : _sim = SpringSimulation(
-          SpringDescription.withDampingRatio(
-            mass: 1,
-            stiffness: math.pow(2 * math.pi / response, 2).toDouble(),
-            ratio: dampingRatio,
-          ),
-          0,
-          1,
-          0,
-        );
+  SpringCurve({
+    required this.duration,
+    double response = 0.4,
+    double dampingRatio = 1.0,
+  }) : _sim = SpringSimulation(
+         SpringDescription.withDampingRatio(
+           mass: 1,
+           stiffness: math.pow(2 * math.pi / response, 2).toDouble(),
+           ratio: dampingRatio,
+         ),
+         0,
+         1,
+         0,
+       );
 
   final Duration duration;
   final SpringSimulation _sim;
@@ -49,8 +52,11 @@ class Motion {
   /// Перелёт разрешён только там, где жесту предшествовал импульс —
   /// перетаскивание файла в окно.
   static const toss = Duration(milliseconds: 340);
-  static final tossCurve =
-      SpringCurve(duration: toss, response: 0.3, dampingRatio: 0.72);
+  static final tossCurve = SpringCurve(
+    duration: toss,
+    response: 0.3,
+    dampingRatio: 0.72,
+  );
 
   /// Нажатие подсвечивается мгновенно — задержка убивает ощущение прямоты.
   static const press = Duration(milliseconds: 90);
@@ -65,7 +71,8 @@ class Motion {
   static Curve curve(BuildContext context, Curve c) =>
       reduced(context) ? Curves.easeOut : c;
 
-  static double slide(BuildContext context, double px) => reduced(context) ? 0 : px;
+  static double slide(BuildContext context, double px) =>
+      reduced(context) ? 0 : px;
 }
 
 /// Шкала отступов, шаг 4: других значений в приложении нет.
@@ -182,11 +189,7 @@ class Type {
     letterSpacing: 0.65,
   );
 
-  static const body = TextStyle(
-    fontSize: 13.5,
-    height: 1.55,
-    letterSpacing: 0,
-  );
+  static const body = TextStyle(fontSize: 13.5, height: 1.55, letterSpacing: 0);
 
   static const control = TextStyle(fontSize: 12.5, letterSpacing: 0.1);
 
@@ -217,14 +220,11 @@ class Surface {
           ? const Color(0xFF202023)
           : const Color(0xFFF7F7F9);
     }
-    return isDark(context)
-        ? const Color(0xE6202023)
-        : const Color(0xE6F7F7F9);
+    return isDark(context) ? const Color(0xE6202023) : const Color(0xE6F7F7F9);
   }
 
-  static Color hairline(BuildContext context) => isDark(context)
-      ? const Color(0x2BFFFFFF)
-      : const Color(0x1A000000);
+  static Color hairline(BuildContext context) =>
+      isDark(context) ? const Color(0x2BFFFFFF) : const Color(0x1A000000);
 
   static Color hover(BuildContext context) =>
       isDark(context) ? const Color(0x14FFFFFF) : const Color(0x0D000000);
@@ -302,13 +302,13 @@ class AppTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MacosTextField(
-        controller: controller,
-        placeholder: placeholder,
-        placeholderStyle: Surface.placeholder(context),
-        minLines: minLines,
-        maxLines: maxLines,
-        onChanged: onChanged,
-      );
+    controller: controller,
+    placeholder: placeholder,
+    placeholderStyle: Surface.placeholder(context),
+    minLines: minLines,
+    maxLines: maxLines,
+    onChanged: onChanged,
+  );
 }
 
 class SectionTitle extends StatelessWidget {
@@ -317,15 +317,15 @@ class SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        // Снизу вчетверо меньше, чем сверху: заголовок принадлежит тому,
-        // что под ним, и обязан стоять к нему ближе, чем к предыдущему
-        // разделу. Иначе он читается как подпись к чужому концу.
-        padding: const EdgeInsets.only(top: Gap.section, bottom: Gap.inner),
-        child: Text(
-          text.toUpperCase(),
-          style: Type.sectionHeader.copyWith(color: Surface.secondaryText(context)),
-        ),
-      );
+    // Снизу вчетверо меньше, чем сверху: заголовок принадлежит тому,
+    // что под ним, и обязан стоять к нему ближе, чем к предыдущему
+    // разделу. Иначе он читается как подпись к чужому концу.
+    padding: const EdgeInsets.only(top: Gap.section, bottom: Gap.inner),
+    child: Text(
+      text.toUpperCase(),
+      style: Type.sectionHeader.copyWith(color: Surface.secondaryText(context)),
+    ),
+  );
 }
 
 /// Пояснение к тому, что стоит НАД ним, и ни к чему больше: снизу отступа
@@ -341,17 +341,15 @@ class Hint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(
-          top: Gap.hint,
-        ),
-        child: Text(
-          text,
-          style: Type.caption.copyWith(
-            color: Surface.secondaryText(context),
-            height: 1.4,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(top: Gap.hint),
+    child: Text(
+      text,
+      style: Type.caption.copyWith(
+        color: Surface.secondaryText(context),
+        height: 1.4,
+      ),
+    ),
+  );
 }
 
 /// Раскрывающийся раздел: заголовок с треугольником, содержимое под ним.
@@ -373,29 +371,29 @@ class _DisclosureState extends State<Disclosure> {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _open = !_open),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                MacosIcon(
-                  _open
-                      ? CupertinoIcons.chevron_down
-                      : CupertinoIcons.chevron_right,
-                  size: IconSize.inline,
-                  color: Surface.secondaryText(context),
-                ),
-                const SizedBox(width: Gap.inner),
-                Text(widget.label, style: Type.control),
-              ],
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _open = !_open),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MacosIcon(
+              _open
+                  ? CupertinoIcons.chevron_down
+                  : CupertinoIcons.chevron_right,
+              size: IconSize.inline,
+              color: Surface.secondaryText(context),
             ),
-          ),
-          if (_open) widget.child,
-        ],
-      );
+            const SizedBox(width: Gap.inner),
+            Text(widget.label, style: Type.control),
+          ],
+        ),
+      ),
+      if (_open) widget.child,
+    ],
+  );
 }
 
 class Check extends StatefulWidget {
@@ -413,33 +411,33 @@ class _CheckState extends State<Check> {
 
   @override
   Widget build(BuildContext context) => MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => widget.onChanged(!widget.value),
-          child: AnimatedContainer(
-            duration: Motion.dur(context, Motion.press),
-            curve: Curves.easeOut,
-            // Слева поля нет: подсветка начинается ровно там же, где
-            // заголовки разделов и пояснения. Иначе у каждой галки свой
-            // левый край, и колонка рассыпается.
-            padding: const EdgeInsets.fromLTRB(0, Gap.hint, Gap.inner, Gap.hint),
-            decoration: BoxDecoration(
-              color: _hover ? Surface.hover(context) : MacosColors.transparent,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MacosCheckbox(value: widget.value, onChanged: widget.onChanged),
-                const SizedBox(width: Gap.inner),
-                Expanded(child: Text(widget.label, style: Type.control)),
-              ],
-            ),
-          ),
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: () => widget.onChanged(!widget.value),
+      child: AnimatedContainer(
+        duration: Motion.dur(context, Motion.press),
+        curve: Curves.easeOut,
+        // Слева поля нет: подсветка начинается ровно там же, где
+        // заголовки разделов и пояснения. Иначе у каждой галки свой
+        // левый край, и колонка рассыпается.
+        padding: const EdgeInsets.fromLTRB(0, Gap.hint, Gap.inner, Gap.hint),
+        decoration: BoxDecoration(
+          color: _hover ? Surface.hover(context) : MacosColors.transparent,
+          borderRadius: BorderRadius.circular(6),
         ),
-      );
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MacosCheckbox(value: widget.value, onChanged: widget.onChanged),
+            const SizedBox(width: Gap.inner),
+            Expanded(child: Text(widget.label, style: Type.control)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// Сочетание клавиш плашкой. Одна на всё приложение: в настройках по ней
@@ -452,16 +450,18 @@ class KeyCap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedContainer(
-        duration: Motion.dur(context, Motion.quick),
-        padding: const EdgeInsets.symmetric(
-            horizontal: Gap.inner, vertical: Gap.tight),
-        decoration: BoxDecoration(
-          color: lit ? Surface.pressed(context) : Surface.hover(context),
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: Surface.hairline(context)),
-        ),
-        child: Text(keys, style: Type.control),
-      );
+    duration: Motion.dur(context, Motion.quick),
+    padding: const EdgeInsets.symmetric(
+      horizontal: Gap.inner,
+      vertical: Gap.tight,
+    ),
+    decoration: BoxDecoration(
+      color: lit ? Surface.pressed(context) : Surface.hover(context),
+      borderRadius: BorderRadius.circular(5),
+      border: Border.all(color: Surface.hairline(context)),
+    ),
+    child: Text(keys, style: Type.control),
+  );
 }
 
 /// Сочетание клавиш: нажатие на чип включает захват, и следующая
@@ -498,42 +498,42 @@ class _HotkeyRowState extends State<HotkeyRow> {
 
   @override
   Widget build(BuildContext context) => MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: _waiting ? null : _tap,
-          child: Padding(
-            // Строке сочетания дали воздуха: на пяти точках три строки
-            // подряд сливались в одну сетку из плашек, и глазу не за что
-            // было зацепиться, чтобы отделить одно сочетание от другого.
-            padding: const EdgeInsets.symmetric(vertical: Gap.inner),
-            child: Row(
-              children: [
-                Expanded(child: Text(widget.label, style: Type.control)),
-                // Крестик слева от клавиши, а не справа. Справа он сдвигал
-                // сочетание, и строка с ним переставала стоять в столбик
-                // с соседними: правый край у трёх сочетаний обязан быть
-                // общим, иначе список читается как сломанный.
-                if (widget.onClear case final clear? when !_waiting)
-                  Padding(
-                    // Между двумя целями нажатия — [Gap.control]: на
-                    // восьми точках крестик и плашка читались как одна
-                    // широкая кнопка.
-                    padding: const EdgeInsets.only(right: Gap.control),
-                    child: _ClearButton(onPressed: clear),
-                  ),
-                KeyCap(
-                  _waiting
-                      ? AppLocalizations.of(context).hotkeyCapturePrompt
-                      : widget.keys,
-                  lit: _hover || _waiting,
-                ),
-              ],
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: _waiting ? null : _tap,
+      child: Padding(
+        // Строке сочетания дали воздуха: на пяти точках три строки
+        // подряд сливались в одну сетку из плашек, и глазу не за что
+        // было зацепиться, чтобы отделить одно сочетание от другого.
+        padding: const EdgeInsets.symmetric(vertical: Gap.inner),
+        child: Row(
+          children: [
+            Expanded(child: Text(widget.label, style: Type.control)),
+            // Крестик слева от клавиши, а не справа. Справа он сдвигал
+            // сочетание, и строка с ним переставала стоять в столбик
+            // с соседними: правый край у трёх сочетаний обязан быть
+            // общим, иначе список читается как сломанный.
+            if (widget.onClear case final clear? when !_waiting)
+              Padding(
+                // Между двумя целями нажатия — [Gap.control]: на
+                // восьми точках крестик и плашка читались как одна
+                // широкая кнопка.
+                padding: const EdgeInsets.only(right: Gap.control),
+                child: _ClearButton(onPressed: clear),
+              ),
+            KeyCap(
+              _waiting
+                  ? AppLocalizations.of(context).hotkeyCapturePrompt
+                  : widget.keys,
+              lit: _hover || _waiting,
             ),
-          ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Крестик «снять сочетание».
@@ -557,35 +557,35 @@ class _ClearButtonState extends State<_ClearButton> {
 
   @override
   Widget build(BuildContext context) => MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        cursor: SystemMouseCursors.click,
-        child: MacosTooltip(
-          message: AppLocalizations.of(context).tooltipClearHotkey,
-          child: GestureDetector(
-            onTap: widget.onPressed,
-            behavior: HitTestBehavior.opaque,
-            // Область нажатия шире самого знака: сам крестик — значок
-            // кнопочной ступени, а вокруг него добавлено по [Gap.hint]
-            // с каждой стороны, чтобы в него попадали, а не целились.
-            child: SizedBox(
-              width: IconSize.button + Gap.inner,
-              height: IconSize.button + Gap.inner,
-              child: Center(
-                child: AnimatedOpacity(
-                  duration: Motion.dur(context, Motion.press),
-                  opacity: _hover ? 1 : 0.55,
-                  child: MacosIcon(
-                    CupertinoIcons.xmark_circle_fill,
-                    size: IconSize.button,
-                    color: Surface.secondaryText(context),
-                  ),
-                ),
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    cursor: SystemMouseCursors.click,
+    child: MacosTooltip(
+      message: AppLocalizations.of(context).tooltipClearHotkey,
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        behavior: HitTestBehavior.opaque,
+        // Область нажатия шире самого знака: сам крестик — значок
+        // кнопочной ступени, а вокруг него добавлено по [Gap.hint]
+        // с каждой стороны, чтобы в него попадали, а не целились.
+        child: SizedBox(
+          width: IconSize.button + Gap.inner,
+          height: IconSize.button + Gap.inner,
+          child: Center(
+            child: AnimatedOpacity(
+              duration: Motion.dur(context, Motion.press),
+              opacity: _hover ? 1 : 0.55,
+              child: MacosIcon(
+                CupertinoIcons.xmark_circle_fill,
+                size: IconSize.button,
+                color: Surface.secondaryText(context),
               ),
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Путь как объект, а не как строка настройки: по нему можно щёлкнуть
@@ -620,7 +620,9 @@ class _LibraryPathState extends State<LibraryPath> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         MacosTooltip(
-          message: AppLocalizations.of(context).buttonShowInFileManager(os.fileManagerName),
+          message: AppLocalizations.of(
+            context,
+          ).buttonShowInFileManager(os.fileManagerName),
           child: MouseRegion(
             onEnter: (_) => setState(() => _hover = true),
             onExit: (_) => setState(() => _hover = false),
@@ -631,16 +633,23 @@ class _LibraryPathState extends State<LibraryPath> {
                 duration: Motion.dur(context, Motion.quick),
                 curve: Motion.curve(context, Motion.quickCurve),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: Gap.inner, vertical: Gap.inner),
+                  horizontal: Gap.inner,
+                  vertical: Gap.inner,
+                ),
                 decoration: BoxDecoration(
-                  color: _hover ? Surface.hover(context) : MacosColors.transparent,
+                  color: _hover
+                      ? Surface.hover(context)
+                      : MacosColors.transparent,
                   borderRadius: BorderRadius.circular(7),
                   border: Border.all(color: Surface.hairline(context)),
                 ),
                 child: Row(
                   children: [
-                    MacosIcon(CupertinoIcons.folder,
-                        size: IconSize.inline, color: Surface.secondaryText(context)),
+                    MacosIcon(
+                      CupertinoIcons.folder,
+                      size: IconSize.inline,
+                      color: Surface.secondaryText(context),
+                    ),
                     const SizedBox(width: Gap.inner),
                     Expanded(
                       child: Text(
@@ -653,9 +662,11 @@ class _LibraryPathState extends State<LibraryPath> {
                     AnimatedOpacity(
                       duration: Motion.dur(context, Motion.quick),
                       opacity: _hover ? 1 : 0,
-                      child: MacosIcon(CupertinoIcons.arrow_up_right_square,
-                          size: IconSize.inline,
-                          color: Surface.secondaryText(context)),
+                      child: MacosIcon(
+                        CupertinoIcons.arrow_up_right_square,
+                        size: IconSize.inline,
+                        color: Surface.secondaryText(context),
+                      ),
                     ),
                   ],
                 ),
@@ -706,9 +717,28 @@ class ModelField extends StatelessWidget {
   final String? fallback;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, box) => _popup(context, box.maxWidth));
+
+  Widget _popup(BuildContext context, double width) {
     final offers = modelOffers(installed);
     final f = fallback;
+    // Раскрытое меню macos_ui не шире кнопки, а пункт кладёт в Row без
+    // ограничения: длинное «Nemotron 3.5 ASR Streaming 0.6b · NeMo-Speech · …»
+    // вылезало за меню и обрезалось краем окна. Держим пункт в ширине
+    // колонки (за вычетом галочки и полей), хвост уходит в многоточие.
+    Widget item(String text, {TextStyle? style}) => ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: width.isFinite ? math.max(0, width - 40) : double.infinity,
+      ),
+      child: Text(
+        text,
+        style: style,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
     return MacosPopupButton<String>(
       value: installed.contains(value) ? value : (f == null ? null : ''),
       hint: Text(f ?? AppLocalizations.of(context).modelNotSelected),
@@ -718,20 +748,23 @@ class ModelField extends StatelessWidget {
       selectedItemBuilder: (_) => [
         if (f != null) Text(f, maxLines: 1, overflow: TextOverflow.ellipsis),
         for (final m in installed)
-          Text(modelLabel(m, installed),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(
+            modelLabel(m, installed),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         if (offers.isNotEmpty && installed.isNotEmpty) const SizedBox(),
         for (final m in offers)
           Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ],
       items: [
-        if (f != null) MacosPopupMenuItem(value: '', child: Text(f)),
+        if (f != null) MacosPopupMenuItem(value: '', child: item(f)),
         for (final m in installed)
           MacosPopupMenuItem(
             value: m,
             // Не просто имя: две «Large v3 Turbo» из разных папок выглядели
             // в списке одинаково, и какая выбрана — понять было нельзя.
-            child: Text(
+            child: item(
               '${modelLabel(m, installed)} · '
               '${engineTechnicalName(engineForModel(m))}',
             ),
@@ -739,16 +772,18 @@ class ModelField extends StatelessWidget {
         if (offers.isNotEmpty && installed.isNotEmpty)
           MacosPopupMenuItem(
             enabled: false,
-            child: Text(
+            child: item(
               AppLocalizations.of(context).sectionCanDownload,
-              style: Type.caption.copyWith(color: Surface.secondaryText(context)),
+              style: Type.caption.copyWith(
+                color: Surface.secondaryText(context),
+              ),
             ),
           ),
         for (final m in offers)
           MacosPopupMenuItem(
             enabled: downloadEnabled,
             value: m.path,
-            child: Text(
+            child: item(
               '${m.title} · ${engineTechnicalName(m.engine)} · ${m.size}',
             ),
           ),
@@ -782,36 +817,41 @@ class ModelDownload extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        AppLocalizations.of(context).downloadingTitle(title),
+        style: Type.control,
+      ),
+      const SizedBox(height: Gap.inner),
+      // Во всю ширину: у ProgressBar из macos_ui задана только
+      // минимальная ширина в 85 точек, и в столбце он ровно её
+      // и занимал — треть панели, будто загрузка чужая.
+      SizedBox(
+        width: double.infinity,
+        child: ProgressBar(value: percent.toDouble()),
+      ),
+      const SizedBox(height: Gap.inner),
+      Row(
         children: [
-          Text(AppLocalizations.of(context).downloadingTitle(title), style: Type.control),
-          const SizedBox(height: Gap.inner),
-          // Во всю ширину: у ProgressBar из macos_ui задана только
-          // минимальная ширина в 85 точек, и в столбце он ровно её
-          // и занимал — треть панели, будто загрузка чужая.
-          SizedBox(
-            width: double.infinity,
-            child: ProgressBar(value: percent.toDouble()),
+          Expanded(
+            child: Text(
+              progress,
+              style: Type.caption.copyWith(
+                color: Surface.secondaryText(context),
+              ),
+            ),
           ),
-          const SizedBox(height: Gap.inner),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  progress,
-                  style: Type.caption.copyWith(color: Surface.secondaryText(context)),
-                ),
-              ),
-              PushButton(
-                controlSize: ControlSize.small,
-                secondary: true,
-                onPressed: onCancel,
-                child: Text(AppLocalizations.of(context).buttonCancelDownload),
-              ),
-            ],
+          PushButton(
+            controlSize: ControlSize.small,
+            secondary: true,
+            onPressed: onCancel,
+            child: Text(AppLocalizations.of(context).buttonCancelDownload),
           ),
         ],
-      );
+      ),
+    ],
+  );
 }
 
 // ── контекстное меню ────────────────────────────────────────────────────────
@@ -852,7 +892,11 @@ Future<void> showContextMenu(
 }
 
 class _ContextMenuRoute extends PopupRoute<void> {
-  _ContextMenuRoute({required this.at, required this.actions, required this.theme});
+  _ContextMenuRoute({
+    required this.at,
+    required this.actions,
+    required this.theme,
+  });
 
   final Offset at;
   final List<MenuAction> actions;
@@ -871,7 +915,11 @@ class _ContextMenuRoute extends PopupRoute<void> {
   Duration get transitionDuration => const Duration(milliseconds: 120);
 
   @override
-  Widget buildPage(BuildContext context, Animation<double> a, Animation<double> _) {
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> a,
+    Animation<double> _,
+  ) {
     return MacosTheme(
       data: theme,
       child: CustomSingleChildLayout(
@@ -893,8 +941,7 @@ class _MenuLayout extends SingleChildLayoutDelegate {
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints c) =>
-      BoxConstraints.loose(
-          Size(c.maxWidth - Gap.item, c.maxHeight - Gap.item));
+      BoxConstraints.loose(Size(c.maxWidth - Gap.item, c.maxHeight - Gap.item));
 
   @override
   Offset getPositionForChild(Size size, Size child) {
@@ -917,28 +964,30 @@ class _ContextMenuPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IntrinsicWidth(
-        child: MacosOverlayFilter(
-          borderRadius: BorderRadius.circular(7),
-          child: Padding(
-            padding: const EdgeInsets.all(Gap.hint),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final a in actions)
-                  if (a.isSeparator)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: Gap.hint, horizontal: Gap.hint),
-                      child: Container(height: 1, color: Surface.hairline(context)),
-                    )
-                  else
-                    _ContextMenuRow(action: a),
-              ],
-            ),
-          ),
+    child: MacosOverlayFilter(
+      borderRadius: BorderRadius.circular(7),
+      child: Padding(
+        padding: const EdgeInsets.all(Gap.hint),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final a in actions)
+              if (a.isSeparator)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: Gap.hint,
+                    horizontal: Gap.hint,
+                  ),
+                  child: Container(height: 1, color: Surface.hairline(context)),
+                )
+              else
+                _ContextMenuRow(action: a),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _ContextMenuRow extends StatefulWidget {
@@ -960,8 +1009,8 @@ class _ContextMenuRowState extends State<_ContextMenuRow> {
     final fg = !a.enabled
         ? Surface.secondaryText(context).withValues(alpha: 0.5)
         : lit
-            ? MacosColors.white
-            : null;
+        ? MacosColors.white
+        : null;
 
     return MouseRegion(
       cursor: SystemMouseCursors.basic,
@@ -976,7 +1025,9 @@ class _ContextMenuRowState extends State<_ContextMenuRow> {
             : null,
         child: Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: Gap.inner, vertical: Gap.hint),
+            horizontal: Gap.inner,
+            vertical: Gap.hint,
+          ),
           decoration: BoxDecoration(
             color: lit ? accent : MacosColors.transparent,
             borderRadius: BorderRadius.circular(4),
@@ -1027,11 +1078,11 @@ class ContextMenuRegion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onSecondaryTapUp: (d) {
-          onOpen?.call();
-          showContextMenu(context, d.globalPosition, actions());
-        },
-        child: child,
-      );
+    behavior: HitTestBehavior.translucent,
+    onSecondaryTapUp: (d) {
+      onOpen?.call();
+      showContextMenu(context, d.globalPosition, actions());
+    },
+    child: child,
+  );
 }

@@ -79,14 +79,16 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   final _queueFocus = FocusNode(debugLabel: 'очередь');
   final _transcriptScroll = ScrollController();
 
-  bool _dragging = false,
-          // Тащат то, что очередь не возьмёт: вуаль говорит об этом сразу,
-          // а не после броска.
-          _dragRejected =
-          false,
-      _scrolled = false,
-      _findOpen = false;
+  bool _dragging = false, _scrolled = false, _findOpen = false;
+
+  /// Курсор над колонкой очереди: там своя, узкая вуаль.
+  bool _draggingQueue = false;
+
+  /// Тащат то, что очередь не возьмёт: вуаль говорит об этом сразу,
+  /// а не после броска.
+  bool _dragRejected = false;
   String _query = '';
+  final _queueColumn = GlobalKey();
 
   QueueBloc get _bloc => context.read<QueueBloc>();
   AppLocalizations get l10n => AppLocalizations.of(context);
@@ -115,10 +117,13 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           _dragging = true;
           _dragRejected = call.arguments == false;
         });
+      } else if (call.method == 'fileDragMoved') {
+        final xy = (call.arguments as List).cast<num>();
+        _dragMoved(Offset(xy[0].toDouble(), xy[1].toDouble()));
       } else if (call.method == 'fileDragExited') {
-        setState(() => _dragging = false);
+        setState(() => _dragging = _draggingQueue = false);
       } else if (call.method == 'filesDropped') {
-        setState(() => _dragging = false);
+        setState(() => _dragging = _draggingQueue = false);
         final paths = (call.arguments as List).whereType<String>();
         if (paths.isNotEmpty) _send(FilesAdded(paths));
       }
@@ -135,6 +140,19 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
     _searchCtrl.addListener(() {
       if (_searchCtrl.text != _query) setState(() => _query = _searchCtrl.text);
     });
+  }
+
+  /// Раннер присылает, где курсор (логические точки от левого верхнего угла
+  /// окна): над очередью горит её вуаль, над остальным окном — большая.
+  void _dragMoved(Offset at) {
+    final box = _queueColumn.currentContext?.findRenderObject() as RenderBox?;
+    final overQueue =
+        box != null &&
+        box.hasSize &&
+        (box.localToGlobal(Offset.zero) & box.size).contains(at);
+    if (overQueue != _draggingQueue) {
+      setState(() => _draggingQueue = overQueue);
+    }
   }
 
   @override
@@ -819,7 +837,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   Widget _windowBody(QueueState s) {
     if (os.hasWindowMaterial) return _macosWindow(s);
     return WindowsPaneLayout(
-      leftBuilder: (context, controller) => _queueList(s, controller),
+      leftBuilder: (context, controller) => _queue(s, controller),
       leftBottom: _queueButtons(s),
       center: _contentScaffold(s),
       rightBuilder: (context, controller) => _inspector(s, controller),
@@ -841,7 +859,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
         // Там, где материала окна нет, боковая колонка остаётся
         // прозрачной — то есть чёрной. Красим сами.
         decoration: Surface.sidebarDecoration(context),
-        builder: (context, controller) => _queueList(s, controller),
+        builder: (context, controller) => _queue(s, controller),
         bottom: _queueButtons(s),
       ),
       endSidebar: Sidebar(
@@ -1207,6 +1225,34 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
 
   // ── очередь ───────────────────────────────────────────────────────────────
 
+  /// Колонка очереди со своей вуалью: над ней файл ложится в очередь так же,
+  /// как над центром окна, но подсказка говорит об этом здесь.
+  Widget _queue(QueueState s, ScrollController controller) {
+    final active = _dragging && _draggingQueue;
+    return Stack(
+      key: _queueColumn,
+      children: [
+        Positioned.fill(
+          child: AnimatedOpacity(
+            duration: Motion.dur(context, Motion.toss),
+            curve: Motion.curve(context, Motion.tossCurve),
+            opacity: active ? 0.0 : 1.0,
+            child: _queueList(s, controller),
+          ),
+        ),
+        Positioned.fill(
+          child: DropVeil(
+            active: active,
+            compact: true,
+            title: _dragRejected
+                ? l10n.statusUnsupportedFiles
+                : l10n.dropVeilHint,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _queueList(QueueState s, ScrollController controller) {
     if (s.jobs.isEmpty) {
       return Center(
@@ -1512,13 +1558,13 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           child: AnimatedOpacity(
             duration: Motion.dur(context, Motion.toss),
             curve: Motion.curve(context, Motion.tossCurve),
-            opacity: _dragging ? 0.0 : 1.0,
+            opacity: _dragging && !_draggingQueue ? 0.0 : 1.0,
             child: content,
           ),
         ),
         Positioned.fill(
           child: DropVeil(
-            active: _dragging,
+            active: _dragging && !_draggingQueue,
             title: _dragRejected
                 ? l10n.statusUnsupportedFiles
                 : l10n.dropVeilHint,

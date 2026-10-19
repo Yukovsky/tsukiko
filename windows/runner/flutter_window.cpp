@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <cwchar>
+#include <climits>
 #include <cwctype>
 #include <set>
 #include <string>
@@ -95,8 +96,8 @@ bool IsElevated() {
 // Путь читаем через Unicode API и выделяем буфер по реальной длине.
 class FileDropTarget final : public IDropTarget {
  public:
-  explicit FileDropTarget(flutter::MethodChannel<flutter::EncodableValue>* channel)
-      : channel_(channel) {}
+  FileDropTarget(flutter::MethodChannel<flutter::EncodableValue>* channel, HWND window)
+      : channel_(channel), window_(window) {}
 
   HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
     if (iid != IID_IUnknown && iid != IID_IDropTarget) {
@@ -116,7 +117,7 @@ class FileDropTarget final : public IDropTarget {
 
   // Тип проверяем сразу, а не после броска: неподходящий файл получает
   // перечёркнутый курсор, а окно говорит, что такие не берёт.
-  HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL,
+  HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL point,
                                       DWORD* effect) override {
     const auto paths = DataObjectPaths(data);
     hovering_ = !paths.empty();
@@ -129,12 +130,15 @@ class FileDropTarget final : public IDropTarget {
     }
     *effect = supported_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     if (hovering_) {
+      last_ = {LONG_MIN, LONG_MIN};
+      Report(point);
       channel_->InvokeMethod("fileDragEntered",
                              std::make_unique<flutter::EncodableValue>(supported_));
     }
     return S_OK;
   }
-  HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL, DWORD* effect) override {
+  HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL point, DWORD* effect) override {
+    if (hovering_) Report(point);
     *effect = supported_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     return S_OK;
   }
@@ -160,10 +164,26 @@ class FileDropTarget final : public IDropTarget {
   }
 
  private:
+  // Где курсор, в логических точках Flutter: над очередью у неё своя
+  // вуаль, над остальным окном — большая.
+  void Report(POINTL screen) {
+    if (screen.x == last_.x && screen.y == last_.y) return;
+    last_ = screen;
+    POINT client{screen.x, screen.y};
+    ScreenToClient(window_, &client);
+    const double scale = GetDpiForWindow(window_) / 96.0;
+    channel_->InvokeMethod(
+        "fileDragMoved",
+        std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
+            flutter::EncodableValue(client.x / scale),
+            flutter::EncodableValue(client.y / scale)}));
+  }
   void Notify(const char* method) {
     channel_->InvokeMethod(method, std::make_unique<flutter::EncodableValue>());
   }
   flutter::MethodChannel<flutter::EncodableValue>* channel_;
+  HWND window_;
+  POINTL last_{LONG_MIN, LONG_MIN};
   ULONG refs_ = 1;
   bool hovering_ = false;
   bool supported_ = false;
@@ -271,7 +291,7 @@ bool FlutterWindow::OnCreate() {
   file_drop_window_ = flutter_controller_->view()->GetNativeWindow();
   RevokeDragDrop(file_drop_window_);
   if (!IsElevated()) {
-    file_drop_target_ = new FileDropTarget(file_input_.get());
+    file_drop_target_ = new FileDropTarget(file_input_.get(), file_drop_window_);
     if (RegisterDragDrop(file_drop_window_, file_drop_target_) != S_OK) {
       file_drop_target_->Release();
       file_drop_target_ = nullptr;

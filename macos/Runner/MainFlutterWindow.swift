@@ -87,6 +87,7 @@ final class FileDropView: NSView {
   private let channel: FlutterMethodChannel
   private var extensions: Set<String> = []
   private var supported = false
+  private var lastPoint: NSPoint?
 
   static func install(on controller: FlutterViewController) {
     let channel = FlutterMethodChannel(
@@ -148,14 +149,26 @@ final class FileDropView: NSView {
     }
   }
 
+  /// Где курсор, в точках Flutter (от левого верхнего угла): над очередью
+  /// у неё своя вуаль, над остальным окном — большая.
+  private func report(_ sender: NSDraggingInfo) {
+    let p = convert(sender.draggingLocation, from: nil)
+    guard p != lastPoint else { return }
+    lastPoint = p
+    channel.invokeMethod("fileDragMoved", arguments: [p.x, bounds.height - p.y])
+  }
+
   override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
     supported = accepts(sender.draggingPasteboard)
+    lastPoint = nil
+    report(sender)
     channel.invokeMethod("fileDragEntered", arguments: supported)
     return supported ? .copy : []
   }
 
   override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-    supported ? .copy : []
+    report(sender)
+    return supported ? .copy : []
   }
 
   override func draggingExited(_ sender: NSDraggingInfo?) {
