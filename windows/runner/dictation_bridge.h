@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <map>
 #include <set>
 #include <thread>
 #include <functional>
@@ -276,6 +277,8 @@ class DictationBridge {
   /// совпадения: один Ctrl перестаёт быть одиночным хоткеем в ту же
   /// миллисекунду, когда рядом нажали C или любую другую клавишу.
   std::set<int> held_keys_;
+  // Когда от клавиши в held_keys_ в последний раз приходило нажатие.
+  std::map<int, ULONGLONG> held_key_at_;
 
   /// «Бросить начатое». Может остаться пустым: это единственное сочетание,
   /// которое разрешено не назначать вовсе.

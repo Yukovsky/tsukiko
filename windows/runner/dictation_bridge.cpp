@@ -1078,8 +1078,27 @@ void DictationBridge::HookThreadMain() {
   SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
   keyboard_hook_ = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc,
                                      GetModuleHandle(nullptr), 0);
+  // Windows молча снимает низкоуровневый хук, если он однажды не ответил
+  // вовремя, и сообщить об этом некому: хоткей просто умирает до перезапуска.
+  // Раз в полминуты ставим хук заново, но только когда ничего не зажато:
+  // иначе потерянное отпускание оставило бы запись включённой.
+  SetTimer(nullptr, 0, 30000, nullptr);
   MSG msg;
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    if (msg.message == WM_TIMER && msg.hwnd == nullptr) {
+      bool any_down = false;
+      for (int vk = 8; vk < 255 && !any_down; ++vk) {  // с 8: мышь не считаем
+        any_down = (GetAsyncKeyState(vk) & 0x8000) != 0;
+      }
+      if (!any_down) {
+        if (HHOOK fresh = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc,
+                                            GetModuleHandle(nullptr), 0)) {
+          if (keyboard_hook_) UnhookWindowsHookEx(keyboard_hook_);
+          keyboard_hook_ = fresh;
+        }
+      }
+      continue;
+    }
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
   }
@@ -1298,12 +1317,31 @@ void DictationBridge::ProcessKeyEvent(const KeyEvent& event) {
 
   const std::set<std::string>& currentMods = event.mods;
 
+  // Отпускание может не дойти до хука (Win+L, Ctrl+Alt+Del) и даже до самой
+  // системы: GetAsyncKeyState тогда тоже считает клавишу зажатой. У настоящей
+  // зажатой клавиши идёт автоповтор, у залипшей нет: молчащую забываем.
+  constexpr ULONGLONG kStaleKeyMs = 5000;
+  for (auto it = bridge.held_key_at_.begin(); it != bridge.held_key_at_.end();) {
+    if (it->first != vk && event.time - it->second > kStaleKeyMs) {
+      bridge.held_keys_.erase(it->first);
+      it = bridge.held_key_at_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   // В отличие от модификаторов, Windows не отдаёт снимок всех обычных
   // клавиш. Храним их края сами: иначе одиночный Ctrl продолжал бы
   // совпадать и внутри Ctrl+C, хотя пользователь разрешил только его.
   if (!isModifierVk(vk)) {
-    if (isDown) bridge.held_keys_.insert(vk);
-    if (isUp) bridge.held_keys_.erase(vk);
+    if (isDown) {
+      bridge.held_keys_.insert(vk);
+      bridge.held_key_at_[vk] = event.time;
+    }
+    if (isUp) {
+      bridge.held_keys_.erase(vk);
+      bridge.held_key_at_.erase(vk);
+    }
   }
 
   if (bridge.is_capturing_) {
@@ -1595,6 +1633,7 @@ void DictationBridge::SendTab(const std::string& tab) {
 
 void DictationBridge::ResetKeyState() {
   held_keys_.clear();
+  held_key_at_.clear();
   hold_state_ = TapState{};
   toggle_state_ = TapState{};
   cancel_state_ = TapState{};

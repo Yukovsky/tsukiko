@@ -122,6 +122,10 @@ private let doubleTapWindow: TimeInterval = 0.4
 /// не считается — иначе «держать и говорить» ловилось бы как стук.
 private let tapMaxHold: TimeInterval = 0.25
 
+/// Дольше этого «зажатая» обычная клавиша без автоповтора считается
+/// залипшей. Самая долгая задержка до повтора в системе — две секунды.
+private let staleKeyAfter: TimeInterval = 5
+
 /// Клавиши-модификаторы: ⇧ ⌃ ⌥ ⌘ fn и их правые двойники, плюс Caps Lock.
 ///
 /// Некоторые клавиатуры (глобус на новых Mac) шлют на модификатор ещё и
@@ -319,6 +323,8 @@ final class DictationBridge: NSObject {
   /// Что зажато прямо сейчас и что мы поглотили как своё.
   private var heldModifiers = Set<String>()
   private var heldKeys = Set<CGKeyCode>()
+  /// Когда от клавиши в [heldKeys] в последний раз пришло нажатие (с автоповтором).
+  private var heldKeyAt = [CGKeyCode: Date]()
   private var swallowed = Set<CGKeyCode>()
 
   private var capturing = false
@@ -650,6 +656,7 @@ final class DictationBridge: NSObject {
   private func resetKeyState() {
     heldModifiers.removeAll()
     heldKeys.removeAll()
+    heldKeyAt.removeAll()
     swallowed.removeAll()
     holdState = TapState()
     toggleState = TapState()
@@ -888,13 +895,27 @@ final class DictationBridge: NSObject {
 
     let mods = modNames(flags, physical: heldModifiers)
 
+    // Отпускание клавиши может не прийти вовсе, даже от самой системы: её
+    // таблица тоже считает клавишу зажатой. Тогда «зажатая» клавиша ломает
+    // каждое сочетание, пока на неё не нажмут снова. У настоящей зажатой
+    // клавиши идёт автоповтор, у залипшей нет: молчащую забываем.
+    let now = Date()
+    for (key, at) in heldKeyAt where key != code && now.timeIntervalSince(at) > staleKeyAfter {
+      heldKeys.remove(key)
+      heldKeyAt[key] = nil
+    }
+
     // Что зажато прямо сейчас. Без этого «сочетание» ограничивалось одной
     // клавишей: набор X+Y отследить по одному событию нельзя.
     switch type {
     // Модификаторы видно по флагам; клавишей тот же код считать нельзя —
     // иначе сочетание с fn перестало бы совпадать само с собой.
-    case .keyDown where !modifierKeyCodes.contains(code): heldKeys.insert(code)
-    case .keyUp: heldKeys.remove(code)
+    case .keyDown where !modifierKeyCodes.contains(code):
+      heldKeys.insert(code)
+      heldKeyAt[code] = now
+    case .keyUp:
+      heldKeys.remove(code)
+      heldKeyAt[code] = nil
     default: break
     }
 
