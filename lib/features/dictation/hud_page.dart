@@ -106,6 +106,12 @@ class _HudViewState extends State<HudView> {
   /// и не знает. Таймер записи тоже идёт отсюда, а не от нажатия.
   bool _live = true;
 
+  /// До какого момента считать, что человек говорит. Уровень уже
+  /// отсчитан от фона комнаты (см. GetAudioLevel): ноль — тишина или
+  /// дыхание. Хвост в 0,4 с не даёт микрофону мигать между словами.
+  DateTime _voiceUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _voiceLevel = .15;
+
   /// История уровня: полоски бегут справа налево, как настоящий сигнал.
   List<double> _levels = List.filled(_bars, 0);
   static const _bars = 22;
@@ -228,6 +234,9 @@ class _HudViewState extends State<HudView> {
           _startedAt = DateTime.now();
         }
         if (_live) _levels = [..._levels.skip(1), level];
+        if (live && level > _voiceLevel) {
+          _voiceUntil = DateTime.now().add(const Duration(milliseconds: 400));
+        }
         final started = _startedAt;
         if (started != null) _elapsed = DateTime.now().difference(started);
       });
@@ -245,6 +254,8 @@ class _HudViewState extends State<HudView> {
         : _elapsed.inSeconds;
     return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
   }
+
+  bool get _voice => DateTime.now().isBefore(_voiceUntil);
 
   bool get _warming => !_editing && _state == HudState.recording && !_live;
 
@@ -291,41 +302,59 @@ class _HudViewState extends State<HudView> {
     if (state != HudState.recording && state != HudState.transcribing) {
       return _content(l10n);
     }
+    final recording = state == HudState.recording;
+    // Красный микрофон — только пока слышна речь; тишина и вдох — белый,
+    // а пока устройство ещё открывается — серый.
+    final mic = _warming
+        ? Surface.secondaryText(context)
+        : _voice || _editing
+        ? MacosColors.systemRedColor
+        : (Surface.isDark(context) ? MacosColors.white : MacosColors.black);
+    // Слева и справа по одной ширине, чтобы время встало точно по центру.
+    const side = (IconSize.button + Gap.inner) * 2;
     return [
-      if (_warming)
-        MacosIcon(
-          CupertinoIcons.mic,
-          size: 16,
-          color: Surface.secondaryText(context),
-        )
-      else if (state == HudState.recording)
-        const MacosIcon(
-          CupertinoIcons.mic_fill,
-          size: 16,
-          color: MacosColors.systemRedColor,
-        )
-      else
-        const ProgressCircle(radius: 7),
-      const SizedBox(width: 8),
+      SizedBox(
+        width: recording && !_warming ? side : IconSize.button + Gap.inner,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: recording
+              ? MacosIcon(
+                  _warming ? CupertinoIcons.mic : CupertinoIcons.mic_fill,
+                  size: 16,
+                  color: mic,
+                )
+              : const ProgressCircle(radius: 7),
+        ),
+      ),
       Expanded(
         child: Text(
           _warming
-              ? l10n.hudMicWarmup
-              : state == HudState.recording
+              ? l10n.hudMicWarmupShort
+              : recording
               ? _time
               : l10n.hudTranscribing,
-          style: _label,
+          style: _label.copyWith(
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+          textAlign: recording && !_warming ? TextAlign.center : TextAlign.left,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      _IconButton(
-        icon: state == HudState.recording
-            ? CupertinoIcons.stop_fill
-            : CupertinoIcons.xmark,
-        onPressed: () =>
-            _action(state == HudState.recording ? 'stop' : 'abort'),
-      ),
+      if (recording) ...[
+        _IconButton(
+          icon: CupertinoIcons.xmark,
+          onPressed: () => _action('cancel'),
+        ),
+        _IconButton(
+          icon: CupertinoIcons.stop_fill,
+          onPressed: () => _action('stop'),
+        ),
+      ] else
+        _IconButton(
+          icon: CupertinoIcons.xmark,
+          onPressed: () => _action('abort'),
+        ),
     ];
   }
 

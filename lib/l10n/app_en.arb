@@ -339,6 +339,7 @@
   "jobDetailNoModelSelected": "No model selected",
   "hudSilent": "Nothing was recorded",
   "hudMicWarmup": "Starting the mic…",
+  "hudMicWarmupShort": "Starting…",
   "jobDetailSilent": "The recording has no audio",
   "errorSilentRecording": "There was nothing to record: the microphone gave not a single sample",
   "errorRecordingStart": "The microphone could not be started. Check that it is connected and allowed for tsukiko.",
