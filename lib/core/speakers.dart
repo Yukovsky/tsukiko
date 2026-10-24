@@ -458,52 +458,82 @@ List<TimedWord> smoothSingleWords(
   return out;
 }
 
-/// Включена ли подтяжка смены голоса к концу предложения (см.
-/// [snapToSentences]). Флагом — по той же причине, что и
-/// [smoothSingleWordFlips]: правило наше, а не из источников.
-const snapTurnsToSentences = true;
+/// Включено ли голосование по предложениям (см. [voteBySentences]).
+/// Флагом — по той же причине, что и [smoothSingleWordFlips]: правило
+/// наше, а не из источников.
+const voteSentences = true;
 
-/// На сколько слов назад искать конец предложения.
-const sentenceSnapWords = 3;
+/// Чужой голос внутри предложения остаётся, только если он держит
+/// столько слов подряд и столько времени: это уже настоящая перебивка
+/// посреди фразы, а не дрожание границы.
+const sentenceMinorityWords = 4;
+const sentenceMinorityMs = 1500;
 
-/// И не дальше этого по времени: дальше это уже не дрожание границы,
-/// а настоящие слова прежнего голоса.
-const sentenceSnapMs = 1500;
+/// Длиннее этого «предложение» — скорее текст без знаков препинания
+/// (пунктуация выключена), и голосовать по нему нельзя: оно может
+/// накрыть несколько реплик.
+const sentenceVoteMaxWords = 25;
 
-/// Подтянуть смену голоса к концу предложения.
+/// Отдать каждое предложение голосу, который держит большую часть его
+/// времени.
 ///
-/// Проверка на настоящем whisper (две записи из реальных голосов,
-/// русская и английская) показала одну и ту же ошибку: смена голоса
-/// режется на одно–три слова позже, чем надо, — первое слово новой
-/// реплики прилипает к концу прежней («…где теперь льды. **В**» /
-/// «Сарайке…»). Потокенное время whisper на стыке фраз неточно, а
-/// границы разметки голосов размыты на десятые доли секунды. Поэтому:
-/// если голос сменился в пределах [maxWords] слов и [maxMs] после конца
-/// предложения, эти слова отдаются новому голосу — реплики людей почти
-/// всегда начинаются с начала предложения, а не с его хвоста.
-List<TimedWord> snapToSentences(
-  List<TimedWord> words, {
-  int maxWords = sentenceSnapWords,
-  int maxMs = sentenceSnapMs,
-}) {
-  if (!snapTurnsToSentences || words.length < 2) return words;
+/// Проверка на настоящем whisper.cpp 1.9.3 (записи реальных людей,
+/// русская и английская) показала: пословная раздача режет смену голоса
+/// на одно–три слова мимо — первое слово новой реплики прилипает к
+/// концу прежней («…где теперь льды. **В**» / «Сарайке…»), а
+/// предложение одного человека рассыпается на куски разных голосов.
+/// Причина — неточное время: и потокенное время whisper, и границы его
+/// фрагментов на стыке фраз уходят на доли секунды, а то и на секунду.
+/// Люди же почти никогда не передают слово посреди предложения.
+///
+/// Поэтому голос выбирается на целое предложение — по сумме длительностей
+/// слов. Исключение — ряд слов другого голоса не короче
+/// [sentenceMinorityWords] слов и [sentenceMinorityMs]: это настоящая
+/// перебивка, и она остаётся. Слова с отметкой перебивки и предложения
+/// длиннее [sentenceVoteMaxWords] не трогаются.
+List<TimedWord> voteBySentences(List<TimedWord> words) {
+  if (!voteSentences || words.length < 2) return words;
   final out = [...words];
-  for (var i = 1; i < out.length; i++) {
-    final next = out[i].speaker;
-    if (next == null || next == out[i - 1].speaker) continue;
-    // Слова i-k..i-1 — хвост прежнего голоса после конца предложения?
-    for (var k = 1; k <= maxWords && i - k - 1 >= 0; k++) {
-      final end = out[i - k - 1];
-      if (end.speaker != out[i - 1].speaker) break;
-      if (!_sentenceEnd.hasMatch(end.text)) continue;
-      if (out[i - 1].to - out[i - k].from > maxMs) break;
-      for (var j = i - k; j < i; j++) {
-        out[j] = out[j].withSpeaker(next);
-      }
-      break;
-    }
+  var start = 0;
+  for (var i = 0; i < words.length; i++) {
+    final last = i + 1 == words.length || _sentenceEnd.hasMatch(words[i].text);
+    if (!last) continue;
+    _vote(out, start, i + 1);
+    start = i + 1;
   }
   return out;
+}
+
+void _vote(List<TimedWord> out, int from, int to) {
+  if (to - from < 2 || to - from > sentenceVoteMaxWords) return;
+  final time = <String, int>{};
+  for (var i = from; i < to; i++) {
+    final id = out[i].speaker;
+    if (id == null) continue;
+    time.update(id, (v) => v + math.max(1, out[i].durationMs),
+        ifAbsent: () => math.max(1, out[i].durationMs));
+  }
+  if (time.length < 2) return;
+  final major = time.entries.reduce((a, b) => b.value > a.value ? b : a).key;
+  var i = from;
+  while (i < to) {
+    final id = out[i].speaker;
+    var j = i;
+    while (j < to && out[j].speaker == id) {
+      j++;
+    }
+    final run = j - i;
+    final runMs = out[j - 1].to - out[i].from;
+    final keep = id == major ||
+        id == null ||
+        (run >= sentenceMinorityWords && runMs >= sentenceMinorityMs);
+    if (!keep) {
+      for (var k = i; k < j; k++) {
+        if (!out[k].overlap) out[k] = out[k].withSpeaker(major);
+      }
+    }
+    i = j;
+  }
 }
 
 /// Расставить слова фрагмента по времени.

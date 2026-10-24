@@ -281,32 +281,47 @@ void main() {
     });
   });
 
-  group('snapToSentences', () {
-    test('хвост после конца предложения уходит новому голосу', () {
-      final words = snapToSentences(const [
+  group('voteBySentences', () {
+    test('хвост прежнего голоса в начале предложения уходит новому', () {
+      final words = voteBySentences(const [
         TimedWord(0, 300, 'где', speaker: _a),
         TimedWord(300, 600, 'льды.', speaker: _a),
         TimedWord(700, 800, 'В', speaker: _a),
         TimedWord(800, 1200, 'сарае', speaker: _b),
+        TimedWord(1200, 1600, 'лампа.', speaker: _b),
       ]);
-      expect(words.map((w) => w.speaker), [_a, _a, _b, _b]);
+      expect(words.map((w) => w.speaker), [_a, _a, _b, _b, _b]);
     });
 
-    test('без конца предложения и слишком далеко — не трогает', () {
-      final mid = snapToSentences(const [
-        TimedWord(0, 300, 'где', speaker: _a),
-        TimedWord(300, 600, 'теперь', speaker: _a),
-        TimedWord(700, 800, 'льды', speaker: _b),
+    test('предложение одного человека не рассыпается на куски', () {
+      final words = voteBySentences(const [
+        TimedWord(0, 300, 'Now', speaker: _b),
+        TimedWord(300, 600, 'run', speaker: _b),
+        TimedWord(600, 900, 'along', speaker: _a),
+        TimedWord(900, 1200, 'and', speaker: _a),
+        TimedWord(1200, 1500, 'tell', speaker: _a),
+        TimedWord(1500, 1800, 'them', speaker: _a),
+        TimedWord(1800, 2100, 'to', speaker: _b),
+        TimedWord(2100, 2400, 'hurry.', speaker: _a),
       ]);
-      expect(mid.map((w) => w.speaker), [_a, _a, _b]);
-      final far = snapToSentences(const [
-        TimedWord(0, 300, 'Да.', speaker: _a),
-        TimedWord(300, 1000, 'потом', speaker: _a),
-        TimedWord(1000, 1900, 'долго', speaker: _a),
-        TimedWord(1900, 2500, 'ещё', speaker: _a),
-        TimedWord(2500, 2800, 'так', speaker: _b),
+      expect(words.map((w) => w.speaker).toSet(), {_a});
+    });
+
+    test('настоящая перебивка посреди фразы остаётся', () {
+      final words = voteBySentences([
+        for (var i = 0; i < 6; i++) TimedWord(i * 500, i * 500 + 450, 'раз', speaker: _a),
+        for (var i = 6; i < 10; i++) TimedWord(i * 500, i * 500 + 450, 'два', speaker: _b),
+        const TimedWord(5000, 5400, 'три.', speaker: _a),
       ]);
-      expect(far.map((w) => w.speaker), [_a, _a, _a, _a, _b]);
+      expect(words.where((w) => w.speaker == _b).length, 4);
+    });
+
+    test('короткий ответ своим предложением — свой голос', () {
+      final words = voteBySentences(const [
+        TimedWord(0, 300, 'Готово?', speaker: _a),
+        TimedWord(400, 600, 'Да.', speaker: _b),
+      ]);
+      expect(words.map((w) => w.speaker), [_a, _b]);
     });
   });
 
@@ -345,12 +360,12 @@ void main() {
       const seg = Segment(
         0,
         3000,
-        'привет ИИ как дела',
+        'привет ИИ. как дела',
         replacements: [
           TextReplacement(start: 7, end: 9, original: 'ии', replacement: 'ИИ'),
           TextReplacement(
-            start: 14,
-            end: 18,
+            start: 15,
+            end: 19,
             original: 'дила',
             replacement: 'дела',
           ),
@@ -361,12 +376,12 @@ void main() {
         const [SpeakerTurn(0, 1500, _a), SpeakerTurn(1500, 3000, _b)],
         const [
           TimedWord(0, 600, 'привет'),
-          TimedWord(600, 1400, 'ии'),
+          TimedWord(600, 1400, 'ии.'),
           TimedWord(1600, 2200, 'как'),
           TimedWord(2200, 3000, 'дила'),
         ],
       );
-      expect(parts.map((p) => p.text), ['привет ИИ', 'как дела']);
+      expect(parts.map((p) => p.text), ['привет ИИ.', 'как дела']);
       expect(parts.map((p) => p.speaker), [_a, _b]);
       expect(parts.map((p) => (p.from, p.to)), [(0, 1400), (1600, 3000)]);
       expect(parts[0].replacements.single.start, 7);
