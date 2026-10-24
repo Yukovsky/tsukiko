@@ -458,6 +458,54 @@ List<TimedWord> smoothSingleWords(
   return out;
 }
 
+/// Включена ли подтяжка смены голоса к концу предложения (см.
+/// [snapToSentences]). Флагом — по той же причине, что и
+/// [smoothSingleWordFlips]: правило наше, а не из источников.
+const snapTurnsToSentences = true;
+
+/// На сколько слов назад искать конец предложения.
+const sentenceSnapWords = 3;
+
+/// И не дальше этого по времени: дальше это уже не дрожание границы,
+/// а настоящие слова прежнего голоса.
+const sentenceSnapMs = 1500;
+
+/// Подтянуть смену голоса к концу предложения.
+///
+/// Проверка на настоящем whisper (две записи из реальных голосов,
+/// русская и английская) показала одну и ту же ошибку: смена голоса
+/// режется на одно–три слова позже, чем надо, — первое слово новой
+/// реплики прилипает к концу прежней («…где теперь льды. **В**» /
+/// «Сарайке…»). Потокенное время whisper на стыке фраз неточно, а
+/// границы разметки голосов размыты на десятые доли секунды. Поэтому:
+/// если голос сменился в пределах [maxWords] слов и [maxMs] после конца
+/// предложения, эти слова отдаются новому голосу — реплики людей почти
+/// всегда начинаются с начала предложения, а не с его хвоста.
+List<TimedWord> snapToSentences(
+  List<TimedWord> words, {
+  int maxWords = sentenceSnapWords,
+  int maxMs = sentenceSnapMs,
+}) {
+  if (!snapTurnsToSentences || words.length < 2) return words;
+  final out = [...words];
+  for (var i = 1; i < out.length; i++) {
+    final next = out[i].speaker;
+    if (next == null || next == out[i - 1].speaker) continue;
+    // Слова i-k..i-1 — хвост прежнего голоса после конца предложения?
+    for (var k = 1; k <= maxWords && i - k - 1 >= 0; k++) {
+      final end = out[i - k - 1];
+      if (end.speaker != out[i - 1].speaker) break;
+      if (!_sentenceEnd.hasMatch(end.text)) continue;
+      if (out[i - 1].to - out[i - k].from > maxMs) break;
+      for (var j = i - k; j < i; j++) {
+        out[j] = out[j].withSpeaker(next);
+      }
+      break;
+    }
+  }
+  return out;
+}
+
 /// Расставить слова фрагмента по времени.
 ///
 /// [text] — окончательный текст фрагмента, [raw] — слова с таймкодами

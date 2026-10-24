@@ -281,6 +281,35 @@ void main() {
     });
   });
 
+  group('snapToSentences', () {
+    test('хвост после конца предложения уходит новому голосу', () {
+      final words = snapToSentences(const [
+        TimedWord(0, 300, 'где', speaker: _a),
+        TimedWord(300, 600, 'льды.', speaker: _a),
+        TimedWord(700, 800, 'В', speaker: _a),
+        TimedWord(800, 1200, 'сарае', speaker: _b),
+      ]);
+      expect(words.map((w) => w.speaker), [_a, _a, _b, _b]);
+    });
+
+    test('без конца предложения и слишком далеко — не трогает', () {
+      final mid = snapToSentences(const [
+        TimedWord(0, 300, 'где', speaker: _a),
+        TimedWord(300, 600, 'теперь', speaker: _a),
+        TimedWord(700, 800, 'льды', speaker: _b),
+      ]);
+      expect(mid.map((w) => w.speaker), [_a, _a, _b]);
+      final far = snapToSentences(const [
+        TimedWord(0, 300, 'Да.', speaker: _a),
+        TimedWord(300, 1000, 'потом', speaker: _a),
+        TimedWord(1000, 1900, 'долго', speaker: _a),
+        TimedWord(1900, 2500, 'ещё', speaker: _a),
+        TimedWord(2500, 2800, 'так', speaker: _b),
+      ]);
+      expect(far.map((w) => w.speaker), [_a, _a, _a, _a, _b]);
+    });
+  });
+
   group('timeWords', () {
     test('слова от движка совпали по числу — время как есть', () {
       final words = timeWords('Раз, два', 0, 1000, const [

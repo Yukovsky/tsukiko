@@ -590,9 +590,11 @@ List<Segment> splitBySpeakers(
   List<SpeakerTurn> turns, [
   List<TimedWord> raw = const [],
 ]) {
-  final words = smoothSingleWords(
-    fillUnassigned(
-      assignSpeakers(timeWords(seg.text, seg.from, seg.to, raw), turns),
+  final words = snapToSentences(
+    smoothSingleWords(
+      fillUnassigned(
+        assignSpeakers(timeWords(seg.text, seg.from, seg.to, raw), turns),
+      ),
     ),
   );
   if (words.isEmpty) return [seg.withSpeaker(null, overlap: false)];
@@ -821,7 +823,9 @@ Transcript parseNemoJson(
   }
 
   if (turns.isNotEmpty) {
-    words = smoothSingleWords(fillUnassigned(assignSpeakers(words, turns)));
+    words = snapToSentences(
+      smoothSingleWords(fillUnassigned(assignSpeakers(words, turns))),
+    );
   }
   final segments = <Segment>[];
   for (final group in groupWords(words)) {
