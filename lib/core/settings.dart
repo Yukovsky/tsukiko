@@ -17,6 +17,11 @@ const transcriberUsesDictationModelSetting = 'transcriberUsesDictationModel';
 /// `DiarizationModels.embedders`. Нет ключа — эмбеддер по умолчанию.
 const diarizationEmbedderSetting = 'diarizationEmbedder';
 
+/// Имя порта, через который диктовка (изолят панели) отдаёт записанный
+/// разговор очереди главного окна. Изоляты живут в одном процессе, и
+/// [IsolateNameServer] связывает их напрямую — без файла и без сети.
+const conversationInboxPort = 'app.yuko.tsukiko/conversation-inbox';
+
 /// Свой порог кластеризации голосов. Нет ключа — порог выбранного
 /// эмбеддера; правится руками в файле настроек, когда замер на своих
 /// записях показал другой оптимум (`tool/diarize_probe.dart`).

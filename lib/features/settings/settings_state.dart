@@ -74,6 +74,10 @@ class SettingsState extends Equatable {
     this.wakeProfileExists = false,
     this.closeProfileExists = false,
     this.speakerThreshold = 0.60,
+    this.ownVoiceOnly = false,
+    this.ownVoiceThreshold = 0.45,
+    this.ownVoiceRecordedAt,
+    this.ownVoiceSpeechMs = 0,
     // приложение
     this.toLibrary = true,
     this.saveNextToSource = false,
@@ -211,6 +215,13 @@ class SettingsState extends Equatable {
   final bool closeProfileExists;
   final double speakerThreshold;
 
+  /// «Только мой голос» в диктовке и записанный образец голоса. Нет даты —
+  /// образца нет, и включать фильтр не по чему.
+  final bool ownVoiceOnly;
+  final double ownVoiceThreshold;
+  final DateTime? ownVoiceRecordedAt;
+  final int ownVoiceSpeechMs;
+
   // ── приложение ────────────────────────────────────────────────────────────
 
   final bool toLibrary, saveNextToSource, timestamps, dockIcon;
@@ -307,6 +318,11 @@ class SettingsState extends Equatable {
     bool? wakeProfileExists,
     bool? closeProfileExists,
     double? speakerThreshold,
+    bool? ownVoiceOnly,
+    double? ownVoiceThreshold,
+    DateTime? ownVoiceRecordedAt,
+    int? ownVoiceSpeechMs,
+    bool clearOwnVoice = false,
     bool? toLibrary,
     bool? saveNextToSource,
     bool? diarizeDefault,
@@ -376,6 +392,14 @@ class SettingsState extends Equatable {
     wakeProfileExists: wakeProfileExists ?? this.wakeProfileExists,
     closeProfileExists: closeProfileExists ?? this.closeProfileExists,
     speakerThreshold: speakerThreshold ?? this.speakerThreshold,
+    ownVoiceOnly: ownVoiceOnly ?? this.ownVoiceOnly,
+    ownVoiceThreshold: ownVoiceThreshold ?? this.ownVoiceThreshold,
+    ownVoiceRecordedAt: clearOwnVoice
+        ? null
+        : (ownVoiceRecordedAt ?? this.ownVoiceRecordedAt),
+    ownVoiceSpeechMs: clearOwnVoice
+        ? 0
+        : (ownVoiceSpeechMs ?? this.ownVoiceSpeechMs),
     toLibrary: toLibrary ?? this.toLibrary,
     saveNextToSource: saveNextToSource ?? this.saveNextToSource,
     diarizeDefault: diarizeDefault ?? this.diarizeDefault,
@@ -435,6 +459,10 @@ class SettingsState extends Equatable {
     wakeProfileExists,
     closeProfileExists,
     speakerThreshold,
+    ownVoiceOnly,
+    ownVoiceThreshold,
+    ownVoiceRecordedAt,
+    ownVoiceSpeechMs,
     toLibrary,
     saveNextToSource,
     diarizeDefault,

@@ -227,6 +227,16 @@ class DiarizationRequested extends QueueEvent {
   List<Object?> get props => [job.path];
 }
 
+/// Разговор, записанный из диктовки: встать в очередь с разметкой
+/// голосов и сразу начать.
+class ConversationReceived extends QueueEvent {
+  const ConversationReceived(this.path);
+  final String path;
+
+  @override
+  List<Object?> get props => [path];
+}
+
 /// Внутреннее: правка настроек одной записи по пути — для местного API,
 /// у которого нет выделения.
 class JobOptionsEdited extends QueueEvent {

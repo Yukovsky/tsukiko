@@ -191,6 +191,10 @@ Key decisions:
 
 Threshold and embedder measurements: [`diarization-threshold.md`](diarization-threshold.md).
 
+In dictation, voices are used the other way round: "Only my voice" drops other people's speech
+before recognition, and "Record a conversation" sends a recording from the panel to the queue
+with voices on. See [`own-voice.md`](own-voice.md).
+
 ---
 
 ## Memory and Model Lifecycle

@@ -40,6 +40,7 @@ class DictationState extends Equatable {
     this.chosenModel = '',
     this.ownModel = false,
     this.models = const [],
+    this.conversation = false,
   });
 
   final Phase phase;
@@ -93,6 +94,10 @@ class DictationState extends Equatable {
   /// три — нет вовсе. Списком выбор честнее и работает при любом их числе.
   final List<String> models;
 
+  /// Идёт запись разговора, а не диктовка: по остановке звук уходит
+  /// в очередь главного окна с разметкой голосов, а не вставляется.
+  final bool conversation;
+
   bool get hasModels => models.isNotEmpty;
   bool get recording => phase == Phase.recording;
 
@@ -120,6 +125,7 @@ class DictationState extends Equatable {
     String? chosenModel,
     bool? ownModel,
     List<String>? models,
+    bool? conversation,
     // Обнулять поля через copyWith иначе нечем: `null` в именованном
     // параметре не отличить от «не передали».
     bool clearFailure = false,
@@ -156,6 +162,7 @@ class DictationState extends Equatable {
     chosenModel: chosenModel ?? this.chosenModel,
     ownModel: ownModel ?? this.ownModel,
     models: models ?? this.models,
+    conversation: conversation ?? this.conversation,
   );
 
   @override
@@ -183,5 +190,6 @@ class DictationState extends Equatable {
     chosenModel,
     ownModel,
     models,
+    conversation,
   ];
 }

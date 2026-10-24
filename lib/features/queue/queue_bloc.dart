@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data' show BytesBuilder;
+import 'dart:ui' show IsolateNameServer;
 
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
@@ -95,6 +97,7 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
       transformer: droppable(),
     );
     on<JobOptionsEdited>(_onJobOptionsEdited);
+    on<ConversationReceived>(_onConversationReceived);
 
     on<OptionsEdited>(_onOptionsEdited);
     on<OverridesReset>(_onOverridesReset);
@@ -156,6 +159,7 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     _settingsSub = bridge.settingsReloaded.listen(
       (_) => add(const SettingsReloaded()),
     );
+    _openConversationInbox();
     _loadTextCommands();
     _syncPolling();
     // Местное API поднимается здесь и нигде больше: оно кладёт файлы
@@ -2000,6 +2004,45 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     );
   }
 
+  /// Почтовый ящик для разговоров из диктовки. Диктовка живёт в изоляте
+  /// панели, очередь — здесь; оба в одном процессе, и порт находится по
+  /// имени. Прежнее имя могло остаться от закрытого окна — заменяем.
+  final _conversationInbox = ReceivePort('conversation-inbox');
+
+  void _openConversationInbox() {
+    IsolateNameServer.removePortNameMapping(conversationInboxPort);
+    IsolateNameServer.registerPortWithName(
+      _conversationInbox.sendPort,
+      conversationInboxPort,
+    );
+    _conversationInbox.listen((message) {
+      if (message is Map && message['path'] is String && !isClosed) {
+        add(ConversationReceived(message['path'] as String));
+      }
+    });
+  }
+
+  Future<void> _onConversationReceived(
+    ConversationReceived e,
+    Emitter<QueueState> emit,
+  ) async {
+    await _onFilesAdded(FilesAdded([e.path]), emit);
+    final job = _find(Job(File(e.path)));
+    if (job == null) return;
+    // Разговор — это несколько голосов почти по определению: режим
+    // включается для этой записи, что бы ни стояло в общих настройках.
+    emit(
+      _replace(
+        state,
+        job,
+        job.copyWith(
+          overrides: (job.overrides ?? state.defaults).copyWith(diarize: true),
+        ),
+      ),
+    );
+    if (!state.running) add(const RunRequested());
+  }
+
   void _onJobOptionsEdited(JobOptionsEdited e, Emitter<QueueState> emit) {
     final job = state.jobs.where((j) => j.path == e.path).firstOrNull;
     if (job == null) return;
@@ -2479,6 +2522,8 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
 
   @override
   Future<void> close() {
+    _conversationInbox.close();
+    IsolateNameServer.removePortNameMapping(conversationInboxPort);
     _saveTimer?.cancel();
     // Опрос диктовки идёт по таймеру и кончается событием в этот же блок.
     // Не погасить его — значит после закрытия получить «событие в

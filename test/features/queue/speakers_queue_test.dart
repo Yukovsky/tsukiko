@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:ui' show IsolateNameServer;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tsukiko/core/settings.dart';
 import 'package:tsukiko/core/transcript.dart';
 import 'package:tsukiko/core/whisper.dart';
 import 'package:tsukiko/features/queue/job.dart';
@@ -147,5 +149,21 @@ void main() {
     expect(b.state.defaults.diarize, isTrue);
     expect(b.state.defaults.speakerCount, 3);
     await b.close();
+  });
+
+  test('разговор из диктовки встаёт в очередь с разметкой голосов', () async {
+    final b = QueueBloc(NativeBridge());
+    final audio = File('${tmp.path}/Разговор.wav')..writeAsStringSync('звук');
+    // Диктовка находит очередь по имени порта — как в приложении.
+    IsolateNameServer.lookupPortByName(conversationInboxPort)!.send({
+      'path': audio.path,
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await pumpEventQueue();
+    final job = b.state.jobs.singleWhere((j) => j.path == audio.path);
+    expect(b.state.optionsFor(job).diarize, isTrue);
+    expect(b.state.defaults.diarize, isFalse, reason: 'общие не трогаем');
+    await b.close();
+    expect(IsolateNameServer.lookupPortByName(conversationInboxPort), isNull);
   });
 }

@@ -23,6 +23,7 @@ import '../../core/skill_install.dart';
 import '../../platform/bridge.dart';
 import '../../platform/os.dart';
 import '../../core/wakeword/speaker_profile.dart';
+import '../../core/diarization/own_voice.dart';
 import 'settings_state.dart';
 
 /// Окно настроек: расшифровщик, диктовка, склад моделей и приложение.
@@ -160,6 +161,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         profile?.hasCloseTemplatesFor(_dictation.closeWord) ?? false;
     final profileExists =
         wakeExists && (_dictation.closeWord.trim().isEmpty || closeExists);
+    final ownVoice = OwnVoicePrint.load();
     _emit(
       state.copyWith(
         hold: _dictation.hold,
@@ -182,8 +184,31 @@ class SettingsCubit extends Cubit<SettingsState> {
         speakerProfileExists: profileExists,
         wakeProfileExists: wakeExists,
         closeProfileExists: closeExists,
+        ownVoiceOnly: _dictation.ownVoiceOnly && ownVoice != null,
+        ownVoiceThreshold: _dictation.ownVoiceThreshold,
+        ownVoiceRecordedAt: ownVoice?.createdAt,
+        ownVoiceSpeechMs: ownVoice?.speechMs,
+        clearOwnVoice: ownVoice == null,
       ),
     );
+  }
+
+  /// «Только мой голос». Включить можно только с записанным образцом —
+  /// иначе судить чужую речь не по чему.
+  void setOwnVoiceOnly(bool v) => _saveDictation((d) => d.ownVoiceOnly = v);
+
+  void setOwnVoiceThreshold(double v) =>
+      _saveDictation((d) => d.ownVoiceThreshold = v);
+
+  /// Образец только что записан — перечитать и сразу включить фильтр:
+  /// ради этого его и записывали.
+  void ownVoiceRecorded() => _saveDictation((d) => d.ownVoiceOnly = true);
+
+  /// Удалить отпечаток голоса. Это биометрия, и удаляется она целиком,
+  /// одним нажатием, а фильтр без него выключается.
+  void deleteOwnVoice() {
+    OwnVoicePrint.delete();
+    _saveDictation((d) => d.ownVoiceOnly = false);
   }
 
   // ── запись на диск ────────────────────────────────────────────────────────
