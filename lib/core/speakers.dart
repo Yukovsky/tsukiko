@@ -489,8 +489,14 @@ const sentenceVoteMaxWords = 25;
 /// Поэтому голос выбирается на целое предложение — по сумме длительностей
 /// слов. Исключение — ряд слов другого голоса не короче
 /// [sentenceMinorityWords] слов и [sentenceMinorityMs]: это настоящая
-/// перебивка, и она остаётся. Слова с отметкой перебивки и предложения
-/// длиннее [sentenceVoteMaxWords] не трогаются.
+/// перебивка, и она остаётся. Предложения длиннее [sentenceVoteMaxWords]
+/// не трогаются.
+///
+/// Слова с отметкой перебивки голосуют наравне с остальными: в зоне, где
+/// говорят двое, whisper записывает кого-то одного, и чьи это слова,
+/// честнее всего скажет предложение, в которое они вошли («…стороны.» —
+/// один человек, «На вопрос с кальцией…» — другой, начавший на 0,8 с
+/// раньше). Сама отметка ⇄ при этом остаётся.
 List<TimedWord> voteBySentences(List<TimedWord> words) {
   if (!voteSentences || words.length < 2) return words;
   final out = [...words];
@@ -529,12 +535,20 @@ void _vote(List<TimedWord> out, int from, int to) {
         (run >= sentenceMinorityWords && runMs >= sentenceMinorityMs);
     if (!keep) {
       for (var k = i; k < j; k++) {
-        if (!out[k].overlap) out[k] = out[k].withSpeaker(major);
+        out[k] = out[k].withSpeaker(major);
       }
     }
     i = j;
   }
 }
+
+/// Вся дорога от слов с таймкодами до слов с голосами: раздать голоса,
+/// присоединить ничьи слова, убрать одиночное мигание и проголосовать
+/// по предложениям. Одна на whisper и NeMo, чтобы правила не разошлись.
+List<TimedWord> speakerWords(List<TimedWord> words, List<SpeakerTurn> turns) =>
+    voteBySentences(
+      smoothSingleWords(fillUnassigned(assignSpeakers(words, turns))),
+    );
 
 /// Расставить слова фрагмента по времени.
 ///

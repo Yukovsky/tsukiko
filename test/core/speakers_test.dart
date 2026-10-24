@@ -316,6 +316,19 @@ void main() {
       expect(words.where((w) => w.speaker == _b).length, 4);
     });
 
+    test('слова в зоне перебивки уходят хозяину предложения, отметка остаётся', () {
+      final words = voteBySentences(const [
+        TimedWord(0, 400, 'стороны.', speaker: _a),
+        TimedWord(400, 600, 'На', speaker: _a, overlap: true),
+        TimedWord(600, 800, 'вопрос', speaker: _a, overlap: true),
+        TimedWord(800, 1300, 'кальцией', speaker: _b),
+        TimedWord(1300, 1800, 'здесь', speaker: _b),
+        TimedWord(1800, 2300, 'Сарая.', speaker: _b),
+      ]);
+      expect(words.map((w) => w.speaker), [_a, _b, _b, _b, _b, _b]);
+      expect(words[1].overlap, isTrue);
+    });
+
     test('короткий ответ своим предложением — свой голос', () {
       final words = voteBySentences(const [
         TimedWord(0, 300, 'Готово?', speaker: _a),

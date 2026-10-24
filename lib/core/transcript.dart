@@ -589,14 +589,33 @@ List<Segment> splitBySpeakers(
   Segment seg,
   List<SpeakerTurn> turns, [
   List<TimedWord> raw = const [],
-]) {
-  final words = voteBySentences(
-    smoothSingleWords(
-      fillUnassigned(
-        assignSpeakers(timeWords(seg.text, seg.from, seg.to, raw), turns),
-      ),
-    ),
-  );
+]) => splitAllBySpeakers([(seg, raw)], turns);
+
+/// То же для всей записи сразу — так и надо звать, когда фрагментов
+/// много: голосование по предложениям ([voteBySentences]) идёт по словам
+/// всей записи, а предложение у whisper нередко начинается в одном
+/// фрагменте и кончается в следующем («…стороны. На вопрос с» /
+/// «кальцией здесь…»). По одному фрагменту такой хвост голосовать не
+/// с кем.
+List<Segment> splitAllBySpeakers(
+  List<(Segment, List<TimedWord>)> parts,
+  List<SpeakerTurn> turns,
+) {
+  final timed = [
+    for (final (seg, raw) in parts) timeWords(seg.text, seg.from, seg.to, raw),
+  ];
+  final voiced = speakerWords([for (final w in timed) ...w], turns);
+  final out = <Segment>[];
+  var at = 0;
+  for (var k = 0; k < parts.length; k++) {
+    final n = timed[k].length;
+    out.addAll(_cutByWords(parts[k].$1, voiced.sublist(at, at + n)));
+    at += n;
+  }
+  return out;
+}
+
+List<Segment> _cutByWords(Segment seg, List<TimedWord> words) {
   if (words.isEmpty) return [seg.withSpeaker(null, overlap: false)];
   final spans = RegExp(r'\S+').allMatches(seg.text).toList();
   final out = <Segment>[];
@@ -696,7 +715,7 @@ Transcript applySpeakerTurns(
   String Function(int number) defaultName = defaultSpeakerName,
 }) => finishSpeakers(
   t.copyWith(
-    segments: [for (final s in t.segments) ...splitBySpeakers(s, turns)],
+    segments: splitAllBySpeakers([for (final s in t.segments) (s, const [])], turns),
   ),
   info: info,
   defaultName: defaultName,
@@ -720,6 +739,7 @@ Transcript parseWhisperJson(
   final data = jsonDecode(jsonText) as Map<String, dynamic>;
   final lang = (data['result']?['language'] ?? '?').toString();
   final segs = <Segment>[];
+  final parts = <(Segment, List<TimedWord>)>[];
   for (final t in (data['transcription'] as List? ?? [])) {
     final rawText = (t['text'] as String).trim();
     if (rawText.isEmpty || looksLikeSilenceHallucination(rawText)) continue;
@@ -740,9 +760,10 @@ Transcript parseWhisperJson(
       final words = text == rawText
           ? whisperTokenWords(t['tokens'])
           : const <TimedWord>[];
-      segs.addAll(splitBySpeakers(seg, turns, words));
+      parts.add((seg, words));
     }
   }
+  if (turns.isNotEmpty) segs.addAll(splitAllBySpeakers(parts, turns));
   final out = Transcript(lang, collapseRepeats(segs));
   return turns.isEmpty || !finish
       ? out
@@ -823,9 +844,7 @@ Transcript parseNemoJson(
   }
 
   if (turns.isNotEmpty) {
-    words = voteBySentences(
-      smoothSingleWords(fillUnassigned(assignSpeakers(words, turns))),
-    );
+    words = speakerWords(words, turns);
   }
   final segments = <Segment>[];
   for (final group in groupWords(words)) {

@@ -84,9 +84,10 @@ class DiarizationModels {
     file: 'nemo_en_titanet_small.onnx',
     mb: 39,
     sha256: 'ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e',
-    // Середина самого широкого верного плато из трёх эмбеддеров: на
-    // записи из четырёх голосов 0.7–0.9 дают ровно четыре.
-    threshold: 0.8,
+    // Лучший из замеренных: на девяти записях реальных людей (русский,
+    // английский, встреча AMI) верное число голосов на шести, средняя
+    // ошибка 0.35 — см. docs/diarization-threshold.md.
+    threshold: 0.9,
     license: 'Apache-2.0 (NeMo Toolkit)',
   );
 
@@ -97,8 +98,9 @@ class DiarizationModels {
     file: 'wespeaker_en_voxceleb_resnet34_LM.onnx',
     mb: 26,
     sha256: 'e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012',
-    // Пространство у него сжатое: уже на 0.4 все голоса сливаются в два.
-    threshold: 0.3,
+    // Самый неустойчивый из трёх: на китайской записи верно 0.25–0.35,
+    // на русских и английских — не ниже 0.5. Брать его по умолчанию нельзя.
+    threshold: 0.5,
     license: 'CC-BY-4.0 (VoxCeleb)',
   );
 
@@ -109,7 +111,7 @@ class DiarizationModels {
     file: '3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx',
     mb: 38,
     sha256: '1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b',
-    // Верно ровно на 0.9: 0.8 даёт пять голосов, 1.0 — три.
+    // Как и TitaNet-S — 0.9, но чуть хуже по ошибке и вдвое медленнее.
     threshold: 0.9,
     license: 'Apache-2.0 (3D-Speaker)',
   );

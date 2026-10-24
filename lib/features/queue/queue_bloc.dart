@@ -1219,8 +1219,10 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
         // раскладывается по доле символов.
         if (earlier.isNotEmpty) {
           t = t.copyWith(segments: [
-            for (final seg in earlier)
-              if (turns.isEmpty) seg else ...splitBySpeakers(seg, turns),
+            if (turns.isEmpty)
+              ...earlier
+            else
+              ...splitAllBySpeakers([for (final seg in earlier) (seg, const [])], turns),
             ...t.segments,
           ]);
         }
@@ -1831,9 +1833,10 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
       Transcript build([List<SpeakerTurn> turns = const []]) => turns.isEmpty
           ? plain
           : plain.copyWith(
-              segments: [
-                for (final s in plain.segments) ...splitBySpeakers(s, turns),
-              ],
+              segments: splitAllBySpeakers(
+                [for (final s in plain.segments) (s, const [])],
+                turns,
+              ),
             );
       final opts = state.optionsFor(job);
       final voiced = await _diarizeStep(
