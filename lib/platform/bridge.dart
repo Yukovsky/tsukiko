@@ -371,6 +371,17 @@ class NativeBridge {
   Future<double> level() async =>
       await _channel.invokeMethod<double>('level') ?? 0;
 
+  /// Микрофон уже отдаёт звук, а не нули прогрева. Спрашивает только
+  /// плашка на Windows; там, где родная сторона этого не знает, считаем,
+  /// что звук пошёл сразу, — как было до этого вопроса.
+  Future<bool> micLive() async {
+    try {
+      return await _channel.invokeMethod<bool>('micLive') ?? true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
   Future<void>? _pasteReady;
 
   /// Wait before changing the clipboard again, rather than blocking ASR after

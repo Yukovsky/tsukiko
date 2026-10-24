@@ -100,6 +100,12 @@ class _HudViewState extends State<HudView> {
   Duration _elapsed = Duration.zero;
   DateTime? _startedAt;
 
+  /// Микрофон уже отдаёт звук. На Windows устройство поднимается от 0,4
+  /// до 1 с, и всё это время панель говорит «включаю микрофон», а не
+  /// «записываю»: иначе первые слова уходят в пустоту, а человек о том
+  /// и не знает. Таймер записи тоже идёт отсюда, а не от нажатия.
+  bool _live = true;
+
   /// История уровня: полоски бегут справа налево, как настоящий сигнал.
   List<double> _levels = List.filled(_bars, 0);
   static const _bars = 22;
@@ -197,7 +203,8 @@ class _HudViewState extends State<HudView> {
     setState(() {
       _state = state;
       if (state == HudState.recording) {
-        _startedAt = DateTime.now();
+        _live = false;
+        _startedAt = null;
         _elapsed = Duration.zero;
         _levels = List.filled(_bars, 0);
       }
@@ -213,9 +220,14 @@ class _HudViewState extends State<HudView> {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 33), (_) async {
       final level = await _bridge.level();
+      final live = _live || await _bridge.micLive();
       if (!mounted) return;
       setState(() {
-        _levels = [..._levels.skip(1), level];
+        if (live && !_live) {
+          _live = true;
+          _startedAt = DateTime.now();
+        }
+        if (_live) _levels = [..._levels.skip(1), level];
         final started = _startedAt;
         if (started != null) _elapsed = DateTime.now().difference(started);
       });
@@ -233,6 +245,8 @@ class _HudViewState extends State<HudView> {
         : _elapsed.inSeconds;
     return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
   }
+
+  bool get _warming => !_editing && _state == HudState.recording && !_live;
 
   int get _queueCount =>
       _editing ? 2 : hudBacklogCount(_state, _pending, _processing);
@@ -278,7 +292,13 @@ class _HudViewState extends State<HudView> {
       return _content(l10n);
     }
     return [
-      if (state == HudState.recording)
+      if (_warming)
+        MacosIcon(
+          CupertinoIcons.mic,
+          size: 16,
+          color: Surface.secondaryText(context),
+        )
+      else if (state == HudState.recording)
         const MacosIcon(
           CupertinoIcons.mic_fill,
           size: 16,
@@ -289,7 +309,11 @@ class _HudViewState extends State<HudView> {
       const SizedBox(width: 8),
       Expanded(
         child: Text(
-          state == HudState.recording ? _time : l10n.hudTranscribing,
+          _warming
+              ? l10n.hudMicWarmup
+              : state == HudState.recording
+              ? _time
+              : l10n.hudTranscribing,
           style: _label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -386,18 +410,35 @@ class _HudViewState extends State<HudView> {
         // со сжатием, а справа — Spacer: свободное место делилось между
         // ними пополам, и полоски ужимались почти вдвое против macOS.
         _ => [
-          _Meter(
-            levels: _editing && _state != HudState.recording
-                ? List.generate(22, (i) => ((i * 7) % 13 + 2) / 16)
-                : _levels,
-          ),
-          const SizedBox(width: _hudSpacing),
-          Text(
-            _time,
-            style: _label.copyWith(
-              fontFeatures: const [FontFeature.tabularFigures()],
+          if (_warming) ...[
+            MacosIcon(
+              CupertinoIcons.mic,
+              size: IconSize.button,
+              color: Surface.secondaryText(context),
             ),
-          ),
+            const SizedBox(width: Gap.control),
+            Flexible(
+              child: Text(
+                l10n.hudMicWarmup,
+                style: _label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ] else ...[
+            _Meter(
+              levels: _editing && _state != HudState.recording
+                  ? List.generate(22, (i) => ((i * 7) % 13 + 2) / 16)
+                  : _levels,
+            ),
+            const SizedBox(width: _hudSpacing),
+            Text(
+              _time,
+              style: _label.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
           if (_queueCount > 0) _queueButton(l10n),
           const Spacer(),
           _HudButton(

@@ -609,6 +609,8 @@ void DictationBridge::RegisterHandler(
       result->Success(flutter::EncodableValue(path));
     } else if (method == "level") {
       result->Success(flutter::EncodableValue(GetAudioLevel()));
+    } else if (method == "micLive") {
+      result->Success(flutter::EncodableValue(mic_live_.load()));
     } else if (method == "paste") {
       const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
       if (args) {
@@ -1675,6 +1677,9 @@ void DictationBridge::StartAudioRecording(
     return;
   }
   ma_encoder_ = encoder;
+  // Поток устройства ещё не запущен, так что счётчик сбрасываем без гонки.
+  warmup_frames_ = 0;
+  mic_live_.store(false);
 
   if (HANDLE old = audio_ready_event_.exchange(nullptr)) CloseHandle(old);
   HANDLE ready_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -1819,6 +1824,13 @@ void DictationBridge::PushAudioFrames(const int16_t* samples, uint32_t frames,
   // поэтому сигнал означает не просто «устройство ожило», а «в WAV уже
   // попал хотя бы один блок, его можно безопасно закрывать».
   if (HANDLE ready = audio_ready_event_.load()) SetEvent(ready);
+
+  if (!mic_live_.load(std::memory_order_relaxed)) {
+    bool sound = false;
+    for (uint32_t i = 0; i < frames && !sound; ++i) sound = samples[i] != 0;
+    warmup_frames_ += frames;
+    if (sound || warmup_frames_ >= sample_rate) mic_live_.store(true);
+  }
 
   // Среднеквадратичное, а не пиковое: на macOS берётся averagePower —
   // средняя мощность за промежуток. По пику речь и щелчок мышью выглядят
