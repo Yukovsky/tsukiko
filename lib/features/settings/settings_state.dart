@@ -77,6 +77,8 @@ class SettingsState extends Equatable {
     // приложение
     this.toLibrary = true,
     this.saveNextToSource = false,
+    this.diarizeDefault = false,
+    this.diarizationEmbedder = '',
     this.timestamps = true,
     this.dockIcon = true,
     this.loginItem = false,
@@ -213,6 +215,14 @@ class SettingsState extends Equatable {
 
   final bool toLibrary, saveNextToSource, timestamps, dockIcon;
 
+  /// «Несколько голосов» в новых расшифровках — то же значение, что
+  /// инспектор главного окна правит, когда в очереди ничего не выбрано.
+  final bool diarizeDefault;
+
+  /// Эмбеддер голосов (id из `DiarizationModels.embedders`). Пусто —
+  /// по умолчанию.
+  final String diarizationEmbedder;
+
   /// Автозапуск живёт в системе, а не в settings.json: его можно выключить
   /// в системных настройках мимо нас.
   final bool loginItem;
@@ -299,6 +309,8 @@ class SettingsState extends Equatable {
     double? speakerThreshold,
     bool? toLibrary,
     bool? saveNextToSource,
+    bool? diarizeDefault,
+    String? diarizationEmbedder,
     bool? timestamps,
     bool? dockIcon,
     bool? loginItem,
@@ -366,6 +378,8 @@ class SettingsState extends Equatable {
     speakerThreshold: speakerThreshold ?? this.speakerThreshold,
     toLibrary: toLibrary ?? this.toLibrary,
     saveNextToSource: saveNextToSource ?? this.saveNextToSource,
+    diarizeDefault: diarizeDefault ?? this.diarizeDefault,
+    diarizationEmbedder: diarizationEmbedder ?? this.diarizationEmbedder,
     timestamps: timestamps ?? this.timestamps,
     dockIcon: dockIcon ?? this.dockIcon,
     loginItem: loginItem ?? this.loginItem,
@@ -423,6 +437,8 @@ class SettingsState extends Equatable {
     speakerThreshold,
     toLibrary,
     saveNextToSource,
+    diarizeDefault,
+    diarizationEmbedder,
     timestamps,
     dockIcon,
     loginItem,

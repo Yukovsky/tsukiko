@@ -13,6 +13,15 @@ import 'library.dart'
 /// получали готовое значение без разрешения ссылок.
 const transcriberUsesDictationModelSetting = 'transcriberUsesDictationModel';
 
+/// Каким эмбеддером голоса размечать записи («Несколько голосов»): id из
+/// `DiarizationModels.embedders`. Нет ключа — эмбеддер по умолчанию.
+const diarizationEmbedderSetting = 'diarizationEmbedder';
+
+/// Свой порог кластеризации голосов. Нет ключа — порог выбранного
+/// эмбеддера; правится руками в файле настроек, когда замер на своих
+/// записях показал другой оптимум (`tool/diarize_probe.dart`).
+const diarizationThresholdSetting = 'diarizationThreshold';
+
 /// Хранение настроек на диске.
 ///
 /// Файл настроек правят три изолята: главное окно, панель у строки меню и

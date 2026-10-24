@@ -1,8 +1,11 @@
 import 'dart:convert';
 
 import 'languages.dart';
+import 'speakers.dart';
 import 'text_commands.dart';
 import 'vocabulary.dart';
+
+export 'speakers.dart';
 
 /// Что whisper сочиняет на тишине.
 ///
@@ -261,37 +264,109 @@ class Segment {
   final String text;
   final List<TextReplacement> replacements;
 
-  const Segment(this.from, this.to, this.text, {this.replacements = const []});
+  /// Чей голос — метка из списка голосов расшифровки («S1»). null —
+  /// голоса не размечали, или разметка нашла только один.
+  final String? speaker;
+
+  /// Фрагмент начался поверх чужой реплики. Whisper слышит одну дорожку
+  /// и два голоса сразу не разделит: слова в зоне перебивки достанутся
+  /// кому-то одному. Отметка — честное признание этого, а не прятки.
+  final bool overlap;
+
+  const Segment(
+    this.from,
+    this.to,
+    this.text, {
+    this.replacements = const [],
+    this.speaker,
+    this.overlap = false,
+  });
+
+  /// Тот же фрагмент с другим текстом. Через него идут все пересборки:
+  /// голос и отметка перебивки — свойства звучания, а не текста, и
+  /// правка слов не должна их терять. Потеря здесь — самый вероятный
+  /// способ молча стереть разметку голосов, поэтому путь один.
+  Segment withText(String text, List<TextReplacement> replacements) => Segment(
+    from,
+    to,
+    text,
+    replacements: replacements,
+    speaker: speaker,
+    overlap: overlap,
+  );
+
+  /// Отдать фрагмент другому голосу. null — снять голос.
+  Segment withSpeaker(String? speaker, {bool? overlap}) => Segment(
+    from,
+    to,
+    text,
+    replacements: replacements,
+    speaker: speaker,
+    overlap: overlap ?? this.overlap,
+  );
 
   Segment applyCommands(Iterable<TextCommand> commands) {
     final result = applyTextCommands(text, commands);
-    return Segment(from, to, result.text, replacements: result.replacements);
+    return withText(result.text, result.replacements);
   }
 
   Segment applyVocabulary(Iterable<VocabularyItem> items) {
     final result = applyVocabularyReplacements(text, items);
-    return Segment(from, to, result.text, replacements: result.replacements);
+    return withText(result.text, result.replacements);
   }
 
   Segment undoReplacement(int index) {
     final result = undoTextReplacement(CommandText(text, replacements), index);
-    return Segment(from, to, result.text, replacements: result.replacements);
+    return withText(result.text, result.replacements);
   }
 }
 
 class Transcript {
   final String lang;
   final List<Segment> segments;
-  const Transcript(this.lang, this.segments);
+
+  /// Голоса записи. Пусто — голоса не размечали (или нашёлся один):
+  /// тогда ни на экране, ни в файлах подписей нет.
+  final List<SpeakerInfo> speakers;
+
+  /// Чем размечены голоса. Пишется в JSON, чтобы по файлу было видно,
+  /// как он получен.
+  final DiarizationInfo? diarization;
+
+  const Transcript(
+    this.lang,
+    this.segments, {
+    this.speakers = const [],
+    this.diarization,
+  });
+
+  /// Подписывать ли реплики. Один голос — это «как без режима»: подпись
+  /// «Голос 1» у каждой строки только мешала бы читать.
+  bool get hasSpeakers => speakers.length > 1;
+
+  Transcript copyWith({
+    List<Segment>? segments,
+    List<SpeakerInfo>? speakers,
+    DiarizationInfo? diarization,
+    bool clearSpeakers = false,
+  }) => Transcript(
+    lang,
+    segments ?? this.segments,
+    speakers: clearSpeakers ? const [] : (speakers ?? this.speakers),
+    diarization: clearSpeakers ? null : (diarization ?? this.diarization),
+  );
+
+  /// Имя голоса для подписи. Неизвестная метка — сама метка: лучше
+  /// «S7», чем молча потерянная подпись.
+  String speakerName(String id) =>
+      speakers.where((s) => s.id == id).firstOrNull?.name ?? id;
 
   Transcript applyVocabulary(Iterable<VocabularyItem> items) {
     final matcher = VocabularyMatcher(items);
-    return Transcript(
-      lang,
-      segments.map((s) {
+    return copyWith(
+      segments: segments.map((s) {
         final result = matcher.apply(s.text);
-        return Segment(s.from, s.to, result.text,
-            replacements: result.replacements);
+        return s.withText(result.text, result.replacements);
       }).toList(),
     );
   }
@@ -369,18 +444,30 @@ const _loopRun = 3;
 
 /// Свернуть подряд идущие повторы в один сегмент на всё их время.
 /// Сказанное один раз так и остаётся сказанным один раз.
+///
+/// Повтор — это одинаковый текст **одним голосом**. «Да. Да. Да.» от
+/// троих разных людей — не зацикливание модели, а три ответа, и
+/// схлопывать их в один значило бы стереть двоих.
 List<Segment> collapseRepeats(List<Segment> segs) {
   final out = <Segment>[];
   var i = 0;
   while (i < segs.length) {
     var j = i + 1;
-    while (j < segs.length && segs[j].text == segs[i].text) {
+    while (j < segs.length &&
+        segs[j].text == segs[i].text &&
+        segs[j].speaker == segs[i].speaker) {
       j++;
     }
     final run = j - i;
     out.add(
       run >= _loopRun
-          ? Segment(segs[i].from, segs[j - 1].to, segs[i].text)
+          ? Segment(
+              segs[i].from,
+              segs[j - 1].to,
+              segs[i].text,
+              speaker: segs[i].speaker,
+              overlap: segs[i].overlap,
+            )
           : segs[i],
     );
     i = run >= _loopRun ? j : i + 1;
@@ -399,7 +486,7 @@ List<Segment> collapseRepeats(List<Segment> segs) {
 ({Transcript? parsed, String? raw}) readTranscript(String path, String text) {
   if (path.toLowerCase().endsWith('.json')) {
     try {
-      return (parsed: parseWhisperJson(text), raw: null);
+      return (parsed: parseTranscriptJson(text), raw: null);
     } catch (_) {
       return (parsed: null, raw: text);
     }
@@ -410,7 +497,224 @@ List<Segment> collapseRepeats(List<Segment> segs) {
       : (parsed: parsed, raw: null);
 }
 
-Transcript parseWhisperJson(String jsonText) {
+/// JSON любого из двух видов: сырой ответ whisper-cli или наш
+/// собственный экспорт ([renderJson]). Свой узнаётся по списку
+/// `segments` без `transcription`: только в нём живут голоса, и
+/// открытая обратно расшифровка должна вернуть их все — с именами.
+Transcript parseTranscriptJson(String jsonText) {
+  final data = jsonDecode(jsonText) as Map<String, dynamic>;
+  if (data['transcription'] == null && data['segments'] is List) {
+    return _parseOwnJson(data);
+  }
+  return parseWhisperJson(jsonText);
+}
+
+Transcript _parseOwnJson(Map<String, dynamic> data) {
+  final segs = <Segment>[
+    for (final raw in (data['segments'] as List).whereType<Map>())
+      if (raw['text'] is String)
+        Segment(
+          (raw['from'] as num?)?.toInt() ?? 0,
+          (raw['to'] as num?)?.toInt() ?? 0,
+          raw['text'] as String,
+          speaker: raw['speaker'] as String?,
+          overlap: raw['overlap'] == true,
+        ),
+  ];
+  final speakers = [
+    for (final raw in (data['speakers'] as List? ?? const []))
+      ?SpeakerInfo.fromJson(raw),
+  ];
+  return Transcript(
+    (data['language'] ?? '?').toString(),
+    segs,
+    speakers: speakers,
+    diarization: DiarizationInfo.fromJson(data['diarization']),
+  );
+}
+
+/// Служебные токены whisper в полном JSON: «[_BEG_]», «[_TT_150]».
+final _specialToken = RegExp(r'^\[_[A-Z]+_?\d*\]$|^<\|.*\|>$');
+
+/// Слова из потокенных таймкодов полного JSON whisper-cli (`-ojf`).
+///
+/// Токен — кусок слова, а не слово: новое слово начинается с токена,
+/// у которого впереди пробел. Время слова — от начала первого его токена
+/// до конца последнего. Служебные токены и токены без времени
+/// пропускаются (время слова тогда берётся у его соседей по токенам).
+List<TimedWord> whisperTokenWords(Object? tokens) {
+  if (tokens is! List) return const [];
+  final words = <TimedWord>[];
+  var text = StringBuffer();
+  int? from, to;
+  void flush() {
+    final word = text.toString().trim();
+    if (word.isNotEmpty && from != null && to != null) {
+      words.add(TimedWord(from!, to!, word));
+    }
+    text = StringBuffer();
+    from = null;
+    to = null;
+  }
+
+  for (final token in tokens.whereType<Map>()) {
+    final piece = token['text'];
+    if (piece is! String || _specialToken.hasMatch(piece.trim())) continue;
+    if (piece.startsWith(' ')) flush();
+    text.write(piece);
+    final offsets = token['offsets'];
+    if (offsets is Map) {
+      final f = (offsets['from'] as num?)?.toInt();
+      final t = (offsets['to'] as num?)?.toInt();
+      if (f != null && f >= 0) from ??= f;
+      if (t != null && t >= 0) to = t;
+    }
+  }
+  flush();
+  return words;
+}
+
+/// Разрезать фрагмент по смене голоса.
+///
+/// Голоса раздаются словам ([assignSpeakers]), а резать приходится
+/// текст: кусок берётся из исходной строки по границам слов, а не
+/// склеивается заново, — тогда в нём сохраняются и пробелы, и замены
+/// словаря (их места пересчитываются на начало куска). Замена, которая
+/// пришлась ровно на смену голоса, остаётся за куском, где она
+/// начинается, если целиком в нём помещается; иначе её отметка
+/// пропадает — сам заменённый текст остаётся на месте.
+///
+/// [raw] — слова с таймкодами от движка, если есть (см. [timeWords]).
+List<Segment> splitBySpeakers(
+  Segment seg,
+  List<SpeakerTurn> turns, [
+  List<TimedWord> raw = const [],
+]) {
+  final words = smoothSingleWords(
+    fillUnassigned(
+      assignSpeakers(timeWords(seg.text, seg.from, seg.to, raw), turns),
+    ),
+  );
+  if (words.isEmpty) return [seg.withSpeaker(null, overlap: false)];
+  final spans = RegExp(r'\S+').allMatches(seg.text).toList();
+  final out = <Segment>[];
+  var start = 0;
+  for (var i = 0; i < words.length; i++) {
+    final last =
+        i + 1 == words.length || words[i + 1].speaker != words[i].speaker;
+    if (!last) continue;
+    final textFrom = start == 0 ? 0 : spans[start].start;
+    final textTo = i + 1 == words.length ? seg.text.length : spans[i].end;
+    final piece = seg.text.substring(textFrom, textTo);
+    final lead = piece.length - piece.trimLeft().length;
+    final text = piece.trim();
+    final shift = textFrom + lead;
+    final replacements = [
+      for (final r in seg.replacements)
+        if (r.start >= shift && r.end <= shift + text.length)
+          TextReplacement(
+            start: r.start - shift,
+            end: r.end - shift,
+            original: r.original,
+            replacement: r.replacement,
+          ),
+    ];
+    out.add(
+      Segment(
+        start == 0 ? seg.from : words[start].from,
+        i + 1 == words.length ? seg.to : words[i].to,
+        text,
+        replacements: replacements,
+        speaker: words[i].speaker,
+        overlap: words.sublist(start, i + 1).take(2).any((w) => w.overlap),
+      ),
+    );
+    start = i + 1;
+  }
+  return out;
+}
+
+/// Довести голоса до готового вида: отметить перебивки по времени и
+/// собрать список голосов.
+///
+/// Нашёлся ровно один голос (или ни одного) — разметку снимаем целиком:
+/// «Голос 1» у каждой строки ничего не сообщает, а в файлы попадал бы
+/// лишним шумом. Режим тогда выглядит так, будто он выключен.
+Transcript finishSpeakers(
+  Transcript t, {
+  DiarizationInfo? info,
+  String Function(int number) defaultName = defaultSpeakerName,
+}) {
+  final roster = speakerRoster(
+    [for (final s in t.segments) (from: s.from, to: s.to, speaker: s.speaker)],
+    previous: t.speakers,
+    defaultName: defaultName,
+  );
+  if (roster.length < 2) {
+    return t.copyWith(
+      segments: [
+        for (final s in t.segments) s.withSpeaker(null, overlap: false),
+      ],
+      clearSpeakers: true,
+    );
+  }
+  final interrupts = markInterruptions([
+    for (final s in t.segments)
+      (from: s.from, to: s.to, speaker: s.speaker, overlap: s.overlap),
+  ]);
+  return t.copyWith(
+    segments: [
+      for (var i = 0; i < t.segments.length; i++)
+        t.segments[i].withSpeaker(
+          t.segments[i].speaker,
+          overlap: interrupts[i],
+        ),
+    ],
+    speakers: roster,
+    diarization: info == null
+        ? null
+        : DiarizationInfo(
+            engine: info.engine,
+            segmentation: info.segmentation,
+            embedding: info.embedding,
+            threshold: info.threshold,
+            requestedSpeakers: info.requestedSpeakers,
+            detectedSpeakers: roster.length,
+          ),
+  );
+}
+
+/// Раздать голоса уже готовым фрагментам — тем, у кого слов от движка
+/// нет (досчитанное до паузы, открытая расшифровка). Время слов внутри
+/// каждого фрагмента раскладывается по доле символов.
+Transcript applySpeakerTurns(
+  Transcript t,
+  List<SpeakerTurn> turns, {
+  DiarizationInfo? info,
+  String Function(int number) defaultName = defaultSpeakerName,
+}) => finishSpeakers(
+  t.copyWith(
+    segments: [for (final s in t.segments) ...splitBySpeakers(s, turns)],
+  ),
+  info: info,
+  defaultName: defaultName,
+);
+
+/// [turns] — разметка голосов. Пусто — разбор ровно прежний, голосов нет.
+/// [finish] false — фрагменты с голосами, но без списка голосов: так
+/// очередь сначала доклеивает к ним досчитанное до паузы и только потом
+/// собирает список ([finishSpeakers]) — иначе половина записи с одним
+/// голосом потеряла бы разметку раньше времени.
+/// Есть — каждый фрагмент режется по смене голоса по потокенным
+/// таймкодам (они есть только в полном JSON, `-ojf`; без них время слов
+/// раскладывается по доле символов).
+Transcript parseWhisperJson(
+  String jsonText, {
+  List<SpeakerTurn> turns = const [],
+  DiarizationInfo? info,
+  String Function(int number) defaultName = defaultSpeakerName,
+  bool finish = true,
+}) {
   final data = jsonDecode(jsonText) as Map<String, dynamic>;
   final lang = (data['result']?['language'] ?? '?').toString();
   final segs = <Segment>[];
@@ -421,23 +725,55 @@ Transcript parseWhisperJson(String jsonText) {
     // Фрагмент, совпавший с известной выдумкой или очищенный до пустоты, —
     // это тишина, которую модель договорила за себя.
     if (text.isEmpty || looksLikeSilenceHallucination(text)) continue;
-    segs.add(
-      Segment(
-        (t['offsets']['from'] as num).toInt(),
-        (t['offsets']['to'] as num).toInt(),
-        text,
-      ),
+    final seg = Segment(
+      (t['offsets']['from'] as num).toInt(),
+      (t['offsets']['to'] as num).toInt(),
+      text,
     );
+    if (turns.isEmpty) {
+      segs.add(seg);
+    } else {
+      // Слова от токенов годятся, только если фильтр не тронул текст:
+      // иначе они описывают не то, что осталось.
+      final words = text == rawText
+          ? whisperTokenWords(t['tokens'])
+          : const <TimedWord>[];
+      segs.addAll(splitBySpeakers(seg, turns, words));
+    }
   }
-  return Transcript(lang, collapseRepeats(segs));
+  final out = Transcript(lang, collapseRepeats(segs));
+  return turns.isEmpty || !finish
+      ? out
+      : finishSpeakers(out, info: info, defaultName: defaultName);
 }
+
+/// Слова из JSON, который пишет `nemo-speech transcribe --format json`.
+List<TimedWord> parseNemoWords(Map<String, dynamic> data) =>
+    (data['words'] as List? ?? const [])
+        .whereType<Map>()
+        .map((raw) {
+          final text = raw['word']?.toString().trim() ?? '';
+          final from = (((raw['start'] as num?) ?? 0) * 1000).round();
+          final to = (((raw['end'] as num?) ?? 0) * 1000).round();
+          return TimedWord(from, to, text);
+        })
+        .where((word) => word.text.isNotEmpty)
+        .toList();
 
 /// Разобрать JSON, который пишет `nemo-speech transcribe --format json`.
 ///
 /// NeMo отдаёт времена отдельных слов, а интерфейс работает с фрагментами.
-/// Собираем слова по естественным границам: конец предложения, заметная
-/// пауза, либо достаточно длинная строка. Таймкоды при этом не теряются.
-Transcript parseNemoJson(String jsonText) {
+/// Собираем слова по естественным границам ([groupWords]): конец
+/// предложения, заметная пауза, либо достаточно длинная строка, а с
+/// разметкой голосов [turns] — ещё и смена голоса. Таймкоды при этом
+/// не теряются.
+Transcript parseNemoJson(
+  String jsonText, {
+  List<SpeakerTurn> turns = const [],
+  DiarizationInfo? info,
+  String Function(int number) defaultName = defaultSpeakerName,
+  bool finish = true,
+}) {
   final data = jsonDecode(jsonText) as Map<String, dynamic>;
   final detectedLanguages = (data['languages'] as List? ?? const [])
       .whereType<String>()
@@ -449,16 +785,7 @@ Transcript parseNemoJson(String jsonText) {
           ? data['language'].toString()
           : '?');
   var lang = normalizeLanguageCode(rawLang);
-  final words = (data['words'] as List? ?? const [])
-      .whereType<Map>()
-      .map((raw) {
-        final text = raw['word']?.toString().trim() ?? '';
-        final from = (((raw['start'] as num?) ?? 0) * 1000).round();
-        final to = (((raw['end'] as num?) ?? 0) * 1000).round();
-        return Segment(from, to, text);
-      })
-      .where((word) => word.text.isNotEmpty)
-      .toList();
+  var words = parseNemoWords(data);
 
   if (lang == '?' || lang == 'auto' || lang == 'unknown') {
     final wordsText = words.map((w) => w.text).join(' ');
@@ -486,32 +813,38 @@ Transcript parseNemoJson(String jsonText) {
       return Transcript(lang, const []);
     }
     final duration = (((data['duration'] as num?) ?? 0) * 1000).round();
-    return Transcript(lang, [Segment(0, duration, text)]);
+    final whole = Transcript(lang, [Segment(0, duration, text)]);
+    if (turns.isEmpty) return whole;
+    return finish
+        ? applySpeakerTurns(whole, turns, info: info, defaultName: defaultName)
+        : whole.copyWith(segments: splitBySpeakers(whole.segments.single, turns));
   }
 
+  if (turns.isNotEmpty) {
+    words = smoothSingleWords(fillUnassigned(assignSpeakers(words, turns)));
+  }
   final segments = <Segment>[];
-  var start = 0;
-  for (var i = 0; i < words.length; i++) {
-    final current = words[i];
-    final next = i + 1 < words.length ? words[i + 1] : null;
-    final chars = words
-        .sublist(start, i + 1)
-        .fold<int>(0, (sum, word) => sum + word.text.length + 1);
-    final sentenceEnd = RegExp(r'[.!?…][\"»”’)]*$').hasMatch(current.text);
-    final pause = next != null && next.from - current.to >= 700;
-    final tooLong = chars >= 90 || current.to - words[start].from >= 12000;
-    if (next == null || sentenceEnd || pause || tooLong) {
-      final rawText = words.sublist(start, i + 1).map((word) => word.text).join(' ').trim();
-      if (rawText.isNotEmpty && !looksLikeSilenceHallucination(rawText)) {
-        final text = stripSilenceHallucinations(rawText).trim();
-        if (text.isNotEmpty && !looksLikeSilenceHallucination(text)) {
-          segments.add(Segment(words[start].from, current.to, text));
-        }
+  for (final group in groupWords(words)) {
+    final rawText = group.text;
+    if (rawText.isNotEmpty && !looksLikeSilenceHallucination(rawText)) {
+      final text = stripSilenceHallucinations(rawText).trim();
+      if (text.isNotEmpty && !looksLikeSilenceHallucination(text)) {
+        segments.add(
+          Segment(
+            group.from,
+            group.to,
+            text,
+            speaker: group.speaker,
+            overlap: group.overlap,
+          ),
+        );
       }
-      start = i + 1;
     }
   }
-  return Transcript(lang, collapseRepeats(segments));
+  final out = Transcript(lang, collapseRepeats(segments));
+  return turns.isEmpty || !finish
+      ? out
+      : finishSpeakers(out, info: info, defaultName: defaultName);
 }
 
 String fmtTs(int ms, {String msSep = '.'}) {
@@ -523,49 +856,147 @@ String fmtTs(int ms, {String msSep = '.'}) {
   return '${p(h)}:${p(m)}:${p(s)}$msSep${p(r, 3)}';
 }
 
-String renderPlain(List<Segment> segs, bool timestamps) => timestamps
-    ? segs
-          .map((s) => '[${fmtTs(s.from)} → ${fmtTs(s.to)}]  ${s.text}')
-          .join('\n')
-    : segs.map((s) => s.text).join('\n');
+/// Знак перебивки в тексте. Знак, а не слово: переводить нечего, и
+/// в файле он читается одинаково на любом языке.
+const overlapMark = '⇄';
 
-String renderSrt(List<Segment> segs) {
+/// Кто говорит в этом фрагменте — имя для подписи или null, если
+/// подписывать не нужно. Подпись ставится, только когда голосов больше
+/// одного.
+String? _who(Segment s, List<SpeakerInfo> speakers) {
+  final id = s.speaker;
+  if (id == null || speakers.length < 2) return null;
+  return speakers.where((v) => v.id == id).firstOrNull?.name ?? id;
+}
+
+String _lead(Segment s, String name) =>
+    s.overlap ? '$overlapMark $name: ' : '$name: ';
+
+/// Подряд идущие фрагменты одного голоса — одна реплика.
+List<List<Segment>> _byTurns(List<Segment> segs) {
+  final out = <List<Segment>>[];
+  for (final s in segs) {
+    if (out.isNotEmpty && out.last.last.speaker == s.speaker) {
+      out.last.add(s);
+    } else {
+      out.add([s]);
+    }
+  }
+  return out;
+}
+
+/// Обычный текст. С голосами реплика одного голоса склеивается в абзац
+/// с одной шапкой («Иван: …»), а смена голоса отделяется пустой строкой —
+/// так расшифровку разговора читают глазами, а не по строчке на фрагмент.
+String renderPlain(
+  List<Segment> segs,
+  bool timestamps, {
+  List<SpeakerInfo> speakers = const [],
+}) {
+  String body(Segment s) {
+    final name = _who(s, speakers);
+    return name == null ? s.text : '${_lead(s, name)}${s.text}';
+  }
+
+  if (timestamps) {
+    return segs
+        .map((s) => '[${fmtTs(s.from)} → ${fmtTs(s.to)}]  ${body(s)}')
+        .join('\n');
+  }
+  if (speakers.length < 2) return segs.map((s) => s.text).join('\n');
+  return _byTurns(segs)
+      .map((turn) {
+        final text = turn.map((s) => s.text).join(' ');
+        final name = _who(turn.first, speakers);
+        return name == null ? text : '${_lead(turn.first, name)}$text';
+      })
+      .join('\n\n');
+}
+
+String renderSrt(List<Segment> segs, {List<SpeakerInfo> speakers = const []}) {
   final b = StringBuffer();
   for (var i = 0; i < segs.length; i++) {
     final s = segs[i];
+    final name = _who(s, speakers);
     b.writeln('${i + 1}');
     b.writeln('${fmtTs(s.from, msSep: ',')} --> ${fmtTs(s.to, msSep: ',')}');
-    b.writeln(s.text);
+    b.writeln(name == null ? s.text : '$name: ${s.text}');
     b.writeln();
   }
   return b.toString();
 }
 
-String renderVtt(List<Segment> segs) {
+/// Имя в голосовом теге WebVTT: угловые скобки и амперсанд в нём
+/// ломают разметку, остальное можно как есть.
+String _vttEscape(String name) => name
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+
+/// WebVTT. Голос — стандартным голосовым тегом `<v Иван>`: его понимают
+/// проигрыватели и показывают имя сами.
+String renderVtt(List<Segment> segs, {List<SpeakerInfo> speakers = const []}) {
   final b = StringBuffer('WEBVTT\n\n');
   for (final s in segs) {
+    final name = _who(s, speakers);
     b.writeln('${fmtTs(s.from)} --> ${fmtTs(s.to)}');
-    b.writeln(s.text);
+    b.writeln(name == null ? s.text : '<v ${_vttEscape(name)}>${s.text}</v>');
     b.writeln();
   }
   return b.toString();
 }
 
-String renderJson(Transcript t) => const JsonEncoder.withIndent('  ').convert({
-  'language': t.lang,
-  'segments': [
-    for (final s in t.segments) {'from': s.from, 'to': s.to, 'text': s.text},
-  ],
-});
+String renderJson(Transcript t) {
+  final voices = t.hasSpeakers;
+  return const JsonEncoder.withIndent('  ').convert({
+    'language': t.lang,
+    'segments': [
+      for (final s in t.segments)
+        {
+          'from': s.from,
+          'to': s.to,
+          'text': s.text,
+          if (voices) 'speaker': s.speaker,
+          if (voices) 'overlap': s.overlap,
+        },
+    ],
+    if (voices) 'speakers': [for (final v in t.speakers) v.toJson()],
+    if (voices && t.diarization != null) 'diarization': t.diarization!.toJson(),
+  });
+}
+
+/// Имя в markdown: служебные знаки разметки экранируются, иначе
+/// «*Иван*» стал бы курсивом, а «[Иван]» — ссылкой.
+String _mdEscape(String name) =>
+    name.replaceAllMapped(RegExp(r'[\\`*_\[\]<>#|~]'), (m) => '\\${m[0]}');
 
 /// Markdown с готовой шапкой. Шапку сюда передают: в ней имя записи,
 /// язык и число фрагментов — то есть переведённый текст, а переводы
 /// приходят из Flutter, которого в этом файле быть не должно
 /// (см. `labels.dart`).
-String renderMarkdown(String header, List<Segment> segs) {
+String renderMarkdown(
+  String header,
+  List<Segment> segs, {
+  List<SpeakerInfo> speakers = const [],
+}) {
   final b = StringBuffer(header);
-  for (final s in segs) {
-    b.writeln('**[${fmtTs(s.from)}]** ${s.text}\n');
+  if (speakers.length < 2) {
+    for (final s in segs) {
+      b.writeln('**[${fmtTs(s.from)}]** ${s.text}\n');
+    }
+    return b.toString();
+  }
+  for (final turn in _byTurns(segs)) {
+    final first = turn.first;
+    final name = _who(first, speakers);
+    final text = turn.map((s) => s.text).join(' ');
+    if (name == null) {
+      b.writeln('**[${fmtTs(first.from)}]** $text\n');
+      continue;
+    }
+    final mark = first.overlap ? '$overlapMark ' : '';
+    b.writeln('$mark**${_mdEscape(name)}** · [${fmtTs(first.from)}]');
+    b.writeln('$text\n');
   }
   return b.toString();
 }
@@ -616,13 +1047,17 @@ String renderAs(
   String name = '',
   String? markdownHeader,
 }) => switch (f.id) {
-  'txt' => renderPlain(t.segments, false),
-  'txt-ts' => renderPlain(t.segments, true),
-  'srt' => renderSrt(t.segments),
-  'vtt' => renderVtt(t.segments),
-  'md' => renderMarkdown(markdownHeader ?? '# $name\n\n', t.segments),
+  'txt' => renderPlain(t.segments, false, speakers: t.speakers),
+  'txt-ts' => renderPlain(t.segments, true, speakers: t.speakers),
+  'srt' => renderSrt(t.segments, speakers: t.speakers),
+  'vtt' => renderVtt(t.segments, speakers: t.speakers),
+  'md' => renderMarkdown(
+    markdownHeader ?? '# $name\n\n',
+    t.segments,
+    speakers: t.speakers,
+  ),
   'json' => renderJson(t),
-  _ => renderPlain(t.segments, false),
+  _ => renderPlain(t.segments, false, speakers: t.speakers),
 };
 
 // Настройки живут в lib/settings.dart: им нужен dart:ui ради очереди

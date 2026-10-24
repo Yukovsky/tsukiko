@@ -143,6 +143,56 @@ State management is built on `package:bloc`:
 
 ---
 
+## Multiple Voices (Speaker Diarization)
+
+An optional step in the transcription queue that tells voices apart, labels each fragment
+("Voice 1", "Voice 2", renamable) and marks interruptions with `⇄`. It is off by default; when
+off, the queue, the engine arguments and every export format behave exactly as before.
+
+```
+file → os.toWav (16 kHz mono s16)
+     → whisper.cpp / NeMo → fragments (+ word timings)
+     → [mode on] sherpa-onnx OfflineSpeakerDiarization in its own isolate
+     → merge by time → Transcript with speakers
+```
+
+| Piece | Where | Notes |
+| :--- | :--- | :--- |
+| Pure logic | `lib/core/speakers.dart` | Word ↔ speaker assignment (max overlap, earlier start wins ties, nearest ≤ 1 s), `S1…` labels by first appearance, word grouping shared by whisper and NeMo, roster, "fragmented" warning. No Flutter, no sherpa — the CLI compiles it. |
+| Transcript model | `lib/core/transcript.dart` | `Segment.speaker` / `Segment.overlap`, `Transcript.speakers` / `diarization`. Every rebuild of a fragment goes through `Segment.withText` so voices survive vocabulary edits and undo. Labels are written only when there are two or more voices. |
+| Engine | `lib/core/diarization/diarizer.dart` | Runs in a separate isolate (the native call is synchronous and takes minutes). Progress via `processWithCallback`. |
+| Models | `lib/core/diarization/diarization_models.dart` | Downloaded on first use (not bundled), pinned SHA-256 checked with a small pure-Dart hasher. |
+| Queue step | `QueueBloc._diarizeStep` | `JobState.diarizing` after recognition, on the same WAV. |
+
+Key decisions:
+
+- **Diarization runs after recognition.** Clustering needs the whole recording, so the step cannot
+  resume mid-way; recognition pause/resume and yielding to dictation stay untouched. The step
+  yields to dictation before it starts, never in the middle.
+- **Word timings come from `-ojf`, not `-ml 1`.** With the mode on, whisper-cli writes the full JSON
+  with per-token timestamps. whisper.cpp computes those after decoding
+  (`whisper_exp_compute_token_level_timestamps`), so text and fragments are identical to a normal
+  run and the hallucination filters still see whole phrases. Fragments are then cut at speaker
+  changes. Where tokens no longer match the text (vocabulary replacements, filtered tails, the part
+  recognized before a pause) word times are interpolated by character share.
+- **A diarization failure never loses the transcript.** Failure, stop, silence or a single voice all
+  leave a finished job without voices and a note in its detail line.
+- **Cancellation is immediate for the UI only.** sherpa-onnx 1.13.8 ignores the progress callback's
+  return value, so the isolate is killed and dies when native code returns; the next run waits for
+  it, so two copies of a recording are never in memory at once.
+- **Memory.** Peak is about 128 KB per second of audio (≈460 MB per hour). Recordings longer than
+  two hours are not diarized automatically; the inspector offers "Identify voices" to run it
+  anyway. The file is never split: clusters of different chunks would not match.
+- **Overlap.** A word is an interruption when two voices sound *simultaneously* for at least 30 % of
+  it. (Counting each speaker's share separately would flag a clean hand-off in the middle of a word.)
+- **No automatic cluster merging** by centroid distance — merging is manual only.
+- **CLI.** `--speakers auto|N` routes the job to the running app over the local API: the native
+  sherpa library ships with the Flutter plugin and is not available to `dart compile exe`.
+
+Threshold and embedder measurements: [`diarization-threshold.md`](diarization-threshold.md).
+
+---
+
 ## Memory and Model Lifecycle
 
 Model weights (`1.5 GB+`) represent the heaviest resource in memory. Tsukiko employs three rules to minimize memory consumption:

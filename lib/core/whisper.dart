@@ -44,6 +44,10 @@ enum JobState {
   waiting,
   converting,
   transcribing,
+
+  /// Текст готов, идёт разметка голосов — отдельным шагом после
+  /// распознавания, по тому же звуку (см. `diarization/diarizer.dart`).
+  diarizing,
   paused,
   done,
   failed,
@@ -56,6 +60,15 @@ class RunOptions {
   final String model, lang, prompt, vadModel;
   final int threads, maxLen;
   final bool vad, punctuate;
+
+  /// Режим «Несколько голосов»: после распознавания определить, кто
+  /// говорит. Выключен — приложение ведёт себя ровно как без режима.
+  final bool diarize;
+
+  /// Сколько голосов ждать. Ноль — определить самим по порогу. Число —
+  /// это цель для кластеризации, а не обещание: движок может найти
+  /// меньше (talkthrough-mcp заказывал восемь–девять, получал семь).
+  final int speakerCount;
   const RunOptions({
     required this.model,
     required this.lang,
@@ -65,6 +78,8 @@ class RunOptions {
     this.vadModel = '',
     this.prompt = '',
     this.punctuate = true,
+    this.diarize = false,
+    this.speakerCount = 0,
   });
 
   RunOptions copyWith({
@@ -76,6 +91,8 @@ class RunOptions {
     String? vadModel,
     String? prompt,
     bool? punctuate,
+    bool? diarize,
+    int? speakerCount,
   }) =>
       RunOptions(
         model: model ?? this.model,
@@ -86,6 +103,8 @@ class RunOptions {
         vadModel: vadModel ?? this.vadModel,
         prompt: prompt ?? this.prompt,
         punctuate: punctuate ?? this.punctuate,
+        diarize: diarize ?? this.diarize,
+        speakerCount: speakerCount ?? this.speakerCount,
       );
 
   Map<String, dynamic> toJson() => {
@@ -97,6 +116,8 @@ class RunOptions {
         'vadModel': vadModel,
         'prompt': prompt,
         'punctuate': punctuate,
+        'diarize': diarize,
+        'speakerCount': speakerCount,
       };
 
   /// Чего в файле настроек нет — берём из [fallback]: так старые файлы
@@ -111,6 +132,8 @@ class RunOptions {
         vadModel: (j['vadModel'] as String?) ?? fallback.vadModel,
         prompt: (j['prompt'] as String?) ?? fallback.prompt,
         punctuate: (j['punctuate'] as bool?) ?? fallback.punctuate,
+        diarize: (j['diarize'] as bool?) ?? fallback.diarize,
+        speakerCount: (j['speakerCount'] as int?) ?? fallback.speakerCount,
       );
 
   /// Своя подсказка важнее: она уже задаёт модели и стиль, и словарь.
@@ -161,7 +184,16 @@ List<String> buildArgs(RunOptions o, String wav, String outBase, {int from = 0})
       // одного окна, а оттуда его вытаскивает обычный откат по температуре.
       ...noLoopArgs(o),
       '-of', os.processPath(outBase),
-      '-oj', // остальные форматы приложение собирает само — из одного источника
+      // Остальные форматы приложение собирает само — из одного источника.
+      //
+      // С голосами нужен полный JSON: в нём у каждого токена своё время,
+      // и по нему фрагмент режется на смене говорящего. Фрагменты при
+      // этом остаются прежними, и текст тоже: потокенное время whisper
+      // считает уже после декодирования (`whisper_exp_compute_token_level_
+      // timestamps` в whisper.cpp 1.9.3), на сами слова оно не влияет.
+      // Поэтому и не `-ml 1`: тот дробит фрагменты до слова, и фильтры
+      // выдумок, рассчитанные на фразы, перестали бы их узнавать.
+      o.diarize ? '-ojf' : '-oj',
 
       if (from > 0) ...['-ot', '$from'],
       if (o.maxLen > 0) ...['-ml', '${o.maxLen}', '-sow'],

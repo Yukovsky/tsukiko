@@ -161,6 +161,83 @@ class CommandReplacementUndone extends QueueEvent {
   List<Object?> get props => [job.path, segment, index];
 }
 
+// ── голоса ──────────────────────────────────────────────────────────────────
+
+/// Переименовать голос. Меняется только список голосов: фрагменты
+/// ссылаются на метку («S1»), а не на имя. Пустое имя — вернуть имя
+/// по умолчанию.
+class SpeakerRenamed extends QueueEvent {
+  const SpeakerRenamed(this.job, this.speaker, this.name);
+  final Job job;
+  final String speaker, name;
+
+  @override
+  List<Object?> get props => [job.path, speaker, name];
+}
+
+/// Слить голос [from] в голос [into]: одного человека разметка
+/// разбила на два. Только руками — автоматическое слияние по близости
+/// голосов ошибается чаще, чем помогает (замер YazSes на 16 встречах).
+class SpeakersMerged extends QueueEvent {
+  const SpeakersMerged(this.job, this.from, this.into);
+  final Job job;
+  final String from, into;
+
+  @override
+  List<Object?> get props => [job.path, from, into];
+}
+
+/// Отдать один фрагмент другому голосу.
+class SegmentSpeakerChanged extends QueueEvent {
+  const SegmentSpeakerChanged(this.job, this.segment, this.speaker);
+  final Job job;
+  final Segment segment;
+  final String speaker;
+
+  @override
+  List<Object?> get props => [job.path, segment, speaker];
+}
+
+/// Включить или выключить «Несколько голосов» — там же, куда уходят
+/// остальные правки инспектора (см. [OptionsEdited]).
+class DiarizationToggled extends QueueEvent {
+  const DiarizationToggled(this.enabled);
+  final bool enabled;
+
+  @override
+  List<Object?> get props => [enabled];
+}
+
+/// Сколько голосов ждать. Ноль — «Авто».
+class SpeakerCountChosen extends QueueEvent {
+  const SpeakerCountChosen(this.count);
+  final int count;
+
+  @override
+  List<Object?> get props => [count];
+}
+
+/// Определить голоса в уже готовой расшифровке: режим включили после
+/// распознавания, запись длиннее предела или прошлый прогон не удался.
+class DiarizationRequested extends QueueEvent {
+  const DiarizationRequested(this.job);
+  final Job job;
+
+  @override
+  List<Object?> get props => [job.path];
+}
+
+/// Внутреннее: правка настроек одной записи по пути — для местного API,
+/// у которого нет выделения.
+class JobOptionsEdited extends QueueEvent {
+  const JobOptionsEdited(this.path, this.change);
+  final String path;
+  final RunOptions Function(RunOptions) change;
+
+  @override
+  List<Object?> get props => [path, change];
+}
+
 // ── настройки распознавания ─────────────────────────────────────────────────
 
 /// Правка уходит туда, куда смотрит инспектор: в общие настройки или

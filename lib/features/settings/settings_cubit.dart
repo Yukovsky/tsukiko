@@ -108,6 +108,8 @@ class SettingsCubit extends Cubit<SettingsState> {
         transcriberUsesDictationModel: linked,
         toLibrary: (s['toLibrary'] as bool?) ?? true,
         saveNextToSource: (s['saveNextToSource'] as bool?) ?? false,
+        diarizeDefault: (s['diarize'] as bool?) ?? false,
+        diarizationEmbedder: (s[diarizationEmbedderSetting] as String?) ?? '',
         timestamps: (s['timestamps'] as bool?) ?? true,
         dockIcon: (s['dockIcon'] as bool?) ?? true,
         loggingEnabled: loggingEnabled,
@@ -507,6 +509,18 @@ class SettingsCubit extends Cubit<SettingsState> {
   void setSaveNextToSource(bool v) {
     _emit(state.copyWith(saveNextToSource: v));
     unawaited(_saveApp({'saveNextToSource': v}));
+  }
+
+  /// Ключ тот же, что у общих настроек распознавания (`RunOptions.diarize`):
+  /// главное окно перечитает его и поставит в свои умолчания.
+  void setDiarizeDefault(bool v) {
+    _emit(state.copyWith(diarizeDefault: v));
+    unawaited(_saveApp({'diarize': v}));
+  }
+
+  void setDiarizationEmbedder(String id) {
+    _emit(state.copyWith(diarizationEmbedder: id));
+    unawaited(_saveApp({diarizationEmbedderSetting: id}));
   }
 
   void setTimestamps(bool v) {

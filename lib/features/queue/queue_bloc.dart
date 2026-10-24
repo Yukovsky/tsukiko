@@ -9,6 +9,9 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../core/app_locale.dart';
+import '../../core/diarization/diarization_models.dart';
+import '../../core/diarization/diarizer.dart';
+import '../../core/diarization/wav_samples.dart';
 import '../../core/library.dart';
 import '../../core/logger.dart';
 import '../../core/models.dart';
@@ -71,6 +74,27 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     on<ResumeRequested>(_onResume, transformer: droppable());
     on<JobAdvanced>(_onJobAdvanced);
     on<CommandReplacementUndone>(_onCommandReplacementUndone);
+
+    on<SpeakerRenamed>(_onSpeakerRenamed);
+    on<SpeakersMerged>(_onSpeakersMerged);
+    on<SegmentSpeakerChanged>(_onSegmentSpeakerChanged);
+    on<DiarizationToggled>(
+      (e, emit) => _onOptionsEdited(
+        OptionsEdited((x) => x.copyWith(diarize: e.enabled)),
+        emit,
+      ),
+    );
+    on<SpeakerCountChosen>(
+      (e, emit) => _onOptionsEdited(
+        OptionsEdited((x) => x.copyWith(speakerCount: e.count)),
+        emit,
+      ),
+    );
+    on<DiarizationRequested>(
+      _onDiarizationRequested,
+      transformer: droppable(),
+    );
+    on<JobOptionsEdited>(_onJobOptionsEdited);
 
     on<OptionsEdited>(_onOptionsEdited);
     on<OverridesReset>(_onOverridesReset);
@@ -330,8 +354,7 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
   Segment _applyCommands(Segment segment) {
     if (!_commandsEnabled) return segment;
     final result = _vocabularyMatcher.apply(segment.text);
-    return Segment(segment.from, segment.to, result.text,
-        replacements: result.replacements);
+    return segment.withText(result.text, result.replacements);
   }
 
   /// Работающий whisper-cli и его временная папка.
@@ -346,6 +369,13 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
   bool _dictationTookOver = false;
 
   bool get _pausing => _pauseWanted || _dictationTookOver;
+
+  /// Паузу нажали, пока размечались голоса: шаг доходит до конца, а
+  /// следующая запись не начинается.
+  bool _pauseAfterStep = false;
+
+  /// Идущая разметка голосов — чтобы «Стоп» мог её отменить.
+  Diarizer? _diarizer;
 
   /// Номер следующего запуска: имена временных файлов должны быть новыми
   /// даже после правки очереди.
@@ -936,6 +966,7 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     emit(state.copyWith(running: true, clearAsk: true));
     _stopRequested = false;
     _pauseWanted = false;
+    _pauseAfterStep = false;
     _dictationTookOver = false;
     _syncPolling();
     try {
@@ -955,6 +986,7 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
         if (next == null) break;
         attempted.add(next.path);
         if (!await _runOne(next, emit)) break;
+        if (_pauseAfterStep) break;
       }
     } finally {
       _proc = null;
@@ -1164,21 +1196,46 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
         return true;
       }
 
-      var t = engine == RecognitionEngine.whisperCpp
-          ? parseWhisperJson(await jsonFile.readAsString())
-          : parseNemoJson(await jsonFile.readAsString());
-      if (_commandsEnabled) {
-        t = Transcript(t.lang, [
-          for (final segment in t.segments) _applyCommands(segment),
-        ]);
+      final recognized = await jsonFile.readAsString();
+      final earlier = engine == RecognitionEngine.whisperCpp && it.resumeFrom > 0
+          ? it.live.where((seg) => seg.from < it.resumeFrom).toList()
+          : const <Segment>[];
+
+      /// Текст из ответа движка. С разметкой голосов [turns] — тот же
+      /// разбор, только фрагменты режутся на смене говорящего; без неё —
+      /// ровно прежний.
+      Transcript build([List<SpeakerTurn> turns = const []]) {
+        var t = engine == RecognitionEngine.whisperCpp
+            ? parseWhisperJson(recognized, turns: turns, finish: false)
+            : parseNemoJson(recognized, turns: turns, finish: false);
+        if (_commandsEnabled) {
+          t = t.copyWith(segments: [
+            for (final segment in t.segments) _applyCommands(segment),
+          ]);
+        }
+        // Заход после паузы знает только свою половину записи. Начало
+        // осталось в том, что уже показали на экране, — оттуда и берём.
+        // Слов с таймкодами у него нет: время внутри фрагментов
+        // раскладывается по доле символов.
+        if (earlier.isNotEmpty) {
+          t = t.copyWith(segments: [
+            for (final seg in earlier)
+              if (turns.isEmpty) seg else ...splitBySpeakers(seg, turns),
+            ...t.segments,
+          ]);
+        }
+        return t;
       }
-      // Заход после паузы знает только свою половину записи. Начало
-      // осталось в том, что уже показали на экране, — оттуда и берём.
-      if (engine == RecognitionEngine.whisperCpp && it.resumeFrom > 0) {
-        t = Transcript(t.lang, [
-          ...it.live.where((seg) => seg.from < it.resumeFrom),
-          ...t.segments,
-        ]);
+
+      var t = build();
+      var note = '';
+      String? problem;
+      if (opts.diarize) {
+        final voiced = await _diarizeStep(it, opts, wav, t, emit, build);
+        t = voiced.transcript;
+        note = voiced.note;
+        problem = voiced.problem;
+        it = _find(it) ?? it;
       }
       final beside = state.saveNextToSource
           ? await _saveBesideSource(it, t)
@@ -1201,12 +1258,16 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
             transcript: t,
             progress: 1,
             state: JobState.done,
+            error: problem,
             besideSource: beside.path,
             took: took,
-            detail: currentL10n().jobDetailLangSegments(
-              languageName(t.lang),
-              segmentsLabel(t.segments.length),
-            ),
+            detail: [
+              currentL10n().jobDetailLangSegments(
+                languageName(t.lang),
+                segmentsLabel(t.segments.length),
+              ),
+              if (note.isNotEmpty) note,
+            ].join(' · '),
           ),
         ).copyWith(status: beside.problem ?? placed ?? state.status),
       );
@@ -1281,6 +1342,12 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     if (!state.running) return;
     _pauseWanted = true;
     _proc?.kill();
+    // Разметку голосов посреди не прерываем: продолжить её с места нельзя,
+    // она считается по всей записи сразу. Она доходит до конца, а очередь
+    // встаёт перед следующей записью.
+    if (state.jobs.any((j) => j.state == JobState.diarizing)) {
+      _pauseAfterStep = true;
+    }
   }
 
   /// Переставить строку. Место вставки список считает сам — уже с оглядкой
@@ -1569,9 +1636,9 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     try {
       final beside = job.besideSource;
       if (beside != null && File(beside).existsSync()) {
-        await File(
-          beside,
-        ).writeAsString(renderPlain(transcript.segments, false));
+        await File(beside).writeAsString(
+          renderPlain(transcript.segments, false, speakers: transcript.speakers),
+        );
       }
       for (final path in Sources.transcriptsFor(state.libraryPath, job.path)) {
         final format = formatOfFile(path);
@@ -1585,10 +1652,368 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     }
   }
 
+  // ── голоса ────────────────────────────────────────────────────────────────
+
+  /// Дольше этого запись сама на голоса не размечается: на пике разметка
+  /// держит в памяти весь звук дважды (около 460 МБ на час, 1.4 ГБ на три
+  /// часа). Резать на куски нельзя — голоса разных кусков между собой
+  /// не сопоставятся. Поэтому длинную запись не размечаем молча, а
+  /// говорим, сколько памяти нужно, и оставляем кнопку «Всё равно
+  /// определить голоса».
+  static const _diarizeLimit = Duration(hours: 2);
+
+  /// Шаг «Определяю голоса» после распознавания.
+  ///
+  /// Что бы ни случилось внутри, готовый текст не теряется: сбой,
+  /// остановка, тишина или один голос возвращают расшифровку без голосов
+  /// и объяснение в [note] (а сбой — ещё и причину в [problem]).
+  ///
+  /// [build] собирает расшифровку из ответа движка по разметке голосов —
+  /// у whisper там слова с потокенным временем, точнее, чем раскладка по
+  /// символам.
+  Future<({Transcript transcript, String note, String? problem})>
+  _diarizeStep(
+    Job job,
+    RunOptions opts,
+    String wav,
+    Transcript plain,
+    Emitter<QueueState> emit,
+    Transcript Function([List<SpeakerTurn> turns]) build, {
+    bool manual = false,
+  }) async {
+    final l10n = currentL10n();
+    ({Transcript transcript, String note, String? problem}) plainWith(
+      String note, [
+      String? problem,
+    ]) => (transcript: plain, note: note, problem: problem);
+    if (plain.segments.isEmpty) return plainWith('');
+
+    final seconds = wavSecondsBySize(File(wav).lengthSync());
+    if (!manual && seconds > _diarizeLimit.inSeconds) {
+      return plainWith(
+        l10n.speakersSkippedLong(
+          humanDuration(_diarizeLimit.inMilliseconds),
+          sizeLabelMb(diarizationPeakBytes(seconds) ~/ (1024 * 1024)),
+        ),
+      );
+    }
+
+    // Перед шагом диктовке уступаем, как перед распознаванием; посреди —
+    // нет: разметка считается по всей записи сразу, и прерванную пришлось
+    // бы начинать заново.
+    if (!await _yieldToDictation(job, emit)) return plainWith(l10n.speakersStopped);
+    var it = _find(job) ?? job;
+    it = it.copyWith(
+      state: JobState.diarizing,
+      progress: 0,
+      live: plain.segments,
+      detail: l10n.jobDetailDiarizing,
+    );
+    emit(_replace(state, job, it).copyWith(status: l10n.statusDiarizing(it.name)));
+
+    final settings = Settings.load();
+    final embedder = DiarizationModels.embedderById(
+      settings[diarizationEmbedderSetting] as String?,
+    );
+    if (!DiarizationModels.isInstalled(embedder)) {
+      final mb = DiarizationModels.downloadMb(embedder);
+      emit(
+        _replace(
+          state,
+          it,
+          it.copyWith(detail: l10n.jobDetailSpeakerModelsLoading(sizeLabelMb(mb))),
+        ),
+      );
+      final problem = await DiarizationModels.ensureInstalled(
+        embedder: embedder,
+        cancelled: () => _stopRequested,
+        onProgress: (share) => add(JobAdvanced(it, progress: share)),
+      );
+      if (_stopRequested) return plainWith(l10n.speakersStopped);
+      if (problem != null) {
+        Log.error('Diarization', 'Models not installed: $problem');
+        return plainWith(l10n.speakersModelsFailed, problem);
+      }
+      it = _find(it) ?? it;
+      emit(
+        _replace(
+          state,
+          it,
+          it.copyWith(progress: 0, detail: l10n.jobDetailDiarizing),
+        ),
+      );
+    }
+
+    final threshold =
+        (settings[diarizationThresholdSetting] as num?)?.toDouble() ??
+        embedder.threshold;
+    final diarizer = _diarizer = Diarizer();
+    final watch = Stopwatch()..start();
+    try {
+      Log.info(
+        'Diarization',
+        'Started: ${it.name}, embedder=${embedder.id}, threshold=$threshold, '
+            'speakers=${opts.speakerCount}, audio=${seconds.round()}s',
+      );
+      final raw = await diarizer.run(
+        wav,
+        DiarizationSettings(
+          segmentationModel: DiarizationModels.segmentationModel,
+          embeddingModel: DiarizationModels.embedderPath(embedder),
+          threshold: threshold,
+          numSpeakers: opts.speakerCount,
+        ),
+        onProgress: (share) => add(JobAdvanced(it, progress: share)),
+      );
+      final turns = relabelTurns(raw);
+      Log.info(
+        'Diarization',
+        'Done: ${it.name}, ${turns.length} turns, '
+            '${turns.map((t) => t.clusterId).toSet().length} voices, '
+            '${watch.elapsedMilliseconds}ms',
+      );
+      // Речи не нашлось — это не сбой: в тишине голосов и не бывает.
+      if (turns.isEmpty) return plainWith(l10n.speakersNoSpeech);
+      final voiced = finishSpeakers(
+        build(turns),
+        info: DiarizationInfo(
+          segmentation: '${DiarizationModels.segmentationName}/model.int8.onnx',
+          embedding: embedder.file,
+          threshold: threshold,
+          requestedSpeakers: opts.speakerCount,
+          detectedSpeakers: 0,
+        ),
+        defaultName: l10n.speakerDefaultName,
+      );
+      if (!voiced.hasSpeakers) {
+        return (transcript: voiced, note: l10n.speakersSingle, problem: null);
+      }
+      return (
+        transcript: voiced,
+        note: l10n.speakersFound(voiced.speakers.length),
+        problem: null,
+      );
+    } on DiarizationCancelled {
+      return plainWith(l10n.speakersStopped);
+    } catch (err, st) {
+      Log.error('Diarization', 'Failed: ${it.name}', err, st);
+      return plainWith(l10n.speakersFailed, '$err');
+    } finally {
+      _diarizer = null;
+    }
+  }
+
+  /// Определить голоса в готовой расшифровке — по кнопке.
+  ///
+  /// Звук готовится заново: временный WAV распознавания к этому времени
+  /// уже удалён. Слов с потокенным временем здесь тоже нет, поэтому
+  /// фрагменты режутся по доле символов — чуть грубее, чем сразу после
+  /// распознавания.
+  Future<void> _onDiarizationRequested(
+    DiarizationRequested e,
+    Emitter<QueueState> emit,
+  ) async {
+    final job = _find(e.job);
+    final t = job?.transcript;
+    if (job == null || t == null || job.imported || state.running) return;
+    emit(state.copyWith(running: true));
+    _stopRequested = false;
+    _pauseWanted = false;
+    _pauseAfterStep = false;
+    _syncPolling();
+    final tmp = await Directory.systemTemp.createTemp(appName);
+    try {
+      final wav = await os.toWav(job.path, os.join(tmp.path, 'voices.wav'));
+      final plain = t.copyWith(
+        segments: [for (final s in t.segments) s.withSpeaker(null, overlap: false)],
+        clearSpeakers: true,
+      );
+      Transcript build([List<SpeakerTurn> turns = const []]) => turns.isEmpty
+          ? plain
+          : plain.copyWith(
+              segments: [
+                for (final s in plain.segments) ...splitBySpeakers(s, turns),
+              ],
+            );
+      final opts = state.optionsFor(job);
+      final voiced = await _diarizeStep(
+        job,
+        opts,
+        wav,
+        plain,
+        emit,
+        build,
+        manual: true,
+      );
+      // Имена, которые уже дали голосам, переживают повторную разметку:
+      // метки стабильны (порядок первого появления), и «Иван» остаётся
+      // за тем же голосом, если разметка нашла его снова.
+      final named = voiced.transcript.hasSpeakers
+          ? voiced.transcript.copyWith(
+              speakers: [
+                for (final s in voiced.transcript.speakers)
+                  s.copyWith(
+                    name:
+                        t.speakers
+                            .where((old) => old.id == s.id)
+                            .firstOrNull
+                            ?.name ??
+                        s.name,
+                  ),
+              ],
+            )
+          : voiced.transcript;
+      final now = _find(job) ?? job;
+      final done = now.copyWith(
+        state: JobState.done,
+        transcript: named,
+        progress: 1,
+        detail: [
+          currentL10n().jobDetailLangSegments(
+            languageName(named.lang),
+            segmentsLabel(named.segments.length),
+          ),
+          if (voiced.note.isNotEmpty) voiced.note,
+        ].join(' · '),
+        error: voiced.problem,
+      );
+      emit(
+        _replace(state, now, done).copyWith(
+          status: voiced.note.isEmpty ? state.status : voiced.note,
+        ),
+      );
+      await _rewriteStoredTranscript(done);
+    } catch (err, st) {
+      Log.error('Diarization', 'Manual run failed: ${job.name}', err, st);
+      final now = _find(job) ?? job;
+      emit(
+        _replace(
+          state,
+          now,
+          now.copyWith(state: JobState.done, error: '$err'),
+        ).copyWith(status: currentL10n().speakersFailed),
+      );
+    } finally {
+      try {
+        tmp.deleteSync(recursive: true);
+      } catch (_) {}
+      emit(state.copyWith(running: false));
+      _syncPolling();
+    }
+  }
+
+  /// Записать правку голосов: в очередь и в уже сохранённые копии
+  /// (рядом с записью и в библиотеке) — так же, как отмена голосовой
+  /// замены. Новых файлов не создаём.
+  Future<void> _changeSpeakers(
+    Job job,
+    Transcript changed,
+    Emitter<QueueState> emit,
+    String status,
+  ) async {
+    final now = job.copyWith(transcript: changed);
+    emit(_replace(state, job, now).copyWith(status: status));
+    await _rewriteStoredTranscript(now);
+  }
+
+  Future<void> _onSpeakerRenamed(
+    SpeakerRenamed e,
+    Emitter<QueueState> emit,
+  ) async {
+    final job = _find(e.job);
+    final t = job?.transcript;
+    if (job == null || t == null) return;
+    final l10n = currentL10n();
+    final name = e.name.trim();
+    final speakers = [
+      for (final s in t.speakers)
+        if (s.id == e.speaker)
+          s.copyWith(
+            name: name.isEmpty
+                ? l10n.speakerDefaultName(speakerNumber(s.id))
+                : name,
+          )
+        else
+          s,
+    ];
+    await _changeSpeakers(
+      job,
+      t.copyWith(speakers: speakers),
+      emit,
+      l10n.statusSpeakerRenamed(
+        speakers.where((s) => s.id == e.speaker).firstOrNull?.name ?? name,
+      ),
+    );
+  }
+
+  Future<void> _onSpeakersMerged(
+    SpeakersMerged e,
+    Emitter<QueueState> emit,
+  ) async {
+    final job = _find(e.job);
+    final t = job?.transcript;
+    if (job == null || t == null || e.from == e.into) return;
+    final changed = finishSpeakers(
+      t.copyWith(
+        segments: [
+          for (final s in t.segments)
+            s.speaker == e.from ? s.withSpeaker(e.into) : s,
+        ],
+      ),
+      info: t.diarization,
+      defaultName: currentL10n().speakerDefaultName,
+    );
+    await _changeSpeakers(
+      job,
+      changed,
+      emit,
+      currentL10n().statusSpeakersMerged(
+        t.speakerName(e.from),
+        t.speakerName(e.into),
+      ),
+    );
+  }
+
+  Future<void> _onSegmentSpeakerChanged(
+    SegmentSpeakerChanged e,
+    Emitter<QueueState> emit,
+  ) async {
+    final job = _find(e.job);
+    final t = job?.transcript;
+    if (job == null || t == null) return;
+    final current = t.segments.where((s) => identical(s, e.segment)).firstOrNull;
+    if (current == null || current.speaker == e.speaker) return;
+    final replaced = job.replaceSegment(current, current.withSpeaker(e.speaker));
+    final changed = finishSpeakers(
+      replaced.transcript!,
+      info: t.diarization,
+      defaultName: currentL10n().speakerDefaultName,
+    );
+    await _changeSpeakers(
+      job,
+      changed,
+      emit,
+      currentL10n().statusSegmentReassigned(t.speakerName(e.speaker)),
+    );
+  }
+
+  void _onJobOptionsEdited(JobOptionsEdited e, Emitter<QueueState> emit) {
+    final job = state.jobs.where((j) => j.path == e.path).firstOrNull;
+    if (job == null) return;
+    emit(
+      _replace(
+        state,
+        job,
+        job.copyWith(overrides: e.change(job.overrides ?? state.defaults)),
+      ),
+    );
+  }
+
   void _onStop(StopRequested e, Emitter<QueueState> emit) {
     if (!state.running) return;
     _stopRequested = true;
     _proc?.kill();
+    _diarizer?.cancel();
     emit(state.copyWith(status: currentL10n().statusStopping));
   }
 
@@ -1642,7 +2067,9 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
       final path =
           job.besideSource ??
           os.join(dir, '${freeStem(dir, _stem(job.name), '.txt')}.txt');
-      await File(path).writeAsString(renderPlain(t.segments, false));
+      await File(
+        path,
+      ).writeAsString(renderPlain(t.segments, false, speakers: t.speakers));
       return (path: path, problem: null);
     } catch (e) {
       stderr.writeln('tsukiko: копия рядом с записью не легла — $e');
@@ -1996,9 +2423,12 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
         // На вкладке «Модели» теперь можно не только скачать файл, но и
         // назначить его новым расшифровкам. Открытая запись хранит свой
         // выбор, поэтому меняем именно defaults.
-        defaults: selectedModel == null
-            ? state.defaults
-            : state.defaults.copyWith(model: selectedModel),
+        // «Несколько голосов» по умолчанию тоже можно включить в окне
+        // настроек — ключ общий с умолчаниями очереди.
+        defaults: (selectedModel == null
+                ? state.defaults
+                : state.defaults.copyWith(model: selectedModel))
+            .copyWith(diarize: s['diarize'] as bool?),
         models: _withOwn(models, selectedModel ?? state.defaults.model),
         vocabulary: _vocabulary,
       ),

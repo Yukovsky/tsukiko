@@ -1693,5 +1693,148 @@
         "type": "String"
       }
     }
-  }
+  },
+  "jobStateDiarizing": "Определяю голоса",
+  "diffSpeakers": "голоса",
+  "jobDetailDiarizing": "Определяю голоса",
+  "statusDiarizing": "{name} · определяю голоса",
+  "@statusDiarizing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "jobDetailSpeakerModelsLoading": "Загружаю модели голосов · {size}",
+  "@jobDetailSpeakerModelsLoading": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "speakerDefaultName": "Голос {number}",
+  "@speakerDefaultName": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "speakersSkippedLong": "Голоса не размечены: запись длиннее {limit}, понадобится около {memory} памяти",
+  "@speakersSkippedLong": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      },
+      "memory": {
+        "type": "String"
+      }
+    }
+  },
+  "speakersStopped": "Голоса не размечены: остановлено",
+  "speakersModelsFailed": "Голоса не размечены: модели не загрузились",
+  "speakersNoSpeech": "Голосов не найдено",
+  "speakersSingle": "Один голос",
+  "speakersFound": "{count, plural, one{{count} голос} few{{count} голоса} many{{count} голосов} other{{count} голоса}}",
+  "@speakersFound": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "speakersFailed": "Голоса не размечены: сбой разметки",
+  "statusSpeakerRenamed": "Голос переименован: {name}",
+  "@statusSpeakerRenamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "statusSpeakersMerged": "«{from}» объединён с «{into}»",
+  "@statusSpeakersMerged": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "into": {
+        "type": "String"
+      }
+    }
+  },
+  "statusSegmentReassigned": "Фрагмент отдан голосу «{name}»",
+  "@statusSegmentReassigned": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionSpeakers": "Несколько голосов",
+  "checkDiarize": "Определять, кто говорит",
+  "hintDiarize": "После расшифровки приложение разметит голоса, подпишет реплики и отметит перебивки знаком ⇄. Всё считается на этом компьютере.",
+  "labelSpeakerCount": "Сколько голосов",
+  "optionSpeakersAuto": "Авто",
+  "hintSpeakerCount": "Число — цель для разметки, а не обещание: голосов может найтись меньше.",
+  "speakerModelsMissing": "Модели голосов скачаются при первом запуске: {size}",
+  "@speakerModelsMissing": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "speakerModelsReady": "Модели голосов установлены",
+  "askSpeakerModelsTitle": "Скачать модели голосов?",
+  "askSpeakerModelsBody": "Режиму «Несколько голосов» нужны две модели — {size}. Они скачаются с GitHub один раз и дальше работают без сети.",
+  "@askSpeakerModelsBody": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonEnableAndDownload": "Включить",
+  "panelVoices": "Голоса",
+  "turnsLabel": "{count, plural, one{{count} реплика} few{{count} реплики} many{{count} реплик} other{{count} реплики}}",
+  "@turnsLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "speakerStats": "{time} · {turns}",
+  "@speakerStats": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "turns": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonRenameSpeaker": "Переименовать…",
+  "buttonMergeSpeaker": "Объединить с…",
+  "menuAssignSpeaker": "Назначить другому голосу",
+  "renameSpeakerTitle": "Имя голоса",
+  "mergeSpeakerTitle": "Объединить «{name}» с…",
+  "@mergeSpeakerTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "warningFragmented": "Похоже, голоса разбились на слишком много частей — попробуйте указать число участников.",
+  "buttonDiarizeNow": "Определить голоса",
+  "buttonDiarizeAgain": "Определить голоса заново",
+  "hintOverlap": "⇄ — реплика началась поверх чужой. Слова, сказанные одновременно, достаются одному из голосов.",
+  "checkDiarizeDefault": "Определять голоса в новых расшифровках",
+  "labelSpeakerModel": "Модель голосов",
+  "hintSpeakerModel": "Модель, которая отличает один голос от другого. Скачивается при первом включении режима; запись при этом никуда не уходит.",
+  "speakerOverlapTooltip": "Перебивка: говорили одновременно"
 }

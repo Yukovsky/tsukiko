@@ -11,6 +11,7 @@ import '../../../core/transcript.dart';
 import '../../../design/design.dart';
 import '../../../design/mascot.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import 'speakers.dart';
 
 /// Фрагмент расшифровки и полог, который встречает перетаскиваемый файл.
 class SegmentRow extends StatefulWidget {
@@ -21,12 +22,21 @@ class SegmentRow extends StatefulWidget {
     required this.onCopied,
     required this.onReplacementUndo,
     this.highlight = '',
+    this.speakers = const [],
+    this.onSpeakerChosen,
   });
   final Segment segment;
   final bool showTimestamp;
   final VoidCallback onCopied;
   final ValueChanged<int> onReplacementUndo;
   final String highlight;
+
+  /// Голоса расшифровки. Меньше двух — метки не показываются: «Голос 1»
+  /// у каждой строки ничего не сообщает.
+  final List<SpeakerInfo> speakers;
+
+  /// Отдать фрагмент другому голосу. null — переназначать нельзя.
+  final ValueChanged<String>? onSpeakerChosen;
 
   @override
   State<SegmentRow> createState() => SegmentRowState();
@@ -150,8 +160,15 @@ class SegmentRowState extends State<SegmentRow>
     return TextSpan(style: Type.body, children: spans);
   }
 
+  SpeakerInfo? get _speaker {
+    final id = widget.segment.speaker;
+    if (id == null || widget.speakers.length < 2) return null;
+    return widget.speakers.where((s) => s.id == id).firstOrNull;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final speaker = _speaker;
     final curve = CurvedAnimation(
       parent: _enter,
       curve: Motion.curve(context, Motion.settleCurve),
@@ -202,7 +219,51 @@ class SegmentRowState extends State<SegmentRow>
                     ),
                   ),
                 ),
-              Expanded(child: SelectableText.rich(_spans(context))),
+              Expanded(
+                child: speaker == null
+                    ? SelectableText.rich(_spans(context))
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SpeakerLabel(
+                            speaker: speaker,
+                            overlap: widget.segment.overlap,
+                          ),
+                          const SizedBox(height: Gap.hint),
+                          SelectableText.rich(_spans(context)),
+                        ],
+                      ),
+              ),
+              // Переназначить фрагмент — меню из остальных голосов. Как и
+              // копирование, проявляется под указателем: в покое строка
+              // должна читаться текстом, а не панелью кнопок.
+              if (speaker != null && widget.onSpeakerChosen != null)
+                SizedBox(
+                  width: IconSize.toolbar + Gap.inner * 2,
+                  height: IconSize.toolbar + Gap.inner,
+                  child: AnimatedOpacity(
+                    duration: Motion.dur(context, Motion.quick),
+                    opacity: _hover ? 1 : 0,
+                    child: IgnorePointer(
+                      ignoring: !_hover,
+                      child: MacosTooltip(
+                        message: AppLocalizations.of(context).menuAssignSpeaker,
+                        child: MacosPulldownButton(
+                          icon: CupertinoIcons.person_2,
+                          items: [
+                            for (final other in widget.speakers)
+                              if (other.id != speaker.id)
+                                MacosPulldownMenuItem(
+                                  title: Text(other.name),
+                                  onTap: () =>
+                                      widget.onSpeakerChosen!(other.id),
+                                ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (widget.segment.replacements.isNotEmpty)
                 SizedBox(
                   width: IconSize.toolbar + Gap.inner,

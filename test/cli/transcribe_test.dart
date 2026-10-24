@@ -26,6 +26,8 @@ void main() {
     final pure = [
       'lib/core/whisper.dart',
       'lib/core/transcript.dart',
+      'lib/core/speakers.dart',
+      'lib/core/diarization/wav_samples.dart',
       'lib/core/library.dart',
       'lib/core/recognition.dart',
       'lib/cli/transcribe.dart',
@@ -38,6 +40,10 @@ void main() {
       // написано прозой, и как раз затем, чтобы его сюда не втащили.
       expect(File(f).readAsStringSync(), isNot(contains("import 'package:flutter")),
           reason: '$f тянет Flutter — tsukiko-transcribe больше не соберётся');
+      // Нативной библиотеки sherpa у программы расшифровки тоже нет:
+      // разметка голосов живёт в `core/diarization/diarizer.dart`.
+      expect(File(f).readAsStringSync(), isNot(contains("import 'package:sherpa")),
+          reason: '$f тянет sherpa-onnx — ему не место в tsukiko-transcribe');
     }
   });
 
@@ -55,6 +61,16 @@ void main() {
       expect(parseArgs(['--выдумка', 'а.m4a']).problem, contains('незнакомый'));
       expect(parseArgs(['а.m4a', 'б.m4a']).problem, contains('один файл'));
       expect(parseArgs(['--lang']).problem, isNotNull);
+    });
+
+    test('--speakers: «auto» или число', () {
+      expect(parseArgs(['а.m4a']).speakers, isNull);
+      expect(parseArgs(['--speakers', 'auto', 'а.m4a']).speakers, 0);
+      expect(parseArgs(['--speakers', '3', 'а.m4a']).speakers, 3);
+      expect(
+        parseArgs(['--speakers', 'много', 'а.m4a']).problem,
+        contains('--speakers'),
+      );
     });
 
     test('--status и --help файла не требуют', () {

@@ -84,7 +84,9 @@ class Job extends Equatable {
   String get path => file.path;
   String get name => os.basename(file.path);
   bool get active =>
-      state == JobState.converting || state == JobState.transcribing;
+      state == JobState.converting ||
+      state == JobState.transcribing ||
+      state == JobState.diarizing;
 
   /// Начатое и не досчитанное. Такое не бросают: его продолжают.
   bool get paused => state == JobState.paused;
@@ -148,7 +150,7 @@ class Job extends Equatable {
     final ready = transcript;
     return ready == null
         ? copyWith(live: replace(live))
-        : copyWith(transcript: Transcript(ready.lang, replace(ready.segments)));
+        : copyWith(transcript: ready.copyWith(segments: replace(ready.segments)));
   }
 
   /// Забыть результат и встать обратно в очередь — «распознать заново».

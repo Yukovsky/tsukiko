@@ -80,4 +80,46 @@ void main() {
 
     expect(undone, 0);
   });
+
+  testWidgets('метка голоса — имя рядом с цветом и знак перебивки', (
+    tester,
+  ) async {
+    const voices = [
+      SpeakerInfo(id: 'S1', name: 'Иван'),
+      SpeakerInfo(id: 'S2', name: 'Мария', colorIndex: 1),
+    ];
+    String? chosen;
+    await tester.pumpWidget(
+      app(
+        SegmentRow(
+          segment: const Segment(0, 0, 'Текст', speaker: 'S2', overlap: true),
+          showTimestamp: false,
+          onCopied: () {},
+          onReplacementUndo: (_) {},
+          speakers: voices,
+          onSpeakerChosen: (id) => chosen = id,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Мария'), findsOneWidget);
+    expect(find.text(overlapMark), findsOneWidget);
+    expect(chosen, isNull);
+  });
+
+  testWidgets('один голос — метки нет', (tester) async {
+    await tester.pumpWidget(
+      app(
+        SegmentRow(
+          segment: const Segment(0, 0, 'Текст', speaker: 'S1'),
+          showTimestamp: false,
+          onCopied: () {},
+          onReplacementUndo: (_) {},
+          speakers: const [SpeakerInfo(id: 'S1', name: 'Иван')],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Иван'), findsNothing);
+  });
 }

@@ -10,6 +10,7 @@ import 'package:macos_ui/macos_ui.dart';
 import '../../core/app_locale.dart';
 import '../../core/app_theme.dart';
 import '../../design/theme_fade.dart';
+import '../../core/diarization/diarization_models.dart';
 import '../../core/library.dart';
 import '../../core/logger.dart';
 import '../../core/models.dart';
@@ -1617,7 +1618,34 @@ class _SettingsBodyState extends State<SettingsBody>
     SectionTitle(l10n.sectionInTranscriberWindow),
     Check(l10n.checkShowTimestamps, s.timestamps, _cubit.setTimestamps),
     Hint(l10n.hintShowTimestamps, under: true),
+    SectionTitle(l10n.sectionSpeakers),
+    Check(l10n.checkDiarizeDefault, s.diarizeDefault, _cubit.setDiarizeDefault),
+    Hint(l10n.hintDiarize, under: true),
+    const SizedBox(height: Gap.item),
+    Text(l10n.labelSpeakerModel, style: Type.control),
+    const SizedBox(height: Gap.tight),
+    MacosPopupButton<String>(
+      value: DiarizationModels.embedderById(s.diarizationEmbedder).id,
+      items: [
+        for (final e in DiarizationModels.embedders)
+          MacosPopupMenuItem(
+            value: e.id,
+            child: Text('${_embedderName(e)} · ${sizeLabelMb(e.mb)}'),
+          ),
+      ],
+      onChanged: (value) {
+        if (value != null) _cubit.setDiarizationEmbedder(value);
+      },
+    ),
+    Hint(l10n.hintSpeakerModel),
   ];
+
+  /// Имена моделей голосов — собственные, их не переводят.
+  static String _embedderName(DiarizationEmbedder e) => switch (e.id) {
+    'titanet-small' => 'TitaNet-S (NVIDIA NeMo)',
+    'wespeaker-resnet34' => 'ResNet34 (WeSpeaker)',
+    _ => 'ERes2Net (3D-Speaker)',
+  };
 
   /// Местное API: та самая галка, которой открывают дверь наружу.
   ///
