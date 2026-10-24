@@ -197,7 +197,20 @@ class DictationBridge {
   /// поднялось и никто ничего не ждёт.
   void PrewarmHud();
 
+  /// Вернуть буфер обмена, каким он был до вставки диктовки. См. .cpp.
   void RestoreClipboard();
+
+  /// Прежнее содержимое буфера: все форматы, которые лежат в обычной
+  /// памяти (текст, картинки CF_DIB, файлы CF_HDROP, HTML, RTF…).
+  struct SavedClipboardFormat {
+    UINT format;
+    std::vector<uint8_t> data;
+  };
+  std::vector<SavedClipboardFormat> saved_clipboard_;
+  /// Возврат ещё ждёт своего таймера.
+  bool clipboard_restore_pending_ = false;
+  /// Номер изменения буфера сразу после нашей записи.
+  DWORD clipboard_sequence_ = 0;
 
   /// Погасить движок расшифровки, записанный очередью. См. .cpp.
   void KillRecognizer();
