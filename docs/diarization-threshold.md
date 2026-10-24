@@ -118,3 +118,35 @@ dart run tool/diarize_probe.dart \
 ```
 
 Each `x.wav` may have `x.rttm` next to it; then the error column is filled in.
+
+## Whole diarizers compared (same 9 recordings)
+
+Frame error (lower is better) and voices found / expected. Linux x64, 4 cores, 15 GB RAM, CPU only.
+
+| Recording | sherpa + TitaNet-S 0.9 (current) | Sortformer v2, streaming | pyannote community-1 (VBx) | DiariZen WavLM-large |
+| :--- | --- | --- | --- | --- |
+| ru_2a | .10 · 2/2 | .10 · 2/2 | .11 · 2/2 | .12 · 2/2 |
+| ru_2b | .33 · 3/2 | .26 · 2/2 | .36 · 2/2 | .33 · 2/2 |
+| ru_3 | .38 · 3/3 | .15 · 3/3 | .25 · 3/3 | .16 · 3/3 |
+| ru_4 | .07 · 4/4 | .09 · 4/4 | .15 · 4/4 | .09 · 4/4 |
+| en_2a | .35 · 2/2 | .58 · 3/2 | .45 · 3/2 | .45 · 3/2 |
+| en_2b | .24 · 2/2 | .21 · 2/2 | .21 · 2/2 | .28 · 2/2 |
+| en_3 | .30 · 3/3 | .25 · 3/3 | .35 · 3/3 | .28 · 3/3 |
+| en_4 | .36 · 5/4 | .16 · 4/4 | .25 · 4/4 | .14 · 4/4 |
+| AMI meeting (17.5 min) | 15 voices; .36 with 4 given | .29 · 4/4 | **.19** · 5/4 | .27 · 5/4 |
+| **Mean, 8 VoxForge files** | 0.27 | **0.23** | 0.27 | 0.23 |
+| **Correct voice count** | 6/9 | **8/9** | 7/9 | 7/9 |
+| Time, AMI 17.5 min | ~3 min | 18 min | 8 min | (slowest) |
+| Peak memory | ~0.5 GB | 0.2–0.5 GB | 0.3–0.4 GB | **12–13.6 GB** |
+| License | MIT + Apache-2.0 | CC BY 4.0 | CC BY 4.0 (gated on HF) | **CC BY-NC 4.0** |
+| How it would ship | already shipped | `nemo-speech diarize`, already bundled | needs a VBx port (speakrs does it in Rust) | Python + PyTorch |
+
+Runs: Sortformer — `nemo-speech 0.1.0 diarize` (the offline mode was faster on short files but
+needed up to 2.8 GB and failed on the 17-minute meeting); community-1 — the `speakrs` 0.6 Rust
+port on CPU with the ONNX/PLDA files from `avencera/speakrs-models`; DiariZen —
+`BUT-FIT/diarizen-wavlm-large-s80-md` with its own pyannote fork, PyTorch 2.1 CPU.
+VibeVoice-ASR was not run: 8.7 B parameters, 17.3 GB of weights.
+
+Reading: there is no single winner. Sortformer gets the voice count right most often and wins on
+3–4 people, community-1 is clearly best on the real meeting, DiariZen is good but non-commercial
+and needs ~13 GB of RAM, the current pipeline is the fastest and is fine on 2-person recordings.
