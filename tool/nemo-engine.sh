@@ -5,11 +5,11 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=0.1.0
+VERSION=0.2.0
 ARM_ASSET="nemo-speech-$VERSION-macos-aarch64-metal.tar.gz"
 X64_ASSET="nemo-speech-$VERSION-macos-x86_64-cpu.tar.gz"
-ARM_SHA=f1dff4f9dd9c96214f8cb78b982812459132df8a4ad1a42409fd94de4a366244
-X64_SHA=042a4612e07460fab6a39b5d862aa1e39d0ac3eaedfdb979f3f5fc12de510c20
+ARM_SHA=5cb02ba7c04f0b5585ce5cde9c830be5f0b7dfb4c83083c500109c381b4f2da9
+X64_SHA=d52c318d8197511d4f7eee02bcf05511f7e91b300555a130b562e571695a0f39
 BASE_URL="https://github.com/NVIDIA/NeMo-Speech.cpp/releases/download/v$VERSION"
 
 OUT=macos/Engine/nemo
@@ -47,8 +47,11 @@ rm -rf "$ARM" "$X64" "$OUT"
 mkdir -p "$ARM" "$X64" "$OUT/bin" "$OUT/lib" "$OUT/share"
 tar xzf "$WORK/$ARM_ASSET" -C "$ARM"
 tar xzf "$WORK/$X64_ASSET" -C "$X64"
-ARM_ROOT="$ARM/nemo-speech"
-X64_ROOT="$X64/nemo-speech"
+# В 0.1.0 корень архива назывался `nemo-speech/`, с 0.2.0 в нём версия
+# и платформа (`nemo-speech-0.2.0-macos-aarch64-metal/`). Берём ту
+# единственную папку, что лежит в корне, как бы она ни называлась.
+ARM_ROOT=$(find "$ARM" -mindepth 1 -maxdepth 1 -type d | head -1)
+X64_ROOT=$(find "$X64" -mindepth 1 -maxdepth 1 -type d | head -1)
 
 lipo -create "$ARM_ROOT/bin/nemo-speech" "$X64_ROOT/bin/nemo-speech" \
   -output "$OUT/bin/nemo-speech"

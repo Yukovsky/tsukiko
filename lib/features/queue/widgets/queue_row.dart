@@ -186,7 +186,7 @@ class StateGlyph extends StatelessWidget {
           CupertinoIcons.pause_circle_fill,
           MacosColors.systemOrangeColor
         ),
-      JobState.converting || JobState.transcribing => (
+      JobState.converting || JobState.transcribing || JobState.diarizing => (
           CupertinoIcons.waveform_circle_fill,
           MacosTheme.of(context).primaryColor
         ),

@@ -13,6 +13,11 @@ import 'library.dart'
 /// получали готовое значение без разрешения ссылок.
 const transcriberUsesDictationModelSetting = 'transcriberUsesDictationModel';
 
+/// Имя порта, через который диктовка (изолят панели) отдаёт записанный
+/// разговор очереди главного окна. Изоляты живут в одном процессе, и
+/// [IsolateNameServer] связывает их напрямую — без файла и без сети.
+const conversationInboxPort = 'app.yuko.tsukiko/conversation-inbox';
+
 /// Хранение настроек на диске.
 ///
 /// Файл настроек правят три изолята: главное окно, панель у строки меню и

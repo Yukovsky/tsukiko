@@ -51,6 +51,10 @@
 static const ULONG_PTR kOurInput = 0x7375'6B69;  // 'suki'
 // Сколько итоговое состояние висит на плавающей панели.
 #define ID_HUD_TIMER 2002
+// Возврат прежнего буфера обмена после вставки диктовки.
+#define ID_CLIPBOARD_TIMER 2005
+// Через сколько миллисекунд после Ctrl+V его возвращать.
+#define CLIPBOARD_RESTORE_MS 1500
 
 namespace {
 
@@ -270,6 +274,12 @@ void DictationBridge::AttachPanel(flutter::BinaryMessenger* messenger,
 }
 
 void DictationBridge::Shutdown() {
+  // Выходим, не дождавшись таймера, — вернуть буфер надо сейчас, иначе
+  // скопированное до диктовки пропало бы вместе с приложением.
+  if (clipboard_restore_pending_) {
+    KillTimer(main_window_, ID_CLIPBOARD_TIMER);
+    RestoreClipboard();
+  }
   UninstallKeyboardHook();
   RemoveTrayIcon();
   SettleMicStart();
@@ -993,6 +1003,11 @@ bool DictationBridge::HandleWindowMessage(HWND hwnd, UINT message, WPARAM wparam
   if (message == WM_TIMER && wparam == ID_HUD_TIMER) {
     KillTimer(main_window_, ID_HUD_TIMER);
     if (current_hud_state_ != "recording" && current_hud_state_ != "transcribing") SetHudState("hidden");
+    return true;
+  }
+  if (message == WM_TIMER && wparam == ID_CLIPBOARD_TIMER) {
+    KillTimer(main_window_, ID_CLIPBOARD_TIMER);
+    RestoreClipboard();
     return true;
   }
   if (message == WM_TIMER && wparam == ID_PREWARM_TIMER) {
@@ -1903,43 +1918,117 @@ bool OpenClipboardPatiently(HWND owner) {
   return false;
 }
 
+/// Форматы, у которых в буфере не обычная память, а объект GDI или
+/// особый дескриптор: GlobalLock их не берёт, а скопировать байты нечем.
+/// Картинка при этом не теряется — рядом с CF_BITMAP система держит
+/// CF_DIB и CF_DIBV5, а они обычная память.
+bool IsHandleClipboardFormat(UINT format) {
+  switch (format) {
+    case CF_BITMAP:
+    case CF_DSPBITMAP:
+    case CF_ENHMETAFILE:
+    case CF_DSPENHMETAFILE:
+    case CF_METAFILEPICT:
+    case CF_DSPMETAFILEPICT:
+    case CF_PALETTE:
+    case CF_OWNERDISPLAY:
+      return true;
+    default:
+      return (format >= CF_GDIOBJFIRST && format <= CF_GDIOBJLAST) ||
+             (format >= CF_PRIVATEFIRST && format <= CF_PRIVATELAST);
+  }
+}
+
+/// Положить в открытый буфер формат с готовыми байтами. Не приняли —
+/// память наша, и освобождать её тоже нам.
+bool PutClipboardBytes(UINT format, const void* bytes, size_t size) {
+  HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, size ? size : 1);
+  if (!mem) return false;
+  void* dst = GlobalLock(mem);
+  if (!dst) {
+    GlobalFree(mem);
+    return false;
+  }
+  if (size) memcpy(dst, bytes, size);
+  GlobalUnlock(mem);
+  if (!SetClipboardData(format, mem)) {
+    GlobalFree(mem);
+    return false;
+  }
+  return true;
+}
+
+/// Отметки «не записывать в историю»: «Журнал буфера обмена» Windows
+/// (Win+V), облачный буфер и сторонние менеджеры, которые соблюдают
+/// ExcludeClipboardContentFromMonitorProcessing (Ditto, ClipboardFusion).
+/// Тогда последним в истории остаётся то, что человек скопировал сам.
+void MarkClipboardPrivate() {
+  static const UINT exclude =
+      RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
+  static const UINT history =
+      RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
+  static const UINT cloud =
+      RegisterClipboardFormatW(L"CanUploadToCloudClipboard");
+  const DWORD no = 0;
+  if (exclude) PutClipboardBytes(exclude, &no, sizeof(no));
+  if (history) PutClipboardBytes(history, &no, sizeof(no));
+  if (cloud) PutClipboardBytes(cloud, &no, sizeof(no));
+}
+
 }  // namespace
 
-/// Вставить текст в чужое окно через буфер обмена и Ctrl+V.
-/// Текст остаётся в буфере обмена (CF_UNICODETEXT), чтобы целевые
-/// приложения успели его прочитать и пользователь мог использовать его повторно.
+/// Вставить текст в чужое окно через буфер обмена и Ctrl+V — и вернуть
+/// буфер, каким он был.
+///
+/// Буфер — чужая вещь: в нём может лежать скриншот, файлы из Проводника
+/// или текст, который человек собирался вставить следом. Поэтому прежнее
+/// содержимое сохраняется целиком, во всех форматах, и возвращается через
+/// CLIPBOARD_RESTORE_MS — на порядок дольше, чем любое приложение читает
+/// буфер после Ctrl+V. Раньше и на macOS возврат шёл через 0,4 с, и
+/// занятое приложение успевало вставить старое вместо расшифровки.
+///
+/// Свой текст помечен «не для истории» (см. MarkClipboardPrivate), так
+/// что в Win+V последним остаётся прежняя копия. Если за время ожидания
+/// буфер поменял кто-то другой, ничего не возвращаем. Вторая диктовка до
+/// возврата не сохраняет «прежним» наш же текст.
 bool DictationBridge::PasteText(const std::string& text) {
-  if (hud_ && hud_->editing()) return false;
   if (hud_ && hud_->editing()) return false;
   if (text.empty()) return true;
 
   if (!OpenClipboardPatiently(main_window_)) return false;
 
+  const bool still_ours = clipboard_restore_pending_ &&
+                          GetClipboardSequenceNumber() == clipboard_sequence_;
+  KillTimer(main_window_, ID_CLIPBOARD_TIMER);
+  clipboard_restore_pending_ = false;
+  if (!still_ours) {
+    saved_clipboard_.clear();
+    UINT format = 0;
+    while ((format = EnumClipboardFormats(format)) != 0) {
+      if (IsHandleClipboardFormat(format)) continue;
+      HANDLE handle = GetClipboardData(format);
+      if (!handle) continue;
+      const SIZE_T size = GlobalSize(handle);
+      const void* src = size ? GlobalLock(handle) : nullptr;
+      if (!src) continue;
+      const auto* bytes = static_cast<const uint8_t*>(src);
+      saved_clipboard_.push_back({format, std::vector<uint8_t>(bytes, bytes + size)});
+      GlobalUnlock(handle);
+    }
+  }
+
   EmptyClipboard();
 
   std::wstring wtext = Utf8ToWide(text);
-  size_t bytes = (wtext.size() + 1) * sizeof(wchar_t);
-  HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, bytes);
-  if (!hMem) {
+  if (!PutClipboardBytes(CF_UNICODETEXT, wtext.c_str(),
+                         (wtext.size() + 1) * sizeof(wchar_t))) {
     CloseClipboard();
+    saved_clipboard_.clear();
     return false;
   }
-
-  void* dst = GlobalLock(hMem);
-  if (!dst) {
-    GlobalFree(hMem);
-    CloseClipboard();
-    return false;
-  }
-  memcpy(dst, wtext.c_str(), bytes);
-  GlobalUnlock(hMem);
-  if (!SetClipboardData(CF_UNICODETEXT, hMem)) {
-    // Не приняли — память наша, и освобождать её тоже нам.
-    GlobalFree(hMem);
-    CloseClipboard();
-    return false;
-  }
+  MarkClipboardPrivate();
   CloseClipboard();
+  clipboard_sequence_ = GetClipboardSequenceNumber();
 
   // Человек мог ещё держать сочетание диктовки: на Windows это
   // Ctrl+Alt или Ctrl+Shift+Пробел. Отпустить их надо самим, иначе
@@ -1963,12 +2052,34 @@ bool DictationBridge::PasteText(const std::string& text) {
   key('V', true);
   key(VK_CONTROL, true);
 
-  return SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
+  const bool sent =
+      SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
+  if (!sent) {
+    // Нажатие не дошло: текст остаётся в буфере — вызывающая сторона на
+    // это и рассчитывает, — а возвращать уже нечего.
+    saved_clipboard_.clear();
+    return false;
+  }
+  clipboard_restore_pending_ = true;
+  SetTimer(main_window_, ID_CLIPBOARD_TIMER, CLIPBOARD_RESTORE_MS, nullptr);
+  return true;
 }
 
 void DictationBridge::RestoreClipboard() {
-  // No-op: CF_UNICODETEXT intentionally left in clipboard to prevent
-  // corruption and allow target apps / user reliable access.
+  if (!clipboard_restore_pending_) return;
+  clipboard_restore_pending_ = false;
+  std::vector<SavedClipboardFormat> saved;
+  saved.swap(saved_clipboard_);
+  // Кто-то скопировал своё, пока мы ждали, — его копию не трогаем.
+  if (GetClipboardSequenceNumber() != clipboard_sequence_) return;
+  if (!OpenClipboardPatiently(main_window_)) return;
+  EmptyClipboard();
+  for (const auto& f : saved) {
+    PutClipboardBytes(f.format, f.data.data(), f.data.size());
+  }
+  // Возвращённое — не новая копия: истории незачем записывать его второй раз.
+  if (!saved.empty()) MarkClipboardPrivate();
+  CloseClipboard();
 }
 
 // ── Корзина и автозапуск ───────────────────────────────────────────────────

@@ -22,6 +22,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../platform/bridge.dart';
 import '../../platform/os.dart';
 import 'settings_cubit.dart';
+import 'widgets/own_voice_sheet.dart';
 import 'widgets/model_row.dart';
 import 'widgets/vocabulary_item_row.dart';
 import 'widgets/voice_calibration_dialog.dart';
@@ -646,6 +647,7 @@ class _SettingsBodyState extends State<SettingsBody>
         l10n: l10n,
       ),
     ],
+    ..._ownVoiceSection(s),
     SectionTitle(l10n.wakeDiagnosticsTitle),
     Check(l10n.wakeDiagnosticsRecord, _diagnosticRecording, _toggleDiagnostics),
     Hint(l10n.wakeDiagnosticsHint, under: true),
@@ -821,6 +823,92 @@ class _SettingsBodyState extends State<SettingsBody>
         ],
       ),
     );
+  }
+
+  /// «Только мой голос»: включатель, образец голоса и строгость.
+  List<Widget> _ownVoiceSection(SettingsState s) {
+    final recorded = s.ownVoiceRecordedAt;
+    return [
+      SectionTitle(l10n.sectionOwnVoice),
+      Check(l10n.checkOwnVoiceOnly, s.ownVoiceOnly, (v) async {
+        // Без образца включать не по чему: сначала записать его — а
+        // записанный образец включает фильтр сам.
+        if (v && recorded == null) {
+          await _recordOwnVoice();
+          return;
+        }
+        _cubit.setOwnVoiceOnly(v);
+      }),
+      Hint(l10n.hintOwnVoiceOnly, under: true),
+      const SizedBox(height: Gap.item),
+      Text(
+        recorded == null
+            ? l10n.ownVoiceNotRecorded
+            : l10n.ownVoiceRecorded(
+                '${recorded.day.toString().padLeft(2, '0')}.'
+                    '${recorded.month.toString().padLeft(2, '0')}.'
+                    '${recorded.year}',
+                (s.ownVoiceSpeechMs / 1000).round(),
+              ),
+        style: Type.caption.copyWith(color: Surface.secondaryText(context)),
+      ),
+      const SizedBox(height: Gap.inner),
+      Wrap(
+        spacing: Gap.control,
+        runSpacing: Gap.tight,
+        children: [
+          PushButton(
+            controlSize: ControlSize.regular,
+            secondary: true,
+            onPressed: _recordOwnVoice,
+            child: Text(
+              recorded == null
+                  ? l10n.buttonRecordOwnVoice
+                  : l10n.buttonRecordOwnVoiceAgain,
+            ),
+          ),
+          if (recorded != null)
+            PushButton(
+              controlSize: ControlSize.regular,
+              secondary: true,
+              onPressed: _cubit.deleteOwnVoice,
+              child: Text(l10n.buttonDeleteOwnVoice),
+            ),
+        ],
+      ),
+      if (recorded != null) ...[
+        const SizedBox(height: Gap.item),
+        _Field(
+          l10n.labelOwnVoiceStrictness,
+          MacosPopupButton<double>(
+            value: const [0.35, 0.45, 0.55].contains(s.ownVoiceThreshold)
+                ? s.ownVoiceThreshold
+                : 0.45,
+            items: [
+              MacosPopupMenuItem(value: 0.35, child: Text(l10n.ownVoiceSoft)),
+              MacosPopupMenuItem(value: 0.45, child: Text(l10n.ownVoiceNormal)),
+              MacosPopupMenuItem(value: 0.55, child: Text(l10n.ownVoiceStrict)),
+            ],
+            onChanged: (v) {
+              if (v != null) _cubit.setOwnVoiceThreshold(v);
+            },
+          ),
+        ),
+        Hint(l10n.hintOwnVoiceStrictness, under: true),
+      ],
+    ];
+  }
+
+  Future<bool?> _recordOwnVoice() async {
+    await _cubit.bridge.setCalibrationActive(true);
+    try {
+      if (!mounted) return null;
+      final ok = await OwnVoiceSheet.show(context, _cubit.bridge);
+      if (ok == true) _cubit.ownVoiceRecorded();
+      return ok;
+    } finally {
+      await _cubit.bridge.setCalibrationActive(false);
+    }
   }
 
   Future<bool?> _openWakeCalibration(String wakeWord) async {
@@ -1618,6 +1706,9 @@ class _SettingsBodyState extends State<SettingsBody>
     SectionTitle(l10n.sectionInTranscriberWindow),
     Check(l10n.checkShowTimestamps, s.timestamps, _cubit.setTimestamps),
     Hint(l10n.hintShowTimestamps, under: true),
+    SectionTitle(l10n.sectionSpeakers),
+    Check(l10n.checkDiarizeDefault, s.diarizeDefault, _cubit.setDiarizeDefault),
+    Hint(l10n.hintDiarize, under: true),
   ];
 
   /// Местное API: та самая галка, которой открывают дверь наружу.

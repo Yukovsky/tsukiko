@@ -75,9 +75,14 @@ class SettingsState extends Equatable {
     this.closeProfileExists = false,
     this.calibrationOutdated = false,
     this.speakerThreshold = 0.60,
+    this.ownVoiceOnly = false,
+    this.ownVoiceThreshold = 0.45,
+    this.ownVoiceRecordedAt,
+    this.ownVoiceSpeechMs = 0,
     // приложение
     this.toLibrary = true,
     this.saveNextToSource = false,
+    this.diarizeDefault = false,
     this.timestamps = true,
     this.dockIcon = true,
     this.loginItem = false,
@@ -213,9 +218,21 @@ class SettingsState extends Equatable {
   final bool calibrationOutdated;
   final double speakerThreshold;
 
+  /// «Только мой голос» в диктовке и записанный образец голоса. Нет даты —
+  /// образца нет, и включать фильтр не по чему.
+  final bool ownVoiceOnly;
+  final double ownVoiceThreshold;
+  final DateTime? ownVoiceRecordedAt;
+  final int ownVoiceSpeechMs;
+
   // ── приложение ────────────────────────────────────────────────────────────
 
   final bool toLibrary, saveNextToSource, timestamps, dockIcon;
+
+  /// «Несколько голосов» в новых расшифровках — то же значение, что
+  /// инспектор главного окна правит, когда в очереди ничего не выбрано.
+  final bool diarizeDefault;
+
 
   /// Автозапуск живёт в системе, а не в settings.json: его можно выключить
   /// в системных настройках мимо нас.
@@ -302,8 +319,14 @@ class SettingsState extends Equatable {
     bool? closeProfileExists,
     bool? calibrationOutdated,
     double? speakerThreshold,
+    bool? ownVoiceOnly,
+    double? ownVoiceThreshold,
+    DateTime? ownVoiceRecordedAt,
+    int? ownVoiceSpeechMs,
+    bool clearOwnVoice = false,
     bool? toLibrary,
     bool? saveNextToSource,
+    bool? diarizeDefault,
     bool? timestamps,
     bool? dockIcon,
     bool? loginItem,
@@ -370,8 +393,17 @@ class SettingsState extends Equatable {
     closeProfileExists: closeProfileExists ?? this.closeProfileExists,
     calibrationOutdated: calibrationOutdated ?? this.calibrationOutdated,
     speakerThreshold: speakerThreshold ?? this.speakerThreshold,
+    ownVoiceOnly: ownVoiceOnly ?? this.ownVoiceOnly,
+    ownVoiceThreshold: ownVoiceThreshold ?? this.ownVoiceThreshold,
+    ownVoiceRecordedAt: clearOwnVoice
+        ? null
+        : (ownVoiceRecordedAt ?? this.ownVoiceRecordedAt),
+    ownVoiceSpeechMs: clearOwnVoice
+        ? 0
+        : (ownVoiceSpeechMs ?? this.ownVoiceSpeechMs),
     toLibrary: toLibrary ?? this.toLibrary,
     saveNextToSource: saveNextToSource ?? this.saveNextToSource,
+    diarizeDefault: diarizeDefault ?? this.diarizeDefault,
     timestamps: timestamps ?? this.timestamps,
     dockIcon: dockIcon ?? this.dockIcon,
     loginItem: loginItem ?? this.loginItem,
@@ -428,8 +460,13 @@ class SettingsState extends Equatable {
     closeProfileExists,
     calibrationOutdated,
     speakerThreshold,
+    ownVoiceOnly,
+    ownVoiceThreshold,
+    ownVoiceRecordedAt,
+    ownVoiceSpeechMs,
     toLibrary,
     saveNextToSource,
+    diarizeDefault,
     timestamps,
     dockIcon,
     loginItem,

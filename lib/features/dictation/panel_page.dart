@@ -209,6 +209,10 @@ class _Live extends StatelessWidget {
     final accent = MacosTheme.of(context).primaryColor;
     final recording = s.recording;
     final (title, color) = switch (s.phase) {
+      Phase.recording when s.conversation => (
+        l10n.liveRecordingConversation,
+        MacosColors.systemRedColor,
+      ),
       Phase.recording => (l10n.liveRecording, MacosColors.systemRedColor),
       Phase.transcribing => (l10n.liveTranscribing, accent),
       Phase.idle => (
@@ -282,6 +286,36 @@ class _Live extends StatelessWidget {
           ),
           const SizedBox(height: Gap.item),
           if (recording) _Meter(level: s.level) else _Keys(s),
+          // Разговор — та же запись микрофоном, только по остановке звук
+          // уходит в очередь с разметкой голосов, а не вставляется.
+          if (s.conversation) ...[
+            const SizedBox(height: Gap.item),
+            Row(
+              children: [
+                PushButton(
+                  controlSize: ControlSize.regular,
+                  onPressed: context.read<DictationCubit>().stopConversation,
+                  child: Text(l10n.buttonStopConversation),
+                ),
+                const SizedBox(width: Gap.control),
+                PushButton(
+                  controlSize: ControlSize.regular,
+                  secondary: true,
+                  onPressed: context.read<DictationCubit>().cancel,
+                  child: Text(l10n.buttonCancel),
+                ),
+              ],
+            ),
+          ] else if (!recording && s.enabled) ...[
+            const SizedBox(height: Gap.item),
+            PushButton(
+              controlSize: ControlSize.regular,
+              secondary: true,
+              onPressed: context.read<DictationCubit>().startConversation,
+              child: Text(l10n.buttonRecordConversation),
+            ),
+            Hint(l10n.hintRecordConversation),
+          ],
         ],
       ),
     );

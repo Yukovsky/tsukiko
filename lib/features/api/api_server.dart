@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import '../../core/diarization/diarization_models.dart';
 import '../../core/settings.dart';
 import '../../core/text.dart';
 import '../../core/transcript.dart';
@@ -265,12 +266,21 @@ class ApiServer {
     };
   }
 
-  Map<String, Object?> _models() => {
-        'current': _bloc.state.defaults.model,
-        'models': [
-          for (final p in _bloc.state.models) {'path': p, 'name': os.basename(p)},
-        ],
-      };
+  Map<String, Object?> _models() {
+    return {
+      'current': _bloc.state.defaults.model,
+      'models': [
+        for (final p in _bloc.state.models) {'path': p, 'name': os.basename(p)},
+      ],
+      // Модель «Нескольких голосов». Не установлена — скачается при первой
+      // же записи с `diarize`; `downloadMb` говорит, сколько это.
+      'speakerModels': {
+        'installed': DiarizationModels.isInstalled,
+        'model': DiarizationModels.file,
+        'downloadMb': DiarizationModels.downloadMb(),
+      },
+    };
+  }
 
   /// Поставить запись в очередь и вернуться, не дожидаясь текста.
   ///
@@ -289,11 +299,22 @@ class ApiServer {
       return _send(req, 503, {'error': 'движок whisper.cpp не найден'});
     }
 
+    // Голоса — по желанию запроса: `"diarize": true`. Не сказано — как
+    // в общих настройках приложения. Число голосов модель находит сама
+    // (до восьми), задать его нечем.
+    final diarize = json['diarize'];
+    if (diarize != null && diarize is! bool) {
+      return _send(req, 400, {'error': '«diarize» — true или false'});
+    }
+
     if (_job(path) == null) {
       _bloc.add(FilesAdded([path]));
       if (await _until(() => _job(path), const Duration(seconds: 5)) == null) {
         return _send(req, 500, {'error': 'файл не встал в очередь'});
       }
+    }
+    if (diarize is bool) {
+      _bloc.add(JobOptionsEdited(path, (o) => o.copyWith(diarize: diarize)));
     }
     final started = await _start(path);
     if (started != null) return _send(req, started.$1, {'error': started.$2});
@@ -405,6 +426,21 @@ extension on Job {
         'segments': t.segments.length,
         'format': format.id,
         'text': renderFor(format, t, name: name),
+        // Голоса — только если их больше одного: иначе ответ тот же, что
+        // и без режима.
+        if (t.hasSpeakers) ...{
+          'speakers': [for (final s in t.speakers) s.toJson()],
+          'fragments': [
+            for (final s in t.segments)
+              {
+                'from': s.from,
+                'to': s.to,
+                'text': s.text,
+                'speaker': s.speaker,
+                'overlap': s.overlap,
+              },
+          ],
+        },
       } else if (raw != null)
         'text': raw,
     };

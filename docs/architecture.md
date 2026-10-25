@@ -143,6 +143,61 @@ State management is built on `package:bloc`:
 
 ---
 
+## Multiple Voices (Speaker Diarization)
+
+An optional step in the transcription queue that tells voices apart, labels each fragment
+("Voice 1", "Voice 2", renamable) and marks interruptions with `⇄`. It is off by default; when
+off, the queue, the engine arguments and every export format behave exactly as before.
+
+```
+file → os.toWav (16 kHz mono s16)
+     → whisper.cpp / NeMo → fragments (+ word timings)
+     → [mode on] nemo-speech diarize (Nemotron-3-Diarization, up to 8 voices)
+     → merge by time → Transcript with speakers
+```
+
+| Piece | Where | Notes |
+| :--- | :--- | :--- |
+| Pure logic | `lib/core/speakers.dart` | Word ↔ speaker assignment (max overlap, earlier start wins ties, nearest ≤ 1 s), `S1…` labels by first appearance, word grouping shared by whisper and NeMo, roster. No Flutter — the CLI compiles it. |
+| Transcript model | `lib/core/transcript.dart` | `Segment.speaker` / `Segment.overlap`, `Transcript.speakers` / `diarization`. Every rebuild of a fragment goes through `Segment.withText` so voices survive vocabulary edits and undo. Labels are written only when there are two or more voices. |
+| Engine | `lib/core/diarization/diarizer.dart` | Runs the bundled `nemo-speech diarize` (NeMo-Speech.cpp 0.2.0, Metal on Mac, Vulkan or CPU on Windows) as a child process and parses its JSON. The engine prints no progress, so the queue shows a time-based estimate. |
+| Model | `lib/core/diarization/diarization_models.dart` | `Nemotron-3-Diarization.q8_0.gguf` (102 MB, OpenMDW 1.1), downloaded on first use from a pinned Hugging Face revision, SHA-256 checked with a small pure-Dart hasher. |
+| Queue step | `QueueBloc._diarizeStep` | `JobState.diarizing` after recognition, on the same WAV. |
+
+Key decisions:
+
+- **Diarization runs after recognition.** Voices are matched across the whole recording, so the step cannot
+  resume mid-way; recognition pause/resume and yielding to dictation stay untouched. The step
+  yields to dictation before it starts, never in the middle.
+- **Word timings come from `-ojf`, not `-ml 1`.** With the mode on, whisper-cli writes the full JSON
+  with per-token timestamps. whisper.cpp computes those after decoding
+  (`whisper_exp_compute_token_level_timestamps`), so text and fragments are identical to a normal
+  run and the hallucination filters still see whole phrases. Fragments are then cut at speaker
+  changes. Where tokens no longer match the text (vocabulary replacements, filtered tails, the part
+  recognized before a pause) word times are interpolated by character share.
+- **A diarization failure never loses the transcript.** Failure, stop, silence or a single voice all
+  leave a finished job without voices and a note in its detail line.
+- **Cancellation kills the process.** Nothing native runs inside the app's own process.
+- **Memory.** Peak grows with length: about 450 MB plus 800 MB per hour of audio (0.91 GB for
+  36 min, 2.35 GB for 2.4 h, measured on an M5). Recordings longer than two hours are not
+  diarized automatically; the inspector offers "Identify voices" to run it anyway. The file is
+  never split: voices of different chunks would not match.
+- **No voice count.** The model finds the number of voices itself (up to eight) and has no way to
+  force "exactly N", so the app does not offer one.
+- **Overlap.** A word is an interruption when two voices sound *simultaneously* for at least 30 % of
+  it. (Counting each speaker's share separately would flag a clean hand-off in the middle of a word.)
+- **No automatic cluster merging** by centroid distance — merging is manual only.
+- **CLI.** `--speakers` routes the job to the running app over the local API, which owns the
+  diarization step and its merge with the text.
+
+Why this engine, with measurements: [`diarization-engine.md`](diarization-engine.md).
+
+In dictation, voices are used the other way round: "Only my voice" drops other people's speech
+before recognition, and "Record a conversation" sends a recording from the panel to the queue
+with voices on. See [`own-voice.md`](own-voice.md).
+
+---
+
 ## Memory and Model Lifecycle
 
 Model weights (`1.5 GB+`) represent the heaviest resource in memory. Tsukiko employs three rules to minimize memory consumption:

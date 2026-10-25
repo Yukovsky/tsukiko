@@ -1696,5 +1696,197 @@
         "type": "String"
       }
     }
-  }
+  },
+  "jobStateDiarizing": "Определяю голоса",
+  "diffSpeakers": "голоса",
+  "jobDetailDiarizing": "Определяю голоса",
+  "statusDiarizing": "{name} · определяю голоса",
+  "@statusDiarizing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "jobDetailSpeakerModelsLoading": "Загружаю модель голосов · {size}",
+  "@jobDetailSpeakerModelsLoading": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "speakerDefaultName": "Голос {number}",
+  "@speakerDefaultName": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "speakersSkippedLong": "Голоса не размечены: запись длиннее {limit}, понадобится около {memory} памяти",
+  "@speakersSkippedLong": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      },
+      "memory": {
+        "type": "String"
+      }
+    }
+  },
+  "speakersStopped": "Голоса не размечены: остановлено",
+  "speakersModelsFailed": "Голоса не размечены: модель не загрузилась",
+  "speakersNoSpeech": "Голосов не найдено",
+  "speakersSingle": "Один голос",
+  "speakersFound": "{count, plural, one{{count} голос} few{{count} голоса} many{{count} голосов} other{{count} голоса}}",
+  "@speakersFound": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "speakersFailed": "Голоса не размечены: сбой разметки",
+  "statusSpeakerRenamed": "Голос переименован: {name}",
+  "@statusSpeakerRenamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "statusSpeakersMerged": "«{from}» объединён с «{into}»",
+  "@statusSpeakersMerged": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "into": {
+        "type": "String"
+      }
+    }
+  },
+  "statusSegmentReassigned": "Фрагмент отдан голосу «{name}»",
+  "@statusSegmentReassigned": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionSpeakers": "Несколько голосов",
+  "checkDiarize": "Определять, кто говорит",
+  "hintDiarize": "После расшифровки приложение разметит голоса (до восьми), подпишет реплики и отметит перебивки знаком ⇄. Всё считается на этом компьютере.",
+  "speakerModelsMissing": "Модель голосов скачается при первом запуске: {size}",
+  "@speakerModelsMissing": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "speakerModelsReady": "Модель голосов установлена",
+  "askSpeakerModelsTitle": "Скачать модель голосов?",
+  "askSpeakerModelsBody": "Режиму «Несколько голосов» нужна модель NVIDIA Nemotron — {size}. Она скачается с Hugging Face один раз и дальше работает без сети.",
+  "@askSpeakerModelsBody": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonEnableAndDownload": "Включить",
+  "panelVoices": "Голоса",
+  "turnsLabel": "{count, plural, one{{count} реплика} few{{count} реплики} many{{count} реплик} other{{count} реплики}}",
+  "@turnsLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "speakerStats": "{time} · {turns}",
+  "@speakerStats": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "turns": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonRenameSpeaker": "Переименовать…",
+  "buttonMergeSpeaker": "Объединить с…",
+  "menuAssignSpeaker": "Назначить другому голосу",
+  "renameSpeakerTitle": "Имя голоса",
+  "mergeSpeakerTitle": "Объединить «{name}» с…",
+  "@mergeSpeakerTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonDiarizeNow": "Определить голоса",
+  "buttonDiarizeAgain": "Определить голоса заново",
+  "hintOverlap": "⇄ — реплика началась поверх чужой. Слова, сказанные одновременно, достаются одному из голосов.",
+  "checkDiarizeDefault": "Определять голоса в новых расшифровках",
+  "speakerOverlapTooltip": "Перебивка: говорили одновременно",
+  "ownVoiceNotFound": "Вашего голоса во фразе нет — ничего не вставлено",
+  "conversationNotQueued": "Разговор сохранён, но в очередь не попал — откройте приложение и добавьте файл",
+  "liveRecordingConversation": "Записываю разговор",
+  "buttonStopConversation": "Остановить и расшифровать",
+  "buttonRecordConversation": "Записать разговор",
+  "hintRecordConversation": "Запись уйдёт в очередь главного окна и расшифруется с подписями голосов.",
+  "ownVoiceModelsDownloading": "Загружаю модели голоса · {size}",
+  "@ownVoiceModelsDownloading": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "ownVoiceProcessing": "Запоминаю голос…",
+  "ownVoiceTooShort": "Речи в записи слишком мало — прочитайте текст целиком, секунд двадцать.",
+  "ownVoiceFailed": "Не удалось запомнить голос: {error}",
+  "@ownVoiceFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "ownVoiceSheetTitle": "Образец вашего голоса",
+  "ownVoiceSheetBody": "Прочитайте вслух текст ниже обычным голосом, как будто диктуете. Хватит двадцати секунд. Образец хранится только на этом компьютере.",
+  "ownVoiceReadingText": "Утром я проверил почту, ответил на пару писем и записал, что нужно сделать за день. Потом созвонился с коллегами, мы обсудили планы на неделю и договорились встретиться в четверг. Вечером хочу дочитать книгу и немного погулять, если не будет дождя.",
+  "ownVoiceKeepReading": "Читайте дальше…",
+  "ownVoiceCanStop": "Достаточно — можно остановить.",
+  "ownVoiceStop": "Готово",
+  "ownVoiceRetry": "Записать ещё раз",
+  "ownVoiceStart": "Начать запись",
+  "sectionOwnVoice": "Только мой голос",
+  "checkOwnVoiceOnly": "Вставлять только мой голос",
+  "hintOwnVoiceOnly": "Чужая речь рядом — коллега, телевизор, собеседник на звонке — выбрасывается до распознавания. Короткие фразы, которые не по чему судить, остаются целиком.",
+  "ownVoiceNotRecorded": "Образец голоса не записан",
+  "ownVoiceRecorded": "Образец записан {date} · {seconds} с речи",
+  "@ownVoiceRecorded": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "buttonRecordOwnVoice": "Записать образец голоса…",
+  "buttonRecordOwnVoiceAgain": "Записать заново…",
+  "buttonDeleteOwnVoice": "Удалить образец",
+  "labelOwnVoiceStrictness": "Строгость",
+  "ownVoiceSoft": "Мягко",
+  "ownVoiceNormal": "Обычно",
+  "ownVoiceStrict": "Строго",
+  "hintOwnVoiceStrictness": "Строже — меньше чужого, но иногда режется своё. Мягче — своё не теряется, но пролезает больше чужого."
 }

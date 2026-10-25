@@ -32,6 +32,7 @@ extension JobStateLabel on JobState {
       JobState.waiting => l10n.jobStateWaiting,
       JobState.converting => l10n.jobStateConverting,
       JobState.transcribing => l10n.jobStateTranscribing,
+      JobState.diarizing => l10n.jobStateDiarizing,
       JobState.paused => l10n.jobStatePaused,
       JobState.done => l10n.jobStateDone,
       JobState.failed => l10n.jobStateFailed,
@@ -53,6 +54,7 @@ extension RunOptionsDiff on RunOptions {
       if (vad != base.vad || vadModel != base.vadModel) 'VAD',
       if (prompt.trim() != base.prompt.trim()) l10n.diffPrompt,
       if (punctuate != base.punctuate) l10n.diffPunctuation,
+      if (diarize != base.diarize) l10n.diffSpeakers,
     ];
   }
 }

@@ -385,8 +385,9 @@ class NativeBridge {
   Future<void>? _pasteReady;
 
   /// Wait before changing the clipboard again, rather than blocking ASR after
-  /// each paste. The receiving application reads it after the key event, and
-  /// macOS restores the previous clipboard after 400 ms.
+  /// each paste. The receiving application reads it after the key event. The
+  /// native side restores the previous clipboard 1.5 s after the paste; a
+  /// paste that arrives earlier keeps the clipboard saved before the first.
   Future<void> waitForPaste() => _pasteReady ?? Future<void>.value();
 
   Future<void> copyText(String text) async {

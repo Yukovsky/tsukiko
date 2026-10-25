@@ -11,17 +11,17 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Split-Path -Parent $ScriptDir
 Set-Location $RootDir
 
-$VERSION = "0.1.0"
+$VERSION = "0.2.0"
 $BASE_URL = "https://github.com/NVIDIA/NeMo-Speech.cpp/releases/download/v$VERSION"
 $ASSETS = @(
     @{
         Name = "nemo-speech-$VERSION-windows-x86_64-vulkan.zip"
-        Sha = "b5e7b04a637da4eb25a60253e2db65774998e8dfb48c08b4db763009b82ac7ac"
+        Sha = "edf15a04ba98740aa0ab75ae4681ac7ad0a488b22b35ce2cbebd10590bb1c1e1"
         Folder = "nemo-vulkan"
     },
     @{
         Name = "nemo-speech-$VERSION-windows-x86_64-cpu.zip"
-        Sha = "5e4ea81046012edcd77fd8848de8eefb5a4ba38cc26f52eb544ab184695a75d6"
+        Sha = "82c80451086e86194aba9af19f800da77cd66d1c28d993d0efceffd6cdb49bb8"
         Folder = "nemo-cpu"
     }
 )
@@ -54,6 +54,18 @@ foreach ($asset in $ASSETS) {
         Remove-Item $target -Recurse -Force
     }
     Expand-Archive -Path $archive -DestinationPath $target -Force
+    # С 0.2.0 всё лежит в папке с версией и платформой
+    # (`nemo-speech-0.2.0-windows-x86_64-cpu/bin/...`), а приложение ищет
+    # `nemo-cpu/bin/nemo-speech.exe` — поднимаем содержимое на уровень выше.
+    $inner = Get-ChildItem -Path $target -Directory |
+        Where-Object { $_.Name -like "nemo-speech-*" } | Select-Object -First 1
+    if ($inner) {
+        Get-ChildItem -Path $inner.FullName -Force | Move-Item -Destination $target
+        Remove-Item $inner.FullName -Recurse -Force
+    }
+    if (-not (Test-Path "$target/bin/nemo-speech.exe")) {
+        throw "В $($asset.Name) нет bin/nemo-speech.exe"
+    }
 }
 
 Set-Content -Path $STAMP -Value $VERSION -NoNewline

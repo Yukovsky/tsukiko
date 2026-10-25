@@ -23,6 +23,7 @@ import '../../core/skill_install.dart';
 import '../../platform/bridge.dart';
 import '../../platform/os.dart';
 import '../../core/wakeword/speaker_profile.dart';
+import '../../core/diarization/own_voice.dart';
 import 'settings_state.dart';
 
 /// Окно настроек: расшифровщик, диктовка, склад моделей и приложение.
@@ -108,6 +109,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         transcriberUsesDictationModel: linked,
         toLibrary: (s['toLibrary'] as bool?) ?? true,
         saveNextToSource: (s['saveNextToSource'] as bool?) ?? false,
+        diarizeDefault: (s['diarize'] as bool?) ?? false,
         timestamps: (s['timestamps'] as bool?) ?? true,
         dockIcon: (s['dockIcon'] as bool?) ?? true,
         loggingEnabled: loggingEnabled,
@@ -163,6 +165,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     final spellingsMissing =
         (wakeExists && profile!.wakeSpellings.isEmpty) ||
         (closeExists && profile!.closeSpellings.isEmpty);
+    final ownVoice = OwnVoicePrint.load();
     _emit(
       state.copyWith(
         hold: _dictation.hold,
@@ -186,8 +189,31 @@ class SettingsCubit extends Cubit<SettingsState> {
         wakeProfileExists: wakeExists,
         closeProfileExists: closeExists,
         calibrationOutdated: spellingsMissing,
+        ownVoiceOnly: _dictation.ownVoiceOnly && ownVoice != null,
+        ownVoiceThreshold: _dictation.ownVoiceThreshold,
+        ownVoiceRecordedAt: ownVoice?.createdAt,
+        ownVoiceSpeechMs: ownVoice?.speechMs,
+        clearOwnVoice: ownVoice == null,
       ),
     );
+  }
+
+  /// «Только мой голос». Включить можно только с записанным образцом —
+  /// иначе судить чужую речь не по чему.
+  void setOwnVoiceOnly(bool v) => _saveDictation((d) => d.ownVoiceOnly = v);
+
+  void setOwnVoiceThreshold(double v) =>
+      _saveDictation((d) => d.ownVoiceThreshold = v);
+
+  /// Образец только что записан — перечитать и сразу включить фильтр:
+  /// ради этого его и записывали.
+  void ownVoiceRecorded() => _saveDictation((d) => d.ownVoiceOnly = true);
+
+  /// Удалить отпечаток голоса. Это биометрия, и удаляется она целиком,
+  /// одним нажатием, а фильтр без него выключается.
+  void deleteOwnVoice() {
+    OwnVoicePrint.delete();
+    _saveDictation((d) => d.ownVoiceOnly = false);
   }
 
   // ── запись на диск ────────────────────────────────────────────────────────
@@ -513,6 +539,13 @@ class SettingsCubit extends Cubit<SettingsState> {
   void setSaveNextToSource(bool v) {
     _emit(state.copyWith(saveNextToSource: v));
     unawaited(_saveApp({'saveNextToSource': v}));
+  }
+
+  /// Ключ тот же, что у общих настроек распознавания (`RunOptions.diarize`):
+  /// главное окно перечитает его и поставит в свои умолчания.
+  void setDiarizeDefault(bool v) {
+    _emit(state.copyWith(diarizeDefault: v));
+    unawaited(_saveApp({'diarize': v}));
   }
 
   void setTimestamps(bool v) {

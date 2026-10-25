@@ -229,17 +229,24 @@ void sweepRecordings({Directory? where}) {
 /// сказанного, и стирать её нельзя. Уносим из временной папки (её
 /// подметает `sweepRecordings`) в библиотеку, откуда файл видно и можно
 /// перетащить в очередь. Возвращает путь или null, если и это не вышло.
-String? rescueRecording(String path) {
+String? rescueRecording(String path) =>
+    _keepRecording(path, rescuedFolderName, 'Диктовка');
+
+/// Разговор, записанный из диктовки, — исходник для очереди: из временной
+/// папки он уходит в библиотеку, в «Разговоры». Возвращает путь или null.
+String? keepConversation(String path) =>
+    _keepRecording(path, conversationsFolderName, 'Разговор');
+
+String? _keepRecording(String path, String folder, String prefix) {
   try {
     final root =
         (Settings.load()['libraryPath'] as String?) ?? defaultLibraryPath;
-    final dir = Directory(os.join(root, rescuedFolderName))
-      ..createSync(recursive: true);
+    final dir = Directory(os.join(root, folder))..createSync(recursive: true);
     final t = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
     final dest = os.join(
         dir.path,
-        'Диктовка ${t.year}-${two(t.month)}-${two(t.day)} '
+        '$prefix ${t.year}-${two(t.month)}-${two(t.day)} '
         '${two(t.hour)}-${two(t.minute)}-${two(t.second)}.wav');
     File(path).copySync(dest);
     try {
@@ -971,6 +978,8 @@ class DictationSettings {
     this.voiceCalibrationEnabled = false,
     this.speakerProfilePath = '',
     this.speakerThreshold = 0.60,
+    this.ownVoiceOnly = false,
+    this.ownVoiceThreshold = 0.45,
   })  : indicatorMode = indicatorMode ?? (hud ? IndicatorMode.panel : IndicatorMode.off),
         hold = hold ?? Hotkey.holdDefault,
         toggle = toggle ?? Hotkey.toggleDefault,
@@ -1014,6 +1023,15 @@ class DictationSettings {
   String speakerProfilePath;
   double speakerThreshold;
 
+  /// «Только мой голос»: перед распознаванием выбросить из фразы чужую
+  /// речь (см. `core/diarization/own_voice.dart`). Без записанного
+  /// образца голоса ничего не делает.
+  bool ownVoiceOnly;
+
+  /// Порог сходства с образцом голоса. Строже — меньше пропускает чужого,
+  /// но чаще режет своё.
+  double ownVoiceThreshold;
+
   static File get _file => File(os.join(supportDir, 'dictation.json'));
 
   static DictationSettings load() {
@@ -1041,6 +1059,9 @@ class DictationSettings {
         voiceCalibrationEnabled: (j['voiceCalibrationEnabled'] as bool?) ?? false,
         speakerProfilePath: (j['speakerProfilePath'] as String?) ?? '',
         speakerThreshold: (j['speakerThreshold'] as num?)?.toDouble() ?? 0.60,
+        ownVoiceOnly: (j['ownVoiceOnly'] as bool?) ?? false,
+        ownVoiceThreshold:
+            (j['ownVoiceThreshold'] as num?)?.toDouble() ?? 0.45,
       );
     } catch (_) {
       return DictationSettings();
@@ -1073,6 +1094,8 @@ class DictationSettings {
         'voiceCalibrationEnabled': voiceCalibrationEnabled,
         'speakerProfilePath': speakerProfilePath,
         'speakerThreshold': speakerThreshold,
+        'ownVoiceOnly': ownVoiceOnly,
+        'ownVoiceThreshold': ownVoiceThreshold,
       });
     } catch (e) {
       stderr.writeln('tsukiko: не удалось сохранить настройки диктовки — $e');

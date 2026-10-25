@@ -17,6 +17,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:macos_ui/macos_ui.dart';
 
 import '../dictation/dictation_repository.dart';
+import '../../core/diarization/diarization_models.dart';
 import '../../core/library.dart';
 import '../../core/logger.dart';
 import '../../core/models.dart';
@@ -42,6 +43,7 @@ import 'widgets/chrome.dart';
 import 'widgets/queue_row.dart';
 import 'widgets/scope_banner.dart';
 import 'widgets/segment_row.dart';
+import 'widgets/speakers.dart';
 import 'windows_menu_sheet.dart';
 import 'windows_pane_layout.dart';
 import '../../core/labels.dart';
@@ -1547,6 +1549,11 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
             onCopied: () => _send(StatusReported(l10n.statusSegmentCopied)),
             onReplacementUndo: (index) =>
                 _send(CommandReplacementUndone(job, segments[i], index)),
+            speakers: job.transcript?.speakers ?? const [],
+            onSpeakerChosen: job.transcript == null
+                ? null
+                : (speaker) =>
+                      _send(SegmentSpeakerChanged(job, segments[i], speaker)),
           ),
         );
       }
@@ -1686,6 +1693,43 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   /// занятой модели), живёт на вкладке «Расшифровщик» в окне настроек,
   /// а диктовка — на своей. Инспектор целиком принадлежит расшифровщику,
   /// и ни одна настройка диктовки сюда не попадает.
+  /// Сколько ещё скачать модели голосов, или null — всё на месте.
+  String? _speakerModelsMissing() {
+    final mb = DiarizationModels.downloadMb();
+    return mb == 0 ? null : sizeLabelMb(mb);
+  }
+
+  /// Включение режима голосов. Моделей нет — сначала спросить: человек
+  /// должен знать размер загрузки до того, как она начнётся.
+  Future<void> _toggleDiarization(bool on) async {
+    final missing = _speakerModelsMissing();
+    if (!on || missing == null) return _send(DiarizationToggled(on));
+    final yes = await showMacosAlertDialog<bool>(
+      context: context,
+      builder: (dialogContext) => MacosAlertDialog(
+        appIcon: const MacosIcon(CupertinoIcons.person_2, size: IconSize.hero),
+        title: Text(l10n.askSpeakerModelsTitle, style: Type.emptyTitle),
+        message: Text(
+          l10n.askSpeakerModelsBody(missing),
+          textAlign: TextAlign.center,
+          style: Type.control,
+        ),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(l10n.buttonEnableAndDownload),
+        ),
+        secondaryButton: PushButton(
+          controlSize: ControlSize.large,
+          secondary: true,
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: Text(l10n.buttonCancel),
+        ),
+      ),
+    );
+    if (yes == true) _send(DiarizationToggled(true));
+  }
+
   Widget _inspector(QueueState s, ScrollController controller) {
     final o = s.shown;
     final own = s.lead?.overrides;
@@ -1838,6 +1882,23 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
               _send(OptionsEdited((x) => x.copyWith(threads: v ?? o.threads))),
         ),
         Hint(l10n.hintThreads),
+        SpeakersSection(
+          options: o,
+          transcript: s.lead?.transcript,
+          // Файлы проверяются только при включённом режиме: инспектор
+          // перерисовывается на каждом шаге хода работы.
+          modelsMissingLabel: o.diarize ? _speakerModelsMissing() : null,
+          onToggle: _toggleDiarization,
+          onRename: (id, name) => _send(SpeakerRenamed(s.lead!, id, name)),
+          onMerge: (from, into) => _send(SpeakersMerged(s.lead!, from, into)),
+          onDiarize:
+              s.running ||
+                  s.lead == null ||
+                  s.lead!.imported ||
+                  s.lead!.transcript == null
+              ? null
+              : () => _send(DiarizationRequested(s.lead!)),
+        ),
         ModelPromptSection(
           prompt: promptWithVocabulary('', s.vocabulary),
           vocabularyCount: s.vocabulary.length,

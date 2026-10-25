@@ -58,6 +58,9 @@ tsukiko-transcribe — расшифровка аудио на месте, без
   --lang <ru|en|auto>                    язык речи (по умолчанию из настроек)
   --model <путь>                         файл модели (по умолчанию из настроек)
   --prompt <текст>                       подсказка модели / ключевые слова
+  --speakers                             подписать, кто говорит, до восьми
+                                         голосов (нужно запущенное приложение
+                                         с API)
   --json                                 ответ целиком в JSON, а не голым текстом
   --quiet                                не писать ход работы в stderr
   --status                               что установлено и готово ли к работе
@@ -73,6 +76,9 @@ tsukiko-transcribe — расшифровка аудио на месте, без
 class Args {
   final files = <String>[];
   String format = 'txt', lang = '', model = '', prompt = '';
+
+  /// «Несколько голосов». Сколько их, модель решает сама.
+  bool speakers = false;
   bool json = false, quiet = false, status = false, help = false;
   String? problem;
 }
@@ -92,6 +98,16 @@ Args parseArgs(List<String> argv) {
         a.model = next();
       case '--prompt':
         a.prompt = next();
+      case '--speakers':
+        a.speakers = true;
+        // Первая версия ключа ждала «auto» или число. «auto» по-прежнему
+        // принимаем молча; число задать больше нечем — модель находит
+        // голоса сама, и обещать «ровно трёх» было бы неправдой.
+        if (i + 1 < argv.length && argv[i + 1] == 'auto') {
+          i++;
+        } else if (i + 1 < argv.length && int.tryParse(argv[i + 1]) != null) {
+          a.problem ??= '--speakers без числа: голоса модель находит сама';
+        }
       case '--json':
         a.json = true;
       case '--quiet':
@@ -175,7 +191,9 @@ RunOptions optionsFrom(Args a) {
       prompt: o.prompt.isEmpty ? a.prompt : '${o.prompt}, ${a.prompt}',
     );
   }
-  return o;
+  // Голоса своим ходом не размечаются (см. [run]): галка из настроек
+  // приложения здесь только просила бы у движка лишний полный JSON.
+  return o.copyWith(diarize: false);
 }
 
 /// Что установлено и готово ли оно к работе — для того, кто зовёт эту
@@ -262,8 +280,9 @@ Future<String?> _liveApi(Map<String, dynamic> s, int port) async {
 /// Так расшифровка встаёт в ту же очередь, что и брошенная в окно:
 /// второй модели не появляется, результат ложится в библиотеку, и
 /// человек видит запись в списке — а не гадает, откуда взялся текст.
-Future<String?> _viaApp(String key, int port, String file, String format,
-    void Function(String) say) async {
+Future<({String text, List<Object?> speakers})?> _viaApp(
+    String key, int port, String file, String format,
+    void Function(String) say, {bool speakers = false}) async {
   final client = HttpClient();
   try {
     Future<Map<String, Object?>> call(String method, String path,
@@ -279,12 +298,20 @@ Future<String?> _viaApp(String key, int port, String file, String format,
     }
 
     say('tsukiko работает рядом — отдаём запись его очереди');
-    await call('POST', '/transcribe', {'file': file});
+    await call('POST', '/transcribe', {
+      'file': file,
+      if (speakers) 'diarize': true,
+    });
     final id = Uri.encodeQueryComponent(file);
     while (true) {
       final r = await call(
           'GET', '/transcribe?id=$id&wait=30&format=$format');
-      if (r['done'] == true) return r['text'] as String;
+      if (r['done'] == true) {
+        return (
+          text: r['text'] as String,
+          speakers: (r['speakers'] as List?) ?? const [],
+        );
+      }
       if (r['state'] == 'failed' || r['state'] == 'cancelled') {
         throw Exception(r['detail'] ?? 'очередь не справилась с записью');
       }
@@ -448,14 +475,26 @@ Future<int> run(List<String> argv) async {
     final s = readSettings();
     final port = (s['apiPort'] as int?) ?? 8756;
     final key = await _liveApi(s, port);
-    final text = key != null
-        ? await _viaApp(key, port, path, format.id, say)
-        : renderAs(format, await _own(path, a, say),
-            name: os.basename(path));
-    if (text == null) throw Exception('текста не получилось');
+    // Разметку голосов и её сведение с текстом делает очередь
+    // приложения — своей копии этого шага в программе нет. Поэтому
+    // голоса — только через работающее приложение.
+    if (a.speakers && key == null) {
+      throw Exception(
+          'для --speakers нужно запущенное приложение tsukiko с включённым '
+          'местным API (Настройки → Приложение)');
+    }
+    final via = key != null
+        ? await _viaApp(key, port, path, format.id, say, speakers: a.speakers)
+        : null;
+    final text = via?.text ??
+        renderAs(format, await _own(path, a, say), name: os.basename(path));
     stdout.write(a.json
-        ? const JsonEncoder.withIndent('  ')
-            .convert({'file': path, 'format': format.id, 'text': text})
+        ? const JsonEncoder.withIndent('  ').convert({
+            'file': path,
+            'format': format.id,
+            'text': text,
+            if (via != null && via.speakers.isNotEmpty) 'speakers': via.speakers,
+          })
         : text);
     if (!a.json && !text.endsWith('\n')) stdout.writeln();
     return 0;

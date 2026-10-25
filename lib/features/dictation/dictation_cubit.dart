@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:collection';
+import 'dart:ui' show IsolateNameServer;
 
 import 'package:bloc/bloc.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -24,6 +25,8 @@ import '../../core/wakeword/wakeword_service.dart';
 import '../../core/wakeword/speaker_profile.dart';
 import '../../core/wakeword/speech_verifier.dart';
 import '../../core/wakeword/keyword_tokenizer.dart' show stripTrailingCloseWord;
+import '../../core/diarization/own_voice.dart';
+import '../../core/diarization/own_voice_models.dart';
 
 /// Диктовка целиком: перехват клавиш, запись, сервер с моделью, вставка
 /// текста и то, что из этого видно в панели.
@@ -585,6 +588,10 @@ class DictationCubit extends Cubit<DictationState> {
       }
       return;
     }
+    // Пока пишется разговор, клавиши диктовки его не трогают: разговор
+    // длится минутами, и случайное нажатие «записать фразу» не должно
+    // обрывать его посреди. Остановить — кнопкой в панели или отменой.
+    if (state.conversation) return;
     if (e.id == 'hold') {
       e.edge == HotkeyEdge.down ? start() : stop();
       return;
@@ -682,6 +689,7 @@ class DictationCubit extends Cubit<DictationState> {
       return;
     }
     if (_finishingRecording != null || !state.recording) return;
+    if (state.conversation) return stopConversation();
     final finished = Completer<void>();
     _finishingRecording = finished.future;
     _DictationJob? job;
@@ -698,6 +706,8 @@ class DictationCubit extends Cubit<DictationState> {
           _settings.insert,
           _commandsEnabled,
           List.of(_vocabulary),
+          ownVoiceOnly: _settings.ownVoiceOnly,
+          ownVoiceThreshold: _settings.ownVoiceThreshold,
         );
         _pending.add(job);
       }
@@ -781,9 +791,27 @@ class DictationCubit extends Cubit<DictationState> {
           'Transcribing dictation audio ($path) with model: ${_options.model}, lang: ${_options.lang}',
         );
         if (!job.aborted) await _server.ensureUp(job.options);
-        final recognized = job.aborted
-            ? null
-            : await _server.transcribe(path, lang: job.options.lang);
+        final heard = job.aborted ? null : await _ownVoiceOnly(job);
+        final heardPath = heard?.path ?? path;
+        String? recognized;
+        if (heard != null && heard.nothingLeft) {
+          // Своего голоса во фразе нет — вставлять чужое мы и не взялись.
+          // Запись не спасаем: это и есть то, что человек просил отбросить.
+          // Дальше фраза идёт как распознанная пустой: ничего не вставится,
+          // а плашка скажет почему.
+          Log.info('Dictation', 'Own voice not found, phrase dropped');
+          silent = true;
+          failure = currentL10n().ownVoiceNotFound;
+          recognized = '';
+        } else {
+          try {
+            recognized = job.aborted
+                ? null
+                : await _server.transcribe(heardPath, lang: job.options.lang);
+          } finally {
+            if (heardPath != path) _discard(heardPath);
+          }
+        }
         if (job.aborted) await job.cancelling;
         if (recognized == null || job.aborted) {
           Log.warn('Dictation', 'Dictation transcribe returned null');
@@ -883,6 +911,130 @@ class DictationCubit extends Cubit<DictationState> {
     );
   }
 
+  /// «Только мой голос»: выбросить из фразы чужую речь, пока она не ушла
+  /// в распознавание. null — фильтр не применялся (выключен, нет образца
+  /// голоса или моделей, сбой): тогда распознаём фразу целиком — потерять
+  /// сказанное хуже, чем вставить лишнее.
+  Future<OwnVoiceResult?> _ownVoiceOnly(_DictationJob job) async {
+    if (!job.ownVoiceOnly) return null;
+    final print = OwnVoicePrint.load();
+    if (print == null || !OwnVoiceModels.isInstalled) {
+      Log.warn('Dictation', 'Own voice only is on, but no voice sample/models');
+      return null;
+    }
+    try {
+      final r = await filterOwnVoice(
+        job.path,
+        '${job.path}.own.wav',
+        print.withThreshold(job.ownVoiceThreshold),
+      );
+      Log.info(
+        'Dictation',
+        'Own voice: kept ${r.keptMs} ms, dropped ${r.droppedMs} ms',
+      );
+      return r;
+    } catch (e, st) {
+      Log.error('Dictation', 'Own voice filter failed: $e', e, st);
+      return null;
+    }
+  }
+
+  // ── запись разговора ───────────────────────────────────────────────────────
+
+  /// Записать разговор: тот же микрофон, что у диктовки, но звук по
+  /// остановке не распознаётся здесь и не вставляется, а уходит в очередь
+  /// главного окна с разметкой голосов («Несколько голосов»). Так живое
+  /// интервью или встреча расшифровываются без отдельного диктофона.
+  ///
+  /// Модель диктовки при этом не поднимается и не арендуется: разговор
+  /// длится минутами, держать её всё это время в памяти незачем, а
+  /// расшифрует его очередь своей моделью.
+  Future<void> startConversation() async {
+    if (_finishingRecording != null) await _finishingRecording;
+    if (isClosed || state.recording || _startingRecording != null) return;
+    _startedAt = DateTime.now();
+    Log.info('Dictation', 'Conversation recording started');
+    _emit(
+      state.copyWith(
+        phase: Phase.recording,
+        conversation: true,
+        elapsed: Duration.zero,
+        clearFailure: true,
+      ),
+    );
+    unawaited(_showActivity());
+    _syncMeter();
+    _wakeWordService?.notifyRecordingStarted();
+    String? path;
+    try {
+      path = await bridge.startRecording();
+    } catch (e, st) {
+      Log.error('Dictation', 'Microphone failed', e, st);
+    }
+    if (path == null || path.isEmpty) {
+      _stopMeter();
+      _wakeWordService?.notifyRecordingStopped();
+      _emit(
+        state.copyWith(
+          phase: _restingPhase,
+          conversation: false,
+          failure: currentL10n().errorRecordingStart,
+        ),
+      );
+      unawaited(_showActivity(HudState.failed));
+      return;
+    }
+    _wav = path;
+  }
+
+  /// Остановить разговор и отдать его очереди.
+  Future<void> stopConversation() async {
+    if (_finishingRecording != null || !state.conversation) return;
+    final finished = Completer<void>();
+    _finishingRecording = finished.future;
+    String? saved;
+    try {
+      _wakeWordService?.notifyRecordingStopped();
+      _stopMeter();
+      final path = await bridge.stopRecording() ?? _wav;
+      _wav = null;
+      if (path == null || path.isEmpty || !wavHasAudio(path)) {
+        _discard(path);
+        _emit(state.copyWith(failure: currentL10n().errorSilentRecording));
+        return;
+      }
+      saved = keepConversation(path);
+      final inbox = IsolateNameServer.lookupPortByName(conversationInboxPort);
+      if (saved == null || inbox == null) {
+        // Окно очереди не отвечает — запись уже лежит в библиотеке, и её
+        // можно бросить в очередь руками.
+        _emit(
+          state.copyWith(
+            failure: currentL10n().conversationNotQueued,
+            failurePath: saved ?? path,
+          ),
+        );
+        return;
+      }
+      inbox.send({'path': saved});
+      Log.info('Dictation', 'Conversation sent to the queue: $saved');
+      unawaited(bridge.openMainWindow());
+    } catch (e, st) {
+      Log.error('Dictation', 'Stopping conversation failed', e, st);
+      _emit(
+        state.copyWith(
+          failure: currentL10n().conversationNotQueued,
+          failurePath: saved,
+        ),
+      );
+    } finally {
+      _emit(state.copyWith(phase: _restingPhase, conversation: false));
+      _finishingRecording = null;
+      finished.complete();
+      unawaited(_showActivity());
+    }
+  }
+
   /// Передумал. Записанное выбрасываем, ничего не распознаём и не
   /// вставляем — молча, как будто ничего и не начиналось.
   Future<void> cancel() async {
@@ -893,14 +1045,16 @@ class DictationCubit extends Cubit<DictationState> {
     if (_finishingRecording != null || !state.recording) return;
     final finished = Completer<void>();
     _finishingRecording = finished.future;
+    final conversation = state.conversation;
     try {
       _wakeWordService?.notifyRecordingStopped();
       _stopMeter();
       _discard(await bridge.stopRecording() ?? _wav);
       _wav = null;
     } finally {
-      _server.release();
-      _emit(state.copyWith(phase: _restingPhase));
+      // Разговор модель диктовки не арендует — возвращать нечего.
+      if (!conversation) _server.release();
+      _emit(state.copyWith(phase: _restingPhase, conversation: false));
       _finishingRecording = null;
       finished.complete();
       unawaited(_showActivity());
@@ -1249,9 +1403,13 @@ class _DictationJob {
     this.closeWord,
     this.insert,
     this.commandsEnabled,
-    this.vocabulary,
-  );
+    this.vocabulary, {
+    this.ownVoiceOnly = false,
+    this.ownVoiceThreshold = ownVoiceDefaultThreshold,
+  });
   final String path;
+  final bool ownVoiceOnly;
+  final double ownVoiceThreshold;
   final RunOptions options;
   final String closeWord;
   final bool insert, commandsEnabled;
