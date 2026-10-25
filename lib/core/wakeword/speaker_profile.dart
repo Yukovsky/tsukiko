@@ -21,6 +21,8 @@ class SpeakerProfile {
     this.closeTemplates = const [],
     this.wakeNegatives = const [],
     this.closeNegatives = const [],
+    this.wakeSpellings = const [],
+    this.closeSpellings = const [],
     this.threshold = 0.60,
     this.createdAt,
   });
@@ -34,6 +36,14 @@ class SpeakerProfile {
   final List<KeywordTemplate> closeTemplates;
   final List<KeywordTemplate> wakeNegatives;
   final List<KeywordTemplate> closeNegatives;
+
+  /// Как распознаватель второго этапа пишет слово, сказанное этим человеком:
+  /// «Джев» он пишет «джефф», японское слово — то каной, то иероглифами.
+  /// Записываются при калибровке, с вычетом написаний созвучных слов, и
+  /// только они (и само слово) засчитываются потом при срабатывании.
+  /// Пусто — профиль старше этой проверки.
+  final List<String> wakeSpellings;
+  final List<String> closeSpellings;
   final double threshold;
   final DateTime? createdAt;
 
@@ -67,6 +77,8 @@ class SpeakerProfile {
     List<KeywordTemplate>? closeTemplates,
     List<KeywordTemplate>? wakeNegatives,
     List<KeywordTemplate>? closeNegatives,
+    List<String>? wakeSpellings,
+    List<String>? closeSpellings,
     double? threshold,
     DateTime? createdAt,
   }) => SpeakerProfile(
@@ -79,6 +91,8 @@ class SpeakerProfile {
     closeTemplates: closeTemplates ?? this.closeTemplates,
     wakeNegatives: wakeNegatives ?? this.wakeNegatives,
     closeNegatives: closeNegatives ?? this.closeNegatives,
+    wakeSpellings: wakeSpellings ?? this.wakeSpellings,
+    closeSpellings: closeSpellings ?? this.closeSpellings,
     threshold: threshold ?? this.threshold,
     createdAt: createdAt ?? this.createdAt,
   );
@@ -91,6 +105,7 @@ class SpeakerProfile {
     return copyWith(
       wakeTemplates: const [],
       wakeNegatives: const [],
+      wakeSpellings: const [],
     ).save(path);
   }
 
@@ -103,6 +118,7 @@ class SpeakerProfile {
       closeWord: '',
       closeTemplates: const [],
       closeNegatives: const [],
+      closeSpellings: const [],
     ).save(path);
   }
 
@@ -174,6 +190,8 @@ class SpeakerProfile {
     'closeNegatives': closeNegatives
         .map((template) => template.toJson())
         .toList(),
+    'wakeSpellings': wakeSpellings,
+    'closeSpellings': closeSpellings,
     'threshold': threshold,
     'createdAt': (createdAt ?? DateTime.now()).toIso8601String(),
     'embeddings': [
@@ -213,6 +231,12 @@ class SpeakerProfile {
               .whereType<KeywordTemplate>()
               .toList()
         : const [];
+    List<String> readStrings(Object? raw) => raw is List
+        ? [
+            for (final v in raw)
+              if (v is String && v.isNotEmpty) v,
+          ]
+        : const [];
     final threshold =
         (json['threshold'] as num?)?.toDouble() ??
         calculateOptimalThreshold(embeddingsList);
@@ -229,6 +253,8 @@ class SpeakerProfile {
       closeTemplates: readTemplates(json['closeTemplates']),
       wakeNegatives: readTemplates(json['wakeNegatives']),
       closeNegatives: readTemplates(json['closeNegatives']),
+      wakeSpellings: readStrings(json['wakeSpellings']),
+      closeSpellings: readStrings(json['closeSpellings']),
       threshold: threshold,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String)

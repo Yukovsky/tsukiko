@@ -1572,6 +1572,7 @@
   "sectionVoiceCalibration": "Калибровка голоса",
   "checkVoiceCalibration": "Реагировать только на мой голос",
   "hintVoiceCalibration": "Для каждого слова запишите три произношения и одно созвучное слово, которое не должно срабатывать. Повторите калибровку после смены любого слова.",
+  "hintCalibrationOutdated": "Образцы записаны до того, как приложение стало запоминать, как вы произносите слово, поэтому его ещё будят созвучные слова и видео. Запишите их заново.",
   "voiceProfileStatusCalibrated": "Ключевые слова откалиброваны ({count, plural, one{{count} запись} few{{count} записи} many{{count} записей} other{{count} записи}})",
   "@voiceProfileStatusCalibrated": {
     "placeholders": {

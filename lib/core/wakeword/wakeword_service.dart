@@ -600,24 +600,39 @@ class WakeWordService {
     final word = isClose
         ? _settings?.closeWord ?? ''
         : _settings?.wakeWord ?? '';
+    final profile = _profile;
+    final spellings = profile == null
+        ? const <String>[]
+        : isClose
+        ? (profile.hasCloseTemplatesFor(word)
+              ? profile.closeSpellings
+              : const <String>[])
+        : (profile.hasWakeTemplatesFor(word)
+              ? profile.wakeSpellings
+              : const <String>[]);
     unawaited(
-      v.confirmKeyword(audio, word, isClose: isClose).then((confirmed) {
-        _verifying = false;
-        if (generation != _operationGeneration ||
-            epoch != _stateEpoch ||
-            _triggeredInCurrentState ||
-            _state == WakeWordListeningState.disabled) {
-          return;
-        }
-        // A broken recognizer must not disable voice activation entirely.
-        final accept = confirmed ?? detection.strict;
-        _diagnostics?.event('verified', {
-          'close': isClose,
-          'strict': detection.strict,
-          'confirmed': confirmed,
-        });
-        if (accept) fire();
-      }),
+      v
+          .confirmKeyword(audio, word, isClose: isClose, spellings: spellings)
+          .then((confirmed) {
+            _verifying = false;
+            if (generation != _operationGeneration ||
+                epoch != _stateEpoch ||
+                _triggeredInCurrentState ||
+                _state == WakeWordListeningState.disabled) {
+              return;
+            }
+            // A broken recognizer must not disable voice activation entirely.
+            final accept = confirmed ?? detection.strict;
+            _diagnostics?.event('verified', {
+              'close': isClose,
+              'strict': detection.strict,
+              'confirmed': confirmed,
+              // Что услышал второй этап — без этого разбор ложных
+              // срабатываний приходится восстанавливать по звуку.
+              'heard': v.lastHeard,
+            });
+            if (accept) fire();
+          }),
     );
   }
 

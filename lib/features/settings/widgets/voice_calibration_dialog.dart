@@ -135,6 +135,17 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
   final List<KeywordTemplate> _templates = [];
   final List<KeywordTemplate> _negatives = [];
   final List<KeywordTemplate> _otherTemplates = [];
+
+  /// Как второй этап проверки пишет слово на образцах и как — созвучные
+  /// слова. В профиль уходят первые без вторых: если распознаватель и
+  /// «Джев», и «Джеп» пишет одинаково, такое написание ничего не отличает.
+  final Set<String> _spellings = {};
+  final Set<String> _negativeSpellings = {};
+
+  /// Тот же распознаватель, что проверяет срабатывания. Только в
+  /// приложении (есть [VoiceCalibrationSheet.bridge]): тесту нечего
+  /// загружать.
+  SpeechVerifier? _verifier;
   final List<Float32List> _recordedAudioBuffer = [];
   StreamSubscription<Float32List>? _audioSub;
 
@@ -147,6 +158,10 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
   void initState() {
     super.initState();
     _audioSource = widget.audioSource ?? MicrophoneAudioStreamSource();
+    if (widget.bridge != null) {
+      final verifier = _verifier = SpeechVerifier();
+      unawaited(verifier.prepare(wakeWord: _targetWord));
+    }
     final previous = SpeakerProfile.load();
     if (previous != null) {
       if (_isCloseStep) {
@@ -162,6 +177,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
     _meterPollTimer?.cancel();
     _stepTransitionTimer?.cancel();
     _stopRecordingStream();
+    _verifier?.release();
     super.dispose();
   }
 
@@ -323,11 +339,24 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
       });
       return;
     }
+    final heard = await _verifier?.recognize(raw, _targetWord);
     if (!mounted) return;
-    _handleSuccessfulSample(template);
+    _handleSuccessfulSample(template, heard);
   }
 
-  void _handleSuccessfulSample(KeywordTemplate template) {
+  /// Написание из образца — если распознаватель услышал одно слово (или
+  /// фразу той же длины, что ключевая). Целое предложение на образце —
+  /// шум или лишние слова, такое написание ничему не научит.
+  String? _spellingOf(String? heard) {
+    if (heard == null) return null;
+    final key = SpeechVerifier.spellingKey(heard);
+    if (key.isEmpty) return null;
+    final words = SpeechVerifier.spellingKey(_targetWord).split(' ').length;
+    return key.split(' ').length <= words + 1 ? key : null;
+  }
+
+  void _handleSuccessfulSample(KeywordTemplate template, [String? heard]) {
+    final spelling = _spellingOf(heard);
     if (_isNegativeStep) {
       final nearest = _templates
           .map((sample) => keywordDistance(sample, template))
@@ -342,6 +371,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
         return;
       }
       _negatives.add(template);
+      if (spelling != null) _negativeSpellings.add(spelling);
     } else if (_templates.isNotEmpty &&
         _templates.every((sample) => keywordDistance(sample, template) > 1.12)) {
       setState(() {
@@ -364,7 +394,10 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
       });
       return;
     }
-    if (!_isNegativeStep) _templates.add(template);
+    if (!_isNegativeStep) {
+      _templates.add(template);
+      if (spelling != null) _spellings.add(spelling);
+    }
 
     if (_currentStep + 1 < _totalSteps) {
       setState(() {
@@ -388,6 +421,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
 
   void _finishAndSaveProfile() {
     final previous = SpeakerProfile.load();
+    final spellings = _spellings.difference(_negativeSpellings).toList();
     final SpeakerProfile profile;
     if (_isCloseStep) {
       profile = previous != null
@@ -395,6 +429,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
               closeWord: widget.closeWord,
               closeTemplates: _templates,
               closeNegatives: _negatives,
+              closeSpellings: spellings,
               createdAt: DateTime.now(),
             )
           : SpeakerProfile(
@@ -407,6 +442,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
               closeTemplates: _templates,
               wakeNegatives: const [],
               closeNegatives: _negatives,
+              closeSpellings: spellings,
               createdAt: DateTime.now(),
             );
     } else {
@@ -415,6 +451,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
               wakeWord: widget.wakeWord,
               wakeTemplates: _templates,
               wakeNegatives: _negatives,
+              wakeSpellings: spellings,
               createdAt: DateTime.now(),
             )
           : SpeakerProfile(
@@ -427,6 +464,7 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
               closeTemplates: const [],
               wakeNegatives: _negatives,
               closeNegatives: const [],
+              wakeSpellings: spellings,
               createdAt: DateTime.now(),
             );
     }

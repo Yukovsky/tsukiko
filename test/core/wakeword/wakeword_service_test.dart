@@ -32,6 +32,7 @@ class FakeVerifier extends SpeechVerifier {
     Float32List samples,
     String keyword, {
     required bool isClose,
+    List<String> spellings = const [],
   }) async {
     calls.add(isClose);
     await gate?.future;
