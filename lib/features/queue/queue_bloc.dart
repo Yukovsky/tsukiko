@@ -2018,7 +2018,9 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     Emitter<QueueState> emit,
   ) async {
     await _onFilesAdded(FilesAdded([e.path]), emit);
-    final job = _find(Job(File(e.path)));
+    // Очередь хранит путь нормализованным: на Windows сырой путь с
+    // прямыми косыми иначе не найдёт запись.
+    final job = _find(Job(File(normalizePath(e.path))));
     if (job == null) return;
     // Разговор — это несколько голосов почти по определению: режим
     // включается для этой записи, что бы ни стояло в общих настройках.
