@@ -100,6 +100,18 @@ class _HudViewState extends State<HudView> {
   Duration _elapsed = Duration.zero;
   DateTime? _startedAt;
 
+  /// Микрофон уже отдаёт звук. На Windows устройство поднимается от 0,4
+  /// до 1 с, и всё это время панель говорит «включаю микрофон», а не
+  /// «записываю»: иначе первые слова уходят в пустоту, а человек о том
+  /// и не знает. Таймер записи тоже идёт отсюда, а не от нажатия.
+  bool _live = true;
+
+  /// До какого момента считать, что человек говорит. Уровень уже
+  /// отсчитан от фона комнаты (см. GetAudioLevel): ноль — тишина или
+  /// дыхание. Хвост в 0,4 с не даёт микрофону мигать между словами.
+  DateTime _voiceUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _voiceLevel = .15;
+
   /// История уровня: полоски бегут справа налево, как настоящий сигнал.
   List<double> _levels = List.filled(_bars, 0);
   static const _bars = 22;
@@ -197,7 +209,8 @@ class _HudViewState extends State<HudView> {
     setState(() {
       _state = state;
       if (state == HudState.recording) {
-        _startedAt = DateTime.now();
+        _live = false;
+        _startedAt = null;
         _elapsed = Duration.zero;
         _levels = List.filled(_bars, 0);
       }
@@ -213,9 +226,17 @@ class _HudViewState extends State<HudView> {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 33), (_) async {
       final level = await _bridge.level();
+      final live = _live || await _bridge.micLive();
       if (!mounted) return;
       setState(() {
-        _levels = [..._levels.skip(1), level];
+        if (live && !_live) {
+          _live = true;
+          _startedAt = DateTime.now();
+        }
+        if (_live) _levels = [..._levels.skip(1), level];
+        if (live && level > _voiceLevel) {
+          _voiceUntil = DateTime.now().add(const Duration(milliseconds: 400));
+        }
         final started = _startedAt;
         if (started != null) _elapsed = DateTime.now().difference(started);
       });
@@ -233,6 +254,10 @@ class _HudViewState extends State<HudView> {
         : _elapsed.inSeconds;
     return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
   }
+
+  bool get _voice => DateTime.now().isBefore(_voiceUntil);
+
+  bool get _warming => !_editing && _state == HudState.recording && !_live;
 
   int get _queueCount =>
       _editing ? 2 : hudBacklogCount(_state, _pending, _processing);
@@ -277,31 +302,59 @@ class _HudViewState extends State<HudView> {
     if (state != HudState.recording && state != HudState.transcribing) {
       return _content(l10n);
     }
+    final recording = state == HudState.recording;
+    // Красный микрофон — только пока слышна речь; тишина и вдох — белый,
+    // а пока устройство ещё открывается — серый.
+    final mic = _warming
+        ? Surface.secondaryText(context)
+        : _voice || _editing
+        ? MacosColors.systemRedColor
+        : (Surface.isDark(context) ? MacosColors.white : MacosColors.black);
+    // Слева и справа по одной ширине, чтобы время встало точно по центру.
+    const side = (IconSize.button + Gap.inner) * 2;
     return [
-      if (state == HudState.recording)
-        const MacosIcon(
-          CupertinoIcons.mic_fill,
-          size: 16,
-          color: MacosColors.systemRedColor,
-        )
-      else
-        const ProgressCircle(radius: 7),
-      const SizedBox(width: 8),
+      SizedBox(
+        width: recording && !_warming ? side : IconSize.button + Gap.inner,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: recording
+              ? MacosIcon(
+                  _warming ? CupertinoIcons.mic : CupertinoIcons.mic_fill,
+                  size: 16,
+                  color: mic,
+                )
+              : const ProgressCircle(radius: 7),
+        ),
+      ),
       Expanded(
         child: Text(
-          state == HudState.recording ? _time : l10n.hudTranscribing,
-          style: _label,
+          _warming
+              ? l10n.hudMicWarmupShort
+              : recording
+              ? _time
+              : l10n.hudTranscribing,
+          style: _label.copyWith(
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+          textAlign: recording && !_warming ? TextAlign.center : TextAlign.left,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      _IconButton(
-        icon: state == HudState.recording
-            ? CupertinoIcons.stop_fill
-            : CupertinoIcons.xmark,
-        onPressed: () =>
-            _action(state == HudState.recording ? 'stop' : 'abort'),
-      ),
+      if (recording) ...[
+        _IconButton(
+          icon: CupertinoIcons.xmark,
+          onPressed: () => _action('cancel'),
+        ),
+        _IconButton(
+          icon: CupertinoIcons.stop_fill,
+          onPressed: () => _action('stop'),
+        ),
+      ] else
+        _IconButton(
+          icon: CupertinoIcons.xmark,
+          onPressed: () => _action('abort'),
+        ),
     ];
   }
 
@@ -386,18 +439,35 @@ class _HudViewState extends State<HudView> {
         // со сжатием, а справа — Spacer: свободное место делилось между
         // ними пополам, и полоски ужимались почти вдвое против macOS.
         _ => [
-          _Meter(
-            levels: _editing && _state != HudState.recording
-                ? List.generate(22, (i) => ((i * 7) % 13 + 2) / 16)
-                : _levels,
-          ),
-          const SizedBox(width: _hudSpacing),
-          Text(
-            _time,
-            style: _label.copyWith(
-              fontFeatures: const [FontFeature.tabularFigures()],
+          if (_warming) ...[
+            MacosIcon(
+              CupertinoIcons.mic,
+              size: IconSize.button,
+              color: Surface.secondaryText(context),
             ),
-          ),
+            const SizedBox(width: Gap.control),
+            Flexible(
+              child: Text(
+                l10n.hudMicWarmup,
+                style: _label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ] else ...[
+            _Meter(
+              levels: _editing && _state != HudState.recording
+                  ? List.generate(22, (i) => ((i * 7) % 13 + 2) / 16)
+                  : _levels,
+            ),
+            const SizedBox(width: _hudSpacing),
+            Text(
+              _time,
+              style: _label.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
           if (_queueCount > 0) _queueButton(l10n),
           const Spacer(),
           _HudButton(

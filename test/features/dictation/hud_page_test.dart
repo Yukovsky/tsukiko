@@ -19,7 +19,11 @@ void main() {
 
   late List<MethodCall> calls;
 
+  /// Отдаёт ли микрофон звук. Пока нет — панель говорит «включаю».
+  var micLive = true;
+
   setUp(() {
+    micLive = true;
     binding.platformDispatcher.localesTestValue = const [Locale('ru')];
     NativeBridge.debugReset();
     calls = [];
@@ -29,6 +33,7 @@ void main() {
         calls.add(call);
         // Уровень сигнала панель спрашивает сама, тридцать раз в секунду.
         if (call.method == 'level') return 0.5;
+        if (call.method == 'micLive') return micLive;
         return null;
       },
     );
@@ -51,6 +56,11 @@ void main() {
       (_) {},
     );
     await tester.pump();
+    // Запись показывается, когда микрофон ожил, — это первый же опрос.
+    if (state == HudState.recording) {
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.pump();
+    }
   }
 
   Future<void> show(WidgetTester tester, {bool editor = false}) async {
@@ -283,6 +293,28 @@ void main() {
 
     await send(tester, HudState.done);
     expect(find.text('Готово'), findsOneWidget);
+
+    await send(tester, HudState.hidden);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('пока микрофон не ожил, панель не делает вид, что пишет', (
+    tester,
+  ) async {
+    micLive = false;
+    await show(tester);
+    await send(tester, HudState.recording);
+    expect(find.text('Включаю микрофон…'), findsOneWidget);
+    expect(find.text('0:00'), findsNothing);
+    // Передумать можно и до того, как микрофон заработал.
+    expect(find.text('Остановить'), findsOneWidget);
+    expect(find.text('Отменить'), findsOneWidget);
+
+    micLive = true;
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.pump();
+    expect(find.text('Включаю микрофон…'), findsNothing);
+    expect(find.text('0:00'), findsOneWidget);
 
     await send(tester, HudState.hidden);
     await tester.pumpWidget(const SizedBox());

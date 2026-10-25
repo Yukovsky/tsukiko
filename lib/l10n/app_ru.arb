@@ -910,6 +910,8 @@
   "askModelNotSelectedBody": "Укажите файл модели GGML или GGUF в настройках справа.",
   "jobDetailNoModelSelected": "Не выбрана модель",
   "hudSilent": "Ничего не записалось",
+  "hudMicWarmup": "Включаю микрофон…",
+  "hudMicWarmupShort": "Включаю…",
   "jobDetailSilent": "В записи нет звука",
   "errorSilentRecording": "Записывать было нечего: микрофон не отдал ни одного отсчёта",
   "errorRecordingStart": "Не удалось запустить микрофон. Проверьте, что он подключён и разрешён для tsukiko.",

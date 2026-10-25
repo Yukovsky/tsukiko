@@ -427,7 +427,7 @@ HudArea HudWindow::WorkArea() const {
 
 void HudWindow::CaptureCenter() {
   double factor = DpiScale() * placement_.scale;
-  double width = (mode_ == "timer" ? 148 : HudPanelWidth(queued_, editing_)) * factor;
+  double width = (mode_ == "timer" ? 176 : HudPanelWidth(queued_, editing_)) * factor;
   double height = (mode_ == "timer" ? 44 : kHudHeight) * factor;
   placement_.Capture(placement_.Origin(WorkArea(), width, height, 92 * DpiScale()), WorkArea(), width, height);
 }
@@ -463,7 +463,7 @@ void HudWindow::SetMode(const std::string& value) {
 void HudWindow::ResizeAndPosition() {
   if (!window_) return;
   const double dpi = DpiScale();
-  int width = static_cast<int>((is_editor_ ? 360 : mode_ == "timer" ? 148 : HudPanelWidth(queued_, editing_)) * (is_editor_ ? 1 : placement_.scale) * dpi);
+  int width = static_cast<int>((is_editor_ ? 360 : mode_ == "timer" ? 176 : HudPanelWidth(queued_, editing_)) * (is_editor_ ? 1 : placement_.scale) * dpi);
   int height = static_cast<int>((is_editor_ ? 228 : mode_ == "timer" ? 44 : kHudHeight) * (is_editor_ ? 1 : placement_.scale) * dpi);
   auto point = placement_.Origin(WorkArea(), width, height, 92 * dpi);
   if (is_editor_) {

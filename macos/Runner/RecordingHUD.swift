@@ -19,8 +19,10 @@ final class HUDModel: ObservableObject {
     if editing { return max(2, outstanding) }
     return max(0, outstanding - (state == .recording ? 0 : 1))
   }
-  var size: NSSize { mode == .timer ? NSSize(width: 148, height: 44) : NSSize(width: queueCount > 0 ? 420 : 372, height: 52) }
+  var size: NSSize { mode == .timer ? NSSize(width: 176, height: 44) : NSSize(width: queueCount > 0 ? 420 : 372, height: 52) }
   @Published var elapsed: TimeInterval = 0
+  /// Микрофон уже отдаёт звук. Пока нет, панель говорит «включаю», а не «записываю».
+  @Published var live = true
   @Published var levels: [Double] = Array(repeating: 0, count: 22)
   var labels: [String: String] = [:]
   var onMove: (CGSize, Bool) -> Void = { _, _ in }
@@ -34,7 +36,15 @@ final class HUDModel: ObservableObject {
   var onClearQueue: () -> Void = {}
   var onRecord: () -> Void = {}
   func label(_ key: String, _ fallback: String) -> String { labels[key] ?? fallback }
-  func push(level: Double) { levels.removeFirst(); levels.append(level) }
+  /// Говорит ли человек: уровень уже отсчитан от фона комнаты, ноль — тишина
+  /// или дыхание. Хвост 0,4 с не даёт микрофону мигать между словами.
+  var warming: Bool { !editing && state == .recording && !live }
+  var voiceUntil = Date.distantPast
+  var voice: Bool { Date() < voiceUntil }
+  func push(level: Double) {
+    levels.removeFirst(); levels.append(level)
+    if level > 0.15 { voiceUntil = Date().addingTimeInterval(0.4) }
+  }
 }
 
 struct HUDView: View {
@@ -71,17 +81,30 @@ struct HUDView: View {
       if model.mode == .timer {
         HStack(spacing: 9) {
           if displayState == .recording || displayState == .transcribing {
-            if displayState == .recording { Image(systemName: "mic.fill").foregroundColor(.red) }
-            else { ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14) }
-            Text(displayState == .recording ? time : "Распознаю…")
+            let recording = displayState == .recording
+            // Слева и справа по одной ширине, чтобы время встало по центру.
+            ZStack(alignment: .leading) {
+              if recording {
+                Image(systemName: model.warming ? "mic" : "mic.fill")
+                  .foregroundColor(model.warming ? .secondary : model.voice || model.editing ? .red : .primary)
+              } else { ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14) }
+            }.frame(width: recording && !model.warming ? 53 : 22, alignment: .leading)
+            Text(model.warming ? "Включаю…" : recording ? time : "Распознаю…")
               .font(.system(size: 13, weight: .medium).monospacedDigit()).lineLimit(1)
-            Spacer(minLength: 0)
-            Button { action(displayState == .recording ? model.onStop : model.onAbort) } label: {
-              Image(systemName: displayState == .recording ? "stop.fill" : "xmark").font(.system(size: 10, weight: .semibold))
+              .frame(maxWidth: .infinity, alignment: recording && !model.warming ? .center : .leading)
+            if recording {
+              Button { action(model.onCancel) } label: {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                  .frame(width: 22, height: 24).contentShape(Rectangle())
+              }.buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Отменить запись").help("Отменить запись")
+            }
+            Button { action(recording ? model.onStop : model.onAbort) } label: {
+              Image(systemName: recording ? "stop.fill" : "xmark").font(.system(size: 10, weight: .semibold))
                 .frame(width: 22, height: 24).contentShape(Rectangle())
             }.buttonStyle(PlainButtonStyle())
-              .accessibilityLabel(displayState == .recording ? "Остановить запись" : "Отменить расшифровку")
-              .help(displayState == .recording ? "Остановить запись" : "Отменить расшифровку")
+              .accessibilityLabel(recording ? "Остановить запись" : "Отменить расшифровку")
+              .help(recording ? "Остановить запись" : "Отменить расшифровку")
           } else {
             Image(systemName: resultIcon).foregroundColor(displayState == .done ? .green : .secondary)
             Text(resultText).font(.system(size: 12)).lineLimit(1).help(resultText)
@@ -90,7 +113,13 @@ struct HUDView: View {
         }.padding(.horizontal, 13)
       } else {
         HStack(spacing: 9) {
-          if displayState == .recording {
+          if model.warming {
+            Image(systemName: "mic").foregroundColor(.secondary)
+            Text("Включаю микрофон…").font(.system(size: 13, weight: .medium)).lineLimit(1)
+            Spacer(minLength: 0)
+            HUDButton(title: "Отменить", filled: false) { action(model.onCancel) }
+            HUDButton(title: "Остановить", filled: true) { action(model.onStop) }
+          } else if displayState == .recording {
             Meter(levels: levels, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             Text(time).font(.system(size: 13, weight: .medium).monospacedDigit()).fixedSize()
             if count > 0 { queue }
@@ -238,6 +267,7 @@ final class RecordingHUD {
   private weak var previousKeyWindow: NSWindow?
   private var editorCorner = 0
   var levelSource: () -> Double = { 0 }
+  var liveSource: () -> Bool = { true }
   var onModeChanged: (String) -> Void = { _ in }
   var onStatusChanged: (Bool) -> Void = { _ in }
   var currentPlacement: HUDPlacement { placement }
@@ -433,7 +463,7 @@ final class RecordingHUD {
     hideAfterDone?.invalidate(); hideAfterDone = nil
     if next != model.state {
       if next == .recording {
-        startedAt = Date(); model.elapsed = 0; model.levels = Array(repeating: 0, count: 22)
+        startedAt = nil; model.live = false; model.elapsed = 0; model.levels = Array(repeating: 0, count: 22)
       } else { ticker?.invalidate(); ticker = nil }
       model.state = next
     }
@@ -441,7 +471,8 @@ final class RecordingHUD {
     if next == .recording && ticker == nil {
       let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
         guard let self else { return }
-        self.model.push(level: self.levelSource())
+        if !self.model.live && self.liveSource() { self.model.live = true; self.startedAt = Date() }
+        if self.model.live { self.model.push(level: self.levelSource()) }
         if let start = self.startedAt { self.model.elapsed = Date().timeIntervalSince(start) }
       }
       RunLoop.main.add(timer, forMode: .common); ticker = timer

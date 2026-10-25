@@ -343,6 +343,8 @@ final class DictationBridge: NSObject {
   private var pendingTicket = 0
 
   private var recorder: AVAudioRecorder?
+  private var recordStartedAt: Date?
+  private var micHeard = false
   private var recordURL: URL?
 
   /// Индикатор уровня: оценка фона комнаты, сглаженный уровень и время
@@ -365,6 +367,7 @@ final class DictationBridge: NSObject {
     hud.onModeChanged = { [weak self] mode in self?.channel?.invokeMethod("hudMode", arguments: mode) }
     hud.onStatusChanged = { [weak self] active in self?.panel.setRecordingIndicator(active) }
     hud.levelSource = { [weak self] in self?.currentLevel() ?? 0 }
+    hud.liveSource = { [weak self] in self?.micLive() ?? true }
     return hud
   }()
 
@@ -1113,6 +1116,8 @@ final class DictationBridge: NSObject {
     guard rec.record() else { return nil }
     recorder = rec
     recordURL = url
+    recordStartedAt = Date()
+    micHeard = false
     return url.path
   }
 
@@ -1128,11 +1133,23 @@ final class DictationBridge: NSObject {
   private func stopRecorder() {
     recorder?.stop()
     recorder = nil
+    recordStartedAt = nil
     // Комната у каждой записи своя: с оценкой фона от прошлого раза
     // индикатор первые секунды врал бы.
     noiseFloorDb = nil
     meterLevel = 0
     meterAt = nil
+  }
+
+  /// Микрофон уже отдаёт звук, а не цифровой ноль прогрева (−160 дБ).
+  /// Секунда нулей тоже считается: выключенный микрофон не должен вешать панель.
+  private func micLive() -> Bool {
+    if micHeard { return true }
+    guard let rec = recorder, rec.isRecording else { return false }
+    rec.updateMeters()
+    if rec.averagePower(forChannel: 0) > -150
+      || Date().timeIntervalSince(recordStartedAt ?? Date()) >= 1 { micHeard = true }
+    return micHeard
   }
 
   /// Уровень для индикатора. Считается один раз здесь: его берут и панель
