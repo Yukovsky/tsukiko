@@ -17,11 +17,11 @@ const diarizationSampleRate = 16000;
 double wavSecondsBySize(int bytes) =>
     bytes <= 44 ? 0 : (bytes - 44) / (diarizationSampleRate * 2);
 
-/// Сколько памяти займёт диаризация на пике: звук в числах с плавающей
-/// точкой и его копия в нативной памяти (`process()` копирует весь
-/// буфер), по 64 КБ на секунду каждая. На час — около 460 МБ.
+/// Сколько памяти займёт `nemo-speech diarize` на пике. Замер на M5
+/// (Metal): 0.49 ГБ на 14 минутах, 0.91 ГБ на 36, 2.35 ГБ на 2.4 часа —
+/// почти прямая, около 450 МБ сверху и 800 МБ на час записи.
 int diarizationPeakBytes(double seconds) =>
-    (seconds * diarizationSampleRate * 4 * 2).round();
+    (450 * 1000 * 1000 + seconds * 800 * 1000 * 1000 / 3600).round();
 
 class WavFormatException implements Exception {
   WavFormatException(this.message);

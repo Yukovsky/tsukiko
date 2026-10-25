@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data' show BytesBuilder;
 import 'dart:ui' show IsolateNameServer;
 
@@ -83,12 +84,6 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     on<DiarizationToggled>(
       (e, emit) => _onOptionsEdited(
         OptionsEdited((x) => x.copyWith(diarize: e.enabled)),
-        emit,
-      ),
-    );
-    on<SpeakerCountChosen>(
-      (e, emit) => _onOptionsEdited(
-        OptionsEdited((x) => x.copyWith(speakerCount: e.count)),
         emit,
       ),
     );
@@ -1660,10 +1655,10 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
 
   // ── голоса ────────────────────────────────────────────────────────────────
 
-  /// Дольше этого запись сама на голоса не размечается: на пике разметка
-  /// держит в памяти весь звук дважды (около 460 МБ на час, 1.4 ГБ на три
-  /// часа). Резать на куски нельзя — голоса разных кусков между собой
-  /// не сопоставятся. Поэтому длинную запись не размечаем молча, а
+  /// Дольше этого запись сама на голоса не размечается: память разметки
+  /// растёт с длиной записи (около 1.3 ГБ на час, 2.4 ГБ на два с
+  /// половиной — см. [diarizationPeakBytes]). Резать на куски нельзя —
+  /// голоса разных кусков между собой не сопоставятся. Поэтому длинную запись не размечаем молча, а
   /// говорим, сколько памяти нужно, и оставляем кнопку «Всё равно
   /// определить голоса».
   static const _diarizeLimit = Duration(hours: 2);
@@ -1717,12 +1712,8 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
     );
     emit(_replace(state, job, it).copyWith(status: l10n.statusDiarizing(it.name)));
 
-    final settings = Settings.load();
-    final embedder = DiarizationModels.embedderById(
-      settings[diarizationEmbedderSetting] as String?,
-    );
-    if (!DiarizationModels.isInstalled(embedder)) {
-      final mb = DiarizationModels.downloadMb(embedder);
+    if (!DiarizationModels.isInstalled) {
+      final mb = DiarizationModels.downloadMb();
       emit(
         _replace(
           state,
@@ -1731,13 +1722,12 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
         ),
       );
       final problem = await DiarizationModels.ensureInstalled(
-        embedder: embedder,
         cancelled: () => _stopRequested,
         onProgress: (share) => add(JobAdvanced(it, progress: share)),
       );
       if (_stopRequested) return plainWith(l10n.speakersStopped);
       if (problem != null) {
-        Log.error('Diarization', 'Models not installed: $problem');
+        Log.error('Diarization', 'Model not installed: $problem');
         return plainWith(l10n.speakersModelsFailed, problem);
       }
       it = _find(it) ?? it;
@@ -1750,27 +1740,31 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
       );
     }
 
-    final threshold =
-        (settings[diarizationThresholdSetting] as num?)?.toDouble() ??
-        embedder.threshold;
     final diarizer = _diarizer = Diarizer();
     final watch = Stopwatch()..start();
     try {
       Log.info(
         'Diarization',
-        'Started: ${it.name}, embedder=${embedder.id}, threshold=$threshold, '
-            'speakers=${opts.speakerCount}, audio=${seconds.round()}s',
+        'Started: ${it.name}, model=${DiarizationModels.file}, '
+            'audio=${seconds.round()}s',
       );
-      final raw = await diarizer.run(
-        wav,
-        DiarizationSettings(
-          segmentationModel: DiarizationModels.segmentationModel,
-          embeddingModel: DiarizationModels.embedderPath(embedder),
-          threshold: threshold,
-          numSpeakers: opts.speakerCount,
-        ),
-        onProgress: (share) => add(JobAdvanced(it, progress: share)),
-      );
+      // Хода работы nemo-speech не печатает, поэтому полоса идёт по
+      // оценке времени: к 90 % она подходит за ожидаемый срок и дальше
+      // почти стоит, пока не придёт ответ. Срок — десятая доля записи:
+      // на Metal выходит быстрее (0.03–0.06), на процессоре — около 0.14.
+      // ponytail: оценка, а не ход работы; заменить настоящим, если
+      // движок начнёт печатать долю готового.
+      final expectMs = math.max(5000.0, seconds * 100);
+      final ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+        final share = 0.9 * (1 - math.exp(-watch.elapsedMilliseconds / expectMs));
+        add(JobAdvanced(it, progress: share));
+      });
+      final List<SpeakerTurn> raw;
+      try {
+        raw = await diarizer.run(wav, DiarizationModels.path);
+      } finally {
+        ticker.cancel();
+      }
       final turns = relabelTurns(raw);
       Log.info(
         'Diarization',
@@ -1782,11 +1776,8 @@ class QueueBloc extends Bloc<QueueEvent, QueueState> {
       if (turns.isEmpty) return plainWith(l10n.speakersNoSpeech);
       final voiced = finishSpeakers(
         build(turns),
-        info: DiarizationInfo(
-          segmentation: '${DiarizationModels.segmentationName}/model.int8.onnx',
-          embedding: embedder.file,
-          threshold: threshold,
-          requestedSpeakers: opts.speakerCount,
+        info: const DiarizationInfo(
+          model: DiarizationModels.file,
           detectedSpeakers: 0,
         ),
         defaultName: l10n.speakerDefaultName,

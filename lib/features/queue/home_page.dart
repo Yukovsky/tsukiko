@@ -22,7 +22,6 @@ import '../../core/library.dart';
 import '../../core/logger.dart';
 import '../../core/models.dart';
 import '../../core/recognition.dart';
-import '../../core/settings.dart';
 import '../../core/text.dart';
 import '../../core/transcript.dart';
 import '../../core/vocabulary.dart';
@@ -1694,13 +1693,9 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   /// занятой модели), живёт на вкладке «Расшифровщик» в окне настроек,
   /// а диктовка — на своей. Инспектор целиком принадлежит расшифровщику,
   /// и ни одна настройка диктовки сюда не попадает.
-  /// Сколько ещё скачать моделям голосов, или null — всё на месте.
+  /// Сколько ещё скачать модели голосов, или null — всё на месте.
   String? _speakerModelsMissing() {
-    final mb = DiarizationModels.downloadMb(
-      DiarizationModels.embedderById(
-        Settings.load()[diarizationEmbedderSetting] as String?,
-      ),
-    );
+    final mb = DiarizationModels.downloadMb();
     return mb == 0 ? null : sizeLabelMb(mb);
   }
 
@@ -1894,7 +1889,6 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           // перерисовывается на каждом шаге хода работы.
           modelsMissingLabel: o.diarize ? _speakerModelsMissing() : null,
           onToggle: _toggleDiarization,
-          onCount: (n) => _send(SpeakerCountChosen(n)),
           onRename: (id, name) => _send(SpeakerRenamed(s.lead!, id, name)),
           onMerge: (from, into) => _send(SpeakersMerged(s.lead!, from, into)),
           onDiarize:

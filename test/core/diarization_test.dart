@@ -1,16 +1,15 @@
-// Разметка голосов: проверка суммы файлов, разбор WAV и — если модели
-// есть на диске — настоящий прогон sherpa-onnx.
+// Разметка голосов: проверка суммы файлов, разбор WAV, доводы и ответ
+// `nemo-speech diarize` и — если движок и модель есть на диске —
+// настоящий прогон.
 //
-// Прогон с моделями включается переменной окружения:
+// Прогон включается переменными окружения:
 //
-// TSUKIKO_DIARIZATION_MODELS=<папка> — в ней распакованная
-//   `sherpa-onnx-pyannote-segmentation-3-0/model.int8.onnx`, эмбеддер
-//   `nemo_en_titanet_small.onnx` и записи `*.wav` (16 кГц моно). Рядом
-//   с записью — `<имя>.voices` с ожидаемым числом голосов, например
-//   «4» для `0-four-speakers-zh.wav` из релиза speaker-segmentation-models
-//   sherpa-onnx.
+// TSUKIKO_NEMO_SPEECH=<путь к nemo-speech> (0.2.0 и новее) и
+// TSUKIKO_DIARIZATION_MODELS=<папка> — в ней
+//   `Nemotron-3-Diarization.q8_0.gguf` и записи `*.wav` (16 кГц моно).
+//   Рядом с записью — `<имя>.voices` с ожидаемым числом голосов.
 //
-// Без переменной этот прогон пропускается, а не падает.
+// Без переменных этот прогон пропускается, а не падает.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -21,29 +20,6 @@ import 'package:tsukiko/core/diarization/diarizer.dart';
 import 'package:tsukiko/core/diarization/sha256.dart';
 import 'package:tsukiko/core/diarization/wav_samples.dart';
 import 'package:tsukiko/core/transcript.dart';
-
-String _sherpaLibraryDir() {
-  final configFile = File('.dart_tool/package_config.json');
-  final packages =
-      (jsonDecode(configFile.readAsStringSync())
-              as Map<String, dynamic>)['packages']
-          as List<dynamic>;
-  final platform = Platform.isMacOS
-      ? 'macos'
-      : Platform.isWindows
-      ? 'windows'
-      : 'linux';
-  final entry = packages.cast<Map<String, dynamic>>().firstWhere(
-    (entry) => entry['name'] == 'sherpa_onnx_$platform',
-  );
-  final root = configFile.uri
-      .resolve(entry['rootUri'] as String)
-      .toFilePath();
-  return switch (platform) {
-    'linux' => '$root/linux/x64',
-    _ => '$root/$platform',
-  };
-}
 
 Uint8List _wav(List<int> samples, {int channels = 1, int rate = 16000}) {
   final data = ByteData(44 + samples.length * 2);
@@ -141,32 +117,59 @@ void main() {
 
     test('длительность и память по размеру файла', () {
       expect(wavSecondsBySize(44 + 32000 * 60), 60);
-      // Час записи — около 460 МБ на пике (две копии по 4 байта на отсчёт).
-      expect(diarizationPeakBytes(3600) ~/ (1000 * 1000), 460);
+      // Замер на M5: 2.35 ГБ на 2.4 часа, 0.91 ГБ на 36 минутах.
+      expect(diarizationPeakBytes(8702) / 1e9, closeTo(2.35, 0.1));
+      expect(diarizationPeakBytes(2143) / 1e9, closeTo(0.91, 0.1));
     });
   });
 
-  test('модели: закреплённые суммы и адреса', () {
-    for (final e in DiarizationModels.embedders) {
-      expect(e.sha256, matches(RegExp(r'^[0-9a-f]{64}$')));
-      expect(e.url, contains('speaker-recongition-models/${e.file}'));
-    }
+  test('модель: закреплённые ревизия, сумма и размер', () {
+    expect(DiarizationModels.sha256, matches(RegExp(r'^[0-9a-f]{64}$')));
     expect(
-      DiarizationModels.embedderById('nope'),
-      DiarizationModels.defaultEmbedder,
+      DiarizationModels.url,
+      matches(RegExp(r'/resolve/[0-9a-f]{40}/Nemotron-3-Diarization\.q8_0\.gguf$')),
     );
+    expect(DiarizationModels.mb, DiarizationModels.bytes ~/ (1024 * 1024));
   });
 
+  group('nemo-speech diarize', () {
+    test('доводы', () {
+      expect(buildDiarizeArgs('/a.wav', '/m.gguf', '/t.json'), [
+        'diarize', '/a.wav', '--model', '/m.gguf', '--format', 'json',
+        '--output', '/t.json', '--force',
+      ]);
+    });
+
+    test('ответ: секунды в миллисекунды, номер голоса строкой', () {
+      final turns = parseDiarizeJson(jsonEncode({
+        'file': '/a.wav',
+        'segments': [
+          {'start': 1.291, 'end': 26.319, 'speaker': 1},
+          {'start': 26.091, 'end': 111.259, 'speaker': 2},
+          {'start': 'битый', 'end': 2, 'speaker': 3},
+        ],
+      }));
+      expect(turns, const [
+        SpeakerTurn(1291, 26319, '1'),
+        SpeakerTurn(26091, 111259, '2'),
+      ]);
+      expect(relabelTurns(turns).map((t) => t.clusterId), ['S1', 'S2']);
+      expect(parseDiarizeJson('{"segments": []}'), isEmpty);
+      expect(
+        () => parseDiarizeJson('{"file": "/a.wav"}'),
+        throwsA(isA<DiarizationFailed>()),
+      );
+    });
+  });
+
+  final exe = Platform.environment['TSUKIKO_NEMO_SPEECH'];
   final models = Platform.environment['TSUKIKO_DIARIZATION_MODELS'];
   test(
     'настоящий прогон на подготовленных записях',
     () async {
       final dir = Directory(models!);
-      final segmentation =
-          '${dir.path}/${DiarizationModels.segmentationName}/model.int8.onnx';
-      final embedding =
-          '${dir.path}/${DiarizationModels.defaultEmbedder.file}';
-      final diarizer = Diarizer(sherpaLibraryDir: _sherpaLibraryDir());
+      final model = '${dir.path}/${DiarizationModels.file}';
+      final diarizer = Diarizer(exe: exe);
       final wavs = dir
           .listSync()
           .whereType<File>()
@@ -175,20 +178,8 @@ void main() {
       expect(wavs, isNotEmpty);
       for (final wav in wavs) {
         final expected = File(wav.path.replaceFirst(RegExp(r'\.wav$'), '.voices'));
-        final progress = <double>[];
-        final turns = relabelTurns(
-          await diarizer.run(
-            wav.path,
-            DiarizationSettings(
-              segmentationModel: segmentation,
-              embeddingModel: embedding,
-              threshold: DiarizationModels.defaultEmbedder.threshold,
-            ),
-            onProgress: progress.add,
-          ),
-        );
+        final turns = relabelTurns(await diarizer.run(wav.path, model));
         expect(turns, isNotEmpty, reason: wav.path);
-        expect(progress, isNotEmpty);
         expect(turns.first.clusterId, 'S1');
         if (expected.existsSync()) {
           expect(
@@ -199,30 +190,14 @@ void main() {
         }
       }
 
-      // Остановка отвечает сразу, а следующий прогон дожидается конца
-      // брошенного и идёт как обычно.
-      final cancelled = diarizer.run(
-        wavs.first.path,
-        DiarizationSettings(
-          segmentationModel: segmentation,
-          embeddingModel: embedding,
-          threshold: 0.8,
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      // Остановка убивает процесс, а следующий прогон идёт как обычно.
+      final cancelled = diarizer.run(wavs.first.path, model);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
       diarizer.cancel();
       await expectLater(cancelled, throwsA(isA<DiarizationCancelled>()));
-      final again = await Diarizer(sherpaLibraryDir: _sherpaLibraryDir()).run(
-        wavs.first.path,
-        DiarizationSettings(
-          segmentationModel: segmentation,
-          embeddingModel: embedding,
-          threshold: 0.8,
-        ),
-      );
-      expect(again, isNotEmpty);
+      expect(await diarizer.run(wavs.first.path, model), isNotEmpty);
     },
-    skip: models == null,
+    skip: exe == null || models == null,
     timeout: const Timeout(Duration(minutes: 10)),
   );
 }

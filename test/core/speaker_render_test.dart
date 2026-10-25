@@ -14,10 +14,7 @@ const _voices = [
 ];
 
 const _info = DiarizationInfo(
-  segmentation: 'pyannote-segmentation-3.0',
-  embedding: 'nemo_en_titanet_small',
-  threshold: 0.9,
-  requestedSpeakers: 0,
+  model: 'Nemotron-3-Diarization.q8_0.gguf',
   detectedSpeakers: 2,
 );
 
@@ -128,7 +125,7 @@ void main() {
       final json = renderAs(formatJson, _voiced);
       expect(json, contains('"speaker": "S2"'));
       expect(json, contains('"overlap": true'));
-      expect(json, contains('"engine": "sherpa-onnx"'));
+      expect(json, contains('"engine": "nemo-speech"'));
 
       final back = readTranscript('x.json', json).parsed!;
       expect(back.lang, 'ru');

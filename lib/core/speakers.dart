@@ -1,10 +1,9 @@
 /// Кто говорит: голоса, их реплики и сведение слов с разметкой диаризации.
 ///
-/// Чистая логика без Flutter и без sherpa: файл собирается и в программу
-/// расшифровки (`lib/cli/transcribe.dart`), и в приложение. Сама
-/// диаризация — нейросеть и нативная библиотека — живёт отдельно
-/// (`lib/core/diarization/`), сюда приходят только её ответы: отрезки
-/// времени с номером кластера.
+/// Чистая логика без Flutter: файл собирается и в программу расшифровки
+/// (`lib/cli/transcribe.dart`), и в приложение. Сама диаризация —
+/// нейросеть в `nemo-speech` — живёт отдельно (`lib/core/diarization/`),
+/// сюда приходят только её ответы: отрезки времени с номером голоса.
 ///
 /// Схема везде одна и та же (WhisperX, MacParakeet, talkthrough-mcp):
 /// текст распознаётся сам по себе, голоса размечаются сами по себе,
@@ -109,43 +108,33 @@ class SpeakerInfo {
 }
 
 /// Чем получена разметка голосов — чтобы по готовому файлу было видно,
-/// какой моделью и с каким порогом его размечали (так делает
+/// каким движком и какой моделью его размечали (так делает
 /// talkthrough-mcp). Без этого через полгода не понять, почему в одной
 /// расшифровке три голоса, а в соседней, той же встречи, — пять.
 class DiarizationInfo {
   const DiarizationInfo({
-    this.engine = 'sherpa-onnx',
-    required this.segmentation,
-    required this.embedding,
-    required this.threshold,
-    required this.requestedSpeakers,
+    this.engine = 'nemo-speech',
+    required this.model,
     required this.detectedSpeakers,
   });
 
-  final String engine, segmentation, embedding;
-  final double threshold;
-
-  /// Сколько голосов просили. Ноль — «определить самим».
-  final int requestedSpeakers;
+  final String engine, model;
   final int detectedSpeakers;
 
   Map<String, Object> toJson() => {
     'engine': engine,
-    'segmentation': segmentation,
-    'embedding': embedding,
-    'threshold': threshold,
-    'requestedSpeakers': requestedSpeakers,
+    'model': model,
     'detectedSpeakers': detectedSpeakers,
   };
 
   static DiarizationInfo? fromJson(Object? value) {
     if (value is! Map) return null;
     return DiarizationInfo(
-      engine: (value['engine'] as String?) ?? 'sherpa-onnx',
-      segmentation: (value['segmentation'] as String?) ?? '',
-      embedding: (value['embedding'] as String?) ?? '',
-      threshold: (value['threshold'] as num?)?.toDouble() ?? 0,
-      requestedSpeakers: (value['requestedSpeakers'] as num?)?.toInt() ?? 0,
+      engine: (value['engine'] as String?) ?? '',
+      // Файлы первой, sherpa-версии режима писали модель полем
+      // `embedding` — читаем и их, чтобы такие расшифровки не теряли блок.
+      model:
+          (value['model'] as String?) ?? (value['embedding'] as String?) ?? '',
       detectedSpeakers: (value['detectedSpeakers'] as num?)?.toInt() ?? 0,
     );
   }
@@ -154,28 +143,18 @@ class DiarizationInfo {
   bool operator ==(Object other) =>
       other is DiarizationInfo &&
       other.engine == engine &&
-      other.segmentation == segmentation &&
-      other.embedding == embedding &&
-      other.threshold == threshold &&
-      other.requestedSpeakers == requestedSpeakers &&
+      other.model == model &&
       other.detectedSpeakers == detectedSpeakers;
 
   @override
-  int get hashCode => Object.hash(
-    engine,
-    segmentation,
-    embedding,
-    threshold,
-    requestedSpeakers,
-    detectedSpeakers,
-  );
+  int get hashCode => Object.hash(engine, model, detectedSpeakers);
 }
 
 /// Отрезок, на котором звучит один голос. Так отвечает диаризация.
 ///
-/// Отрезки разных голосов могут заходить друг на друга: модель
-/// сегментации pyannote 3.0 различает до двух одновременных голосов,
-/// и перебивки она видит. Это не ошибка разметки, а её смысл.
+/// Отрезки разных голосов могут заходить друг на друга: Nemotron-3
+/// размечает каждый голос своей дорожкой и перебивки видит. Это не
+/// ошибка разметки, а её смысл.
 class SpeakerTurn {
   const SpeakerTurn(this.fromMs, this.toMs, this.clusterId);
 
@@ -791,26 +770,4 @@ List<SpeakerInfo> speakerRoster(
         colorIndex: known[id]?.colorIndex ?? freshColor(),
       ),
   ];
-}
-
-/// Похоже ли, что голоса рассыпались на «осколки».
-///
-/// Порог кластеризации у каждого эмбеддера свой и зависит от записи:
-/// промах в нём превращает четырёх человек в десятки «голосов» по
-/// несколько секунд (замер YazSes: 86 голосов вместо 4 на пороге из
-/// примера sherpa). Признак — не меньше половины меток держат речи
-/// меньше `min(20 с, max(5 с, 2 % всей речи))`.
-///
-/// Только предупреждение: ничего не сливает и не прячет. И ловит оно
-/// только осколки — ошибку «один человек разбит на два крупных голоса»
-/// оно не видит, поэтому обещать по нему «разметка верна» нельзя.
-///
-/// Двух голосов для осколков мало: «один говорил, второй разок
-/// ответил» — обычный разговор, а не рассыпавшаяся разметка.
-bool looksFragmented(List<SpeakerInfo> roster) {
-  if (roster.length < 3) return false;
-  final total = roster.fold<int>(0, (sum, s) => sum + s.talkMs);
-  final limit = math.min(20000, math.max(5000, total * 0.02));
-  final small = roster.where((s) => s.talkMs < limit).length;
-  return small * 2 >= roster.length;
 }

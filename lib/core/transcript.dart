@@ -696,10 +696,7 @@ Transcript finishSpeakers(
         ? null
         : DiarizationInfo(
             engine: info.engine,
-            segmentation: info.segmentation,
-            embedding: info.embedding,
-            threshold: info.threshold,
-            requestedSpeakers: info.requestedSpeakers,
+            model: info.model,
             detectedSpeakers: roster.length,
           ),
   );

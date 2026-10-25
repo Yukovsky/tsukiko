@@ -54,8 +54,7 @@ extension RunOptionsDiff on RunOptions {
       if (vad != base.vad || vadModel != base.vadModel) 'VAD',
       if (prompt.trim() != base.prompt.trim()) l10n.diffPrompt,
       if (punctuate != base.punctuate) l10n.diffPunctuation,
-      if (diarize != base.diarize || speakerCount != base.speakerCount)
-        l10n.diffSpeakers,
+      if (diarize != base.diarize) l10n.diffSpeakers,
     ];
   }
 }

@@ -110,7 +110,6 @@ class SettingsCubit extends Cubit<SettingsState> {
         toLibrary: (s['toLibrary'] as bool?) ?? true,
         saveNextToSource: (s['saveNextToSource'] as bool?) ?? false,
         diarizeDefault: (s['diarize'] as bool?) ?? false,
-        diarizationEmbedder: (s[diarizationEmbedderSetting] as String?) ?? '',
         timestamps: (s['timestamps'] as bool?) ?? true,
         dockIcon: (s['dockIcon'] as bool?) ?? true,
         loggingEnabled: loggingEnabled,
@@ -541,11 +540,6 @@ class SettingsCubit extends Cubit<SettingsState> {
   void setDiarizeDefault(bool v) {
     _emit(state.copyWith(diarizeDefault: v));
     unawaited(_saveApp({'diarize': v}));
-  }
-
-  void setDiarizationEmbedder(String id) {
-    _emit(state.copyWith(diarizationEmbedder: id));
-    unawaited(_saveApp({diarizationEmbedderSetting: id}));
   }
 
   void setTimestamps(bool v) {

@@ -534,45 +534,6 @@ void main() {
     });
   });
 
-  group('looksFragmented', () {
-    SpeakerInfo voice(int n, int talkMs) =>
-        SpeakerInfo(id: 'S$n', name: 'Голос $n', talkMs: talkMs);
-
-    test('короткая запись с тремя голосами — не осколки', () {
-      expect(
-        looksFragmented([voice(1, 10000), voice(2, 10000), voice(3, 10000)]),
-        isFalse,
-      );
-    });
-
-    test('много мелких меток — осколки', () {
-      expect(
-        looksFragmented([
-          voice(1, 600000),
-          voice(2, 500000),
-          for (var i = 3; i < 20; i++) voice(i, 3000),
-        ]),
-        isTrue,
-      );
-    });
-
-    test('обычная встреча с одним молчуном — не осколки', () {
-      expect(
-        looksFragmented([
-          voice(1, 900000),
-          voice(2, 700000),
-          voice(3, 400000),
-          voice(4, 15000),
-        ]),
-        isFalse,
-      );
-    });
-
-    test('двух голосов для осколков мало', () {
-      expect(looksFragmented([voice(1, 900000), voice(2, 1000)]), isFalse);
-    });
-  });
-
   group('whisper с голосами', () {
     test('полный JSON: слова из токенов, разрез на смене голоса', () {
       Map<String, Object> token(String text, int from, int to) => {
@@ -632,13 +593,11 @@ void main() {
       const fallback = RunOptions(model: '/m.bin', lang: 'ru', threads: 4);
       final old = RunOptions.fromJson({'model': '/x.bin'}, fallback);
       expect(old.diarize, isFalse);
-      expect(old.speakerCount, 0);
       final saved = RunOptions.fromJson(
-        fallback.copyWith(diarize: true, speakerCount: 3).toJson(),
+        fallback.copyWith(diarize: true).toJson(),
         fallback,
       );
       expect(saved.diarize, isTrue);
-      expect(saved.speakerCount, 3);
     });
   });
 }

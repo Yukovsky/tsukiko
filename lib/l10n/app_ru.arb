@@ -1707,7 +1707,7 @@
       }
     }
   },
-  "jobDetailSpeakerModelsLoading": "Загружаю модели голосов · {size}",
+  "jobDetailSpeakerModelsLoading": "Загружаю модель голосов · {size}",
   "@jobDetailSpeakerModelsLoading": {
     "placeholders": {
       "size": {
@@ -1735,7 +1735,7 @@
     }
   },
   "speakersStopped": "Голоса не размечены: остановлено",
-  "speakersModelsFailed": "Голоса не размечены: модели не загрузились",
+  "speakersModelsFailed": "Голоса не размечены: модель не загрузилась",
   "speakersNoSpeech": "Голосов не найдено",
   "speakersSingle": "Один голос",
   "speakersFound": "{count, plural, one{{count} голос} few{{count} голоса} many{{count} голосов} other{{count} голоса}}",
@@ -1776,11 +1776,8 @@
   },
   "sectionSpeakers": "Несколько голосов",
   "checkDiarize": "Определять, кто говорит",
-  "hintDiarize": "После расшифровки приложение разметит голоса, подпишет реплики и отметит перебивки знаком ⇄. Всё считается на этом компьютере.",
-  "labelSpeakerCount": "Сколько голосов",
-  "optionSpeakersAuto": "Авто",
-  "hintSpeakerCount": "Число — цель для разметки, а не обещание: голосов может найтись меньше.",
-  "speakerModelsMissing": "Модели голосов скачаются при первом запуске: {size}",
+  "hintDiarize": "После расшифровки приложение разметит голоса (до восьми), подпишет реплики и отметит перебивки знаком ⇄. Всё считается на этом компьютере.",
+  "speakerModelsMissing": "Модель голосов скачается при первом запуске: {size}",
   "@speakerModelsMissing": {
     "placeholders": {
       "size": {
@@ -1788,9 +1785,9 @@
       }
     }
   },
-  "speakerModelsReady": "Модели голосов установлены",
-  "askSpeakerModelsTitle": "Скачать модели голосов?",
-  "askSpeakerModelsBody": "Режиму «Несколько голосов» нужны две модели — {size}. Они скачаются с GitHub один раз и дальше работают без сети.",
+  "speakerModelsReady": "Модель голосов установлена",
+  "askSpeakerModelsTitle": "Скачать модель голосов?",
+  "askSpeakerModelsBody": "Режиму «Несколько голосов» нужна модель NVIDIA Nemotron — {size}. Она скачается с Hugging Face один раз и дальше работает без сети.",
   "@askSpeakerModelsBody": {
     "placeholders": {
       "size": {
@@ -1831,13 +1828,10 @@
       }
     }
   },
-  "warningFragmented": "Похоже, голоса разбились на слишком много частей — попробуйте указать число участников.",
   "buttonDiarizeNow": "Определить голоса",
   "buttonDiarizeAgain": "Определить голоса заново",
   "hintOverlap": "⇄ — реплика началась поверх чужой. Слова, сказанные одновременно, достаются одному из голосов.",
   "checkDiarizeDefault": "Определять голоса в новых расшифровках",
-  "labelSpeakerModel": "Модель голосов",
-  "hintSpeakerModel": "Модель, которая отличает один голос от другого. Скачивается при первом включении режима; запись при этом никуда не уходит.",
   "speakerOverlapTooltip": "Перебивка: говорили одновременно",
   "ownVoiceNotFound": "Вашего голоса во фразе нет — ничего не вставлено",
   "conversationNotQueued": "Разговор сохранён, но в очередь не попал — откройте приложение и добавьте файл",

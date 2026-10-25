@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tsukiko/core/diarization/diarization_models.dart';
 import 'package:tsukiko/core/diarization/own_voice.dart';
 import 'package:tsukiko/core/diarization/wav_samples.dart';
 import 'package:tsukiko/core/whisper_server.dart';
@@ -97,11 +96,6 @@ void main() {
         createdAt: DateTime(2026),
       ).toJson()..['model'] = 'wespeaker-resnet34';
       expect(OwnVoicePrint.fromJson(json), isNull);
-    });
-
-    test('эмбеддер тот же, что у разметки голосов', () {
-      expect(OwnVoicePaths.embedderFile, DiarizationModels.titanetSmall.file);
-      expect(OwnVoicePaths.embedderId, DiarizationModels.titanetSmall.id);
     });
 
     test('файл ядра собирается без Flutter', () {

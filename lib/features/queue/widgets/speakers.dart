@@ -80,7 +80,6 @@ class SpeakersSection extends StatelessWidget {
     required this.transcript,
     required this.modelsMissingLabel,
     required this.onToggle,
-    required this.onCount,
     required this.onRename,
     required this.onMerge,
     this.onDiarize,
@@ -95,7 +94,6 @@ class SpeakersSection extends StatelessWidget {
   final String? modelsMissingLabel;
 
   final ValueChanged<bool> onToggle;
-  final ValueChanged<int> onCount;
   final void Function(String id, String name) onRename;
   final void Function(String from, String into) onMerge;
 
@@ -109,56 +107,20 @@ class SpeakersSection extends StatelessWidget {
     final voices = transcript?.hasSpeakers ?? false
         ? transcript!.speakers
         : const <SpeakerInfo>[];
-    final counts = {0, 2, 3, 4, 5, 6, 8, 10, options.speakerCount}.toList()
-      ..sort();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionTitle(l10n.sectionSpeakers),
         Check(l10n.checkDiarize, options.diarize, onToggle),
         Hint(l10n.hintDiarize, under: true),
-        if (options.diarize) ...[
-          const SizedBox(height: Gap.item),
-          Text(l10n.labelSpeakerCount, style: Type.control),
-          const SizedBox(height: Gap.tight),
-          MacosPopupButton<int>(
-            value: options.speakerCount,
-            items: [
-              for (final n in counts)
-                MacosPopupMenuItem(
-                  value: n,
-                  child: Text(n == 0 ? l10n.optionSpeakersAuto : '$n'),
-                ),
-            ],
-            onChanged: (v) => onCount(v ?? 0),
-          ),
-          Hint(l10n.hintSpeakerCount),
+        if (options.diarize)
           Hint(
             modelsMissingLabel == null
                 ? l10n.speakerModelsReady
                 : l10n.speakerModelsMissing(modelsMissingLabel!),
           ),
-        ],
         if (voices.isNotEmpty) ...[
           SectionTitle(l10n.panelVoices),
-          if (looksFragmented(voices))
-            Padding(
-              padding: const EdgeInsets.only(bottom: Gap.inner),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const MacosIcon(
-                    CupertinoIcons.exclamationmark_triangle,
-                    size: IconSize.toolbar,
-                    color: MacosColors.systemOrangeColor,
-                  ),
-                  const SizedBox(width: Gap.inner),
-                  Expanded(
-                    child: Text(l10n.warningFragmented, style: Type.caption),
-                  ),
-                ],
-              ),
-            ),
           for (final v in voices)
             _VoiceRow(
               voice: v,

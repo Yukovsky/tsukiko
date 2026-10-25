@@ -208,15 +208,6 @@ class DiarizationToggled extends QueueEvent {
   List<Object?> get props => [enabled];
 }
 
-/// Сколько голосов ждать. Ноль — «Авто».
-class SpeakerCountChosen extends QueueEvent {
-  const SpeakerCountChosen(this.count);
-  final int count;
-
-  @override
-  List<Object?> get props => [count];
-}
-
 /// Определить голоса в уже готовой расшифровке: режим включили после
 /// распознавания, запись длиннее предела или прошлый прогон не удался.
 class DiarizationRequested extends QueueEvent {

@@ -58,8 +58,9 @@ tsukiko-transcribe — расшифровка аудио на месте, без
   --lang <ru|en|auto>                    язык речи (по умолчанию из настроек)
   --model <путь>                         файл модели (по умолчанию из настроек)
   --prompt <текст>                       подсказка модели / ключевые слова
-  --speakers <auto|N>                    подписать, кто говорит (нужно
-                                         запущенное приложение с API)
+  --speakers                             подписать, кто говорит, до восьми
+                                         голосов (нужно запущенное приложение
+                                         с API)
   --json                                 ответ целиком в JSON, а не голым текстом
   --quiet                                не писать ход работы в stderr
   --status                               что установлено и готово ли к работе
@@ -76,9 +77,8 @@ class Args {
   final files = <String>[];
   String format = 'txt', lang = '', model = '', prompt = '';
 
-  /// «Несколько голосов»: null — выключено, 0 — сколько голосов, решит
-  /// разметка, число — сколько ждать.
-  int? speakers;
+  /// «Несколько голосов». Сколько их, модель решает сама.
+  bool speakers = false;
   bool json = false, quiet = false, status = false, help = false;
   String? problem;
 }
@@ -99,12 +99,14 @@ Args parseArgs(List<String> argv) {
       case '--prompt':
         a.prompt = next();
       case '--speakers':
-        final value = next();
-        final n = value == 'auto' ? 0 : int.tryParse(value);
-        if (n == null || n < 0) {
-          a.problem ??= '--speakers — это «auto» или число голосов';
-        } else {
-          a.speakers = n;
+        a.speakers = true;
+        // Первая версия ключа ждала «auto» или число. «auto» по-прежнему
+        // принимаем молча; число задать больше нечем — модель находит
+        // голоса сама, и обещать «ровно трёх» было бы неправдой.
+        if (i + 1 < argv.length && argv[i + 1] == 'auto') {
+          i++;
+        } else if (i + 1 < argv.length && int.tryParse(argv[i + 1]) != null) {
+          a.problem ??= '--speakers без числа: голоса модель находит сама';
         }
       case '--json':
         a.json = true;
@@ -280,7 +282,7 @@ Future<String?> _liveApi(Map<String, dynamic> s, int port) async {
 /// человек видит запись в списке — а не гадает, откуда взялся текст.
 Future<({String text, List<Object?> speakers})?> _viaApp(
     String key, int port, String file, String format,
-    void Function(String) say, {int? speakers}) async {
+    void Function(String) say, {bool speakers = false}) async {
   final client = HttpClient();
   try {
     Future<Map<String, Object?>> call(String method, String path,
@@ -298,10 +300,7 @@ Future<({String text, List<Object?> speakers})?> _viaApp(
     say('tsukiko работает рядом — отдаём запись его очереди');
     await call('POST', '/transcribe', {
       'file': file,
-      if (speakers != null) ...{
-        'diarize': true,
-        'speakers': speakers == 0 ? 'auto' : speakers,
-      },
+      if (speakers) 'diarize': true,
     });
     final id = Uri.encodeQueryComponent(file);
     while (true) {
@@ -476,11 +475,10 @@ Future<int> run(List<String> argv) async {
     final s = readSettings();
     final port = (s['apiPort'] as int?) ?? 8756;
     final key = await _liveApi(s, port);
-    // Разметке голосов нужны нейросети sherpa-onnx и их нативная
-    // библиотека, а она приходит в приложение плагином Flutter: в эту
-    // программу, собранную `dart compile exe`, её не положить. Поэтому
+    // Разметку голосов и её сведение с текстом делает очередь
+    // приложения — своей копии этого шага в программе нет. Поэтому
     // голоса — только через работающее приложение.
-    if (a.speakers != null && key == null) {
+    if (a.speakers && key == null) {
       throw Exception(
           'для --speakers нужно запущенное приложение tsukiko с включённым '
           'местным API (Настройки → Приложение)');

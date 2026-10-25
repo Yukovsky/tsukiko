@@ -267,21 +267,17 @@ class ApiServer {
   }
 
   Map<String, Object?> _models() {
-    final embedder = DiarizationModels.embedderById(
-      Settings.load()[diarizationEmbedderSetting] as String?,
-    );
     return {
       'current': _bloc.state.defaults.model,
       'models': [
         for (final p in _bloc.state.models) {'path': p, 'name': os.basename(p)},
       ],
-      // Модели «Нескольких голосов». Не установлены — скачаются при первой
+      // Модель «Нескольких голосов». Не установлена — скачается при первой
       // же записи с `diarize`; `downloadMb` говорит, сколько это.
       'speakerModels': {
-        'installed': DiarizationModels.isInstalled(embedder),
-        'segmentation': DiarizationModels.segmentationName,
-        'embedding': embedder.file,
-        'downloadMb': DiarizationModels.downloadMb(embedder),
+        'installed': DiarizationModels.isInstalled,
+        'model': DiarizationModels.file,
+        'downloadMb': DiarizationModels.downloadMb(),
       },
     };
   }
@@ -303,19 +299,12 @@ class ApiServer {
       return _send(req, 503, {'error': 'движок whisper.cpp не найден'});
     }
 
-    // Голоса — по желанию запроса: `"diarize": true` и `"speakers"`
-    // («auto» или число). Не сказано — как в общих настройках приложения.
+    // Голоса — по желанию запроса: `"diarize": true`. Не сказано — как
+    // в общих настройках приложения. Число голосов модель находит сама
+    // (до восьми), задать его нечем.
     final diarize = json['diarize'];
-    final speakers = json['speakers'];
-    final count = speakers == null || speakers == 'auto'
-        ? 0
-        : speakers is num
-        ? speakers.toInt()
-        : int.tryParse('$speakers');
-    if ((diarize != null && diarize is! bool) || count == null || count < 0) {
-      return _send(req, 400, {
-        'error': '«diarize» — true или false, «speakers» — «auto» или число',
-      });
+    if (diarize != null && diarize is! bool) {
+      return _send(req, 400, {'error': '«diarize» — true или false'});
     }
 
     if (_job(path) == null) {
@@ -324,16 +313,8 @@ class ApiServer {
         return _send(req, 500, {'error': 'файл не встал в очередь'});
       }
     }
-    if (diarize != null || speakers != null) {
-      _bloc.add(
-        JobOptionsEdited(
-          path,
-          (o) => o.copyWith(
-            diarize: diarize as bool? ?? (speakers != null ? true : null),
-            speakerCount: speakers == null ? null : count,
-          ),
-        ),
-      );
+    if (diarize is bool) {
+      _bloc.add(JobOptionsEdited(path, (o) => o.copyWith(diarize: diarize)));
     }
     final started = await _start(path);
     if (started != null) return _send(req, started.$1, {'error': started.$2});

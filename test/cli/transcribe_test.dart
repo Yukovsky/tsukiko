@@ -63,12 +63,15 @@ void main() {
       expect(parseArgs(['--lang']).problem, isNotNull);
     });
 
-    test('--speakers: «auto» или число', () {
-      expect(parseArgs(['а.m4a']).speakers, isNull);
-      expect(parseArgs(['--speakers', 'auto', 'а.m4a']).speakers, 0);
-      expect(parseArgs(['--speakers', '3', 'а.m4a']).speakers, 3);
+    test('--speakers: флаг, «auto» по старой памяти, числа нет', () {
+      expect(parseArgs(['а.m4a']).speakers, isFalse);
+      expect(parseArgs(['--speakers', 'а.m4a']).speakers, isTrue);
+      final legacy = parseArgs(['--speakers', 'auto', 'а.m4a']);
+      expect(legacy.speakers, isTrue);
+      expect(legacy.problem, isNull);
+      expect(legacy.files, ['а.m4a']);
       expect(
-        parseArgs(['--speakers', 'много', 'а.m4a']).problem,
+        parseArgs(['--speakers', '3', 'а.m4a']).problem,
         contains('--speakers'),
       );
     });

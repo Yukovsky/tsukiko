@@ -65,10 +65,6 @@ class RunOptions {
   /// говорит. Выключен — приложение ведёт себя ровно как без режима.
   final bool diarize;
 
-  /// Сколько голосов ждать. Ноль — определить самим по порогу. Число —
-  /// это цель для кластеризации, а не обещание: движок может найти
-  /// меньше (talkthrough-mcp заказывал восемь–девять, получал семь).
-  final int speakerCount;
   const RunOptions({
     required this.model,
     required this.lang,
@@ -79,7 +75,6 @@ class RunOptions {
     this.prompt = '',
     this.punctuate = true,
     this.diarize = false,
-    this.speakerCount = 0,
   });
 
   RunOptions copyWith({
@@ -92,7 +87,6 @@ class RunOptions {
     String? prompt,
     bool? punctuate,
     bool? diarize,
-    int? speakerCount,
   }) =>
       RunOptions(
         model: model ?? this.model,
@@ -104,7 +98,6 @@ class RunOptions {
         prompt: prompt ?? this.prompt,
         punctuate: punctuate ?? this.punctuate,
         diarize: diarize ?? this.diarize,
-        speakerCount: speakerCount ?? this.speakerCount,
       );
 
   Map<String, dynamic> toJson() => {
@@ -117,7 +110,6 @@ class RunOptions {
         'prompt': prompt,
         'punctuate': punctuate,
         'diarize': diarize,
-        'speakerCount': speakerCount,
       };
 
   /// Чего в файле настроек нет — берём из [fallback]: так старые файлы
@@ -133,7 +125,6 @@ class RunOptions {
         prompt: (j['prompt'] as String?) ?? fallback.prompt,
         punctuate: (j['punctuate'] as bool?) ?? fallback.punctuate,
         diarize: (j['diarize'] as bool?) ?? fallback.diarize,
-        speakerCount: (j['speakerCount'] as int?) ?? fallback.speakerCount,
       );
 
   /// Своя подсказка важнее: она уже задаёт модели и стиль, и словарь.

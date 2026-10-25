@@ -144,10 +144,8 @@ void main() {
     final b = QueueBloc(NativeBridge());
     expect(b.state.defaults.diarize, isFalse);
     b.add(const DiarizationToggled(true));
-    b.add(const SpeakerCountChosen(3));
     await pumpEventQueue();
     expect(b.state.defaults.diarize, isTrue);
-    expect(b.state.defaults.speakerCount, 3);
     await b.close();
   });
 

@@ -2,21 +2,28 @@
 
 Сводка всего, что сделано в ветке `claude/diarization-mode-tsukiko-54cr42`: что появилось в
 приложении, где это лежит в коде, все замеры и выводы, что проверено, а что нет. Подробности по
-отдельным темам — в `docs/diarization-threshold.md` и `docs/own-voice.md`, архитектура — в
+отдельным темам — в `docs/diarization-engine.md` и `docs/own-voice.md`, архитектура — в
 разделе «Multiple Voices» `docs/architecture.md`.
+
+> **Обновление.** Движок разметки заменён: вместо sherpa-onnx (сегментация pyannote + TitaNet-S +
+> порог) теперь NVIDIA Nemotron-3-Diarization через `nemo-speech diarize` (NeMo-Speech.cpp 0.2.0,
+> тот же движок, что у Parakeet). На десяти настоящих записях на M5 средняя ошибка 0,25 на
+> встречах AMI и 0,05 на записях VoxConverse с 5–9 голосами, число голосов верное в 9 случаях из
+> 10; у прежней схемы на тех же встречах — 0,44 и 17–46 «голосов» вместо 4. Подробности и
+> сравнение с community-1 и Sortformer — `docs/diarization-engine.md`. Сведение голосов с
+> текстом, интерфейс и экспорт остались прежними. Раздел 4 ниже — замеры первой версии на Linux.
 
 ## 1. Что появилось в приложении
 
 ### 1.1. «Несколько голосов» в расшифровке (очередь)
 
-- В инспекторе — раздел «Несколько голосов»: включатель, «Сколько голосов» (Авто / 2 / 3 / 4 /
-  5 / 6 / 8 / 10). Без выделения правится общее умолчание, с выделением — запись.
-- После расшифровки идёт шаг «Определяю голоса» (`JobState.diarizing`), с ходом работы и
-  остановкой. Текст при этом виден.
+- В инспекторе — раздел «Несколько голосов»: включатель. Без выделения правится общее
+  умолчание, с выделением — запись. Сколько голосов (до восьми), модель находит сама.
+- После расшифровки идёт шаг «Определяю голоса» (`JobState.diarizing`), с оценкой хода работы
+  по времени и остановкой. Текст при этом виден.
 - У каждого фрагмента — цветная точка и имя («Голос 1»), при перебивке — `⇄`. Наведение даёт
   кнопку «Назначить другому голосу».
-- Список голосов в инспекторе: время речи и число реплик, «Переименовать…», «Объединить с…»,
-  предупреждение «голоса разбились на слишком много частей».
+- Список голосов в инспекторе: время речи и число реплик, «Переименовать…», «Объединить с…».
 - Кнопка «Определить голоса» / «Определить заново» — для готовой расшифровки и для записей
   длиннее 2 часов (их шаг сам не размечает из-за памяти).
 - Экспорт: txt (абзац на реплику, `Иван: …`), txt с таймкодами, srt (`Иван: текст`), vtt
@@ -24,14 +31,13 @@
   блок `diarization`). Свой json открывается обратно вместе с голосами и именами. Один голос —
   подписей нет нигде, вывод как без режима.
 - Переименование и слияние перезаписывают уже сохранённые копии (рядом с записью и в библиотеке).
-- Настройки → Расшифровщик: умолчание «Определять голоса в новых расшифровках» и выбор модели
-  голосов (TitaNet-S по умолчанию, ResNet34, ERes2Net).
-- Местное API: `POST /transcribe` принимает `diarize` и `speakers` («auto» или число); в ответе
-  `speakers` и `fragments`; `GET /models` показывает `speakerModels`.
-- CLI: `tsukiko-transcribe --speakers auto|N` — через запущенное приложение с включённым API
-  (самостоятельно CLI голоса не размечает: нативная библиотека sherpa приходит плагином Flutter).
-- Модели (сегментация pyannote 3.0 int8 + эмбеддер) скачиваются при первом включении, с
-  вопросом и размером загрузки; суммы SHA-256 закреплены.
+- Настройки → Расшифровщик: умолчание «Определять голоса в новых расшифровках».
+- Местное API: `POST /transcribe` принимает `diarize`; в ответе `speakers` и `fragments`;
+  `GET /models` показывает `speakerModels`.
+- CLI: `tsukiko-transcribe --speakers` — через запущенное приложение с включённым API (шаг
+  разметки и её сведение с текстом живут в очереди приложения).
+- Модель `Nemotron-3-Diarization.q8_0.gguf` (102 МБ) скачивается с Hugging Face при первом
+  включении, с вопросом и размером загрузки; ревизия и сумма SHA-256 закреплены.
 
 ### 1.2. «Записать разговор» (диктовка → очередь)
 
@@ -82,7 +88,7 @@
 | Настройки | `lib/features/settings/settings_page.dart`, `settings_cubit.dart`, `settings_state.dart`, `widgets/own_voice_sheet.dart`, `lib/core/settings.dart`, `lib/core/whisper_server.dart` |
 | API, CLI | `lib/features/api/api_server.dart`, `lib/cli/transcribe.dart`, `skills/tsukiko/SKILL.md` |
 | Буфер обмена | `macos/Runner/Dictation.swift`, `windows/runner/dictation_bridge.cpp`, `.h` |
-| Замеры | `tool/diarize_probe.dart`, `tool/own_voice_probe.dart` |
+| Замеры | `tool/own_voice_probe.dart`; движок голосов — `docs/diarization-engine.md` |
 | Тесты | `test/core/speakers_test.dart`, `speaker_render_test.dart`, `diarization_test.dart`, `own_voice_test.dart`, `test/features/queue/speakers_queue_test.dart`, `segment_row_test.dart`, `test/cli/transcribe_test.dart` |
 | Строки | `lib/l10n/app_ru.arb`, `app_en.arb` |
 
@@ -110,8 +116,7 @@ af117ca Диктовка снова возвращает прежний буфе
   1–3 слова позже.
 - **Перебивка** — когда два голоса звучат одновременно ≥ 30 % слова (а не «у каждого ≥ 30 %»:
   то правило ловило обычную передачу слова посреди слова).
-- **Остановка** разметки мгновенна только для интерфейса: sherpa-onnx 1.13.8 не смотрит на ответ
-  колбэка, изолят убивается и умирает, когда нативный счёт вернётся; следующий прогон ждёт его.
+- **Остановка** разметки убивает процесс `nemo-speech`: нативного счёта внутри приложения нет.
 - **Без автоматического слияния голосов** по близости — только руками.
 
 ## 4. Замеры
@@ -243,6 +248,7 @@ docs.rs/speakrs, docs.fluidinference.com/diarization/sortformer, NGC titanet_sma
 | NeMo TitaNet-S | Apache-2.0 (лицензия NeMo Toolkit) | карточка NGC |
 | WeSpeaker ResNet34 | CC BY 4.0 (VoxCeleb) | `docs/pretrained.md` WeSpeaker |
 | 3D-Speaker ERes2Net | Apache-2.0 | 3D-Speaker |
+| **Nemotron-3-Diarization** (движок сейчас) | OpenMDW 1.1, без подтверждения | Hugging Face |
 | Sortformer v2 | CC BY 4.0 | Hugging Face |
 | pyannote community-1 | CC BY 4.0, закрыта подтверждением | Hugging Face |
 | DiariZen | CC BY-NC 4.0 — нельзя в коммерческом | Hugging Face |
@@ -256,39 +262,34 @@ docs.rs/speakrs, docs.fluidinference.com/diarization/sortformer, NGC titanet_sma
 - Настоящая разметка sherpa-onnx на Linux, остановка и повторный запуск.
 - Путь от начала до конца на настоящем whisper.cpp 1.9.3.
 - CLI запускается чистым Dart, Flutter в его импорты не попал.
+- После перехода на Nemotron-3 (macOS, M5): `flutter analyze` чисто, `flutter test` — 703 теста;
+  тест с настоящим `nemo-speech` 0.2.0 и моделью (ровно 6 и 7 голосов, остановка); путь от начала
+  до конца с настоящим whisper и Parakeet на nemo-speech 0.2.0 — верный голос на 85–100 % времени.
 
 Не проверено:
 - Сборка и запуск приложения на macOS и Windows: интерфейс (раздел голосов, панель, лист образца
   голоса) проверен только виджет-тестами.
 - Код буфера обмена на Swift и C++ не компилировался (здесь нет macOS и Windows SDK).
 - Запись с микрофона для «Записать разговор» и образца голоса — только на реальной машине.
-- NeMo (Parakeet, Nemotron) с режимом голосов — только на подготовленных ответах.
-- Скорость на целевых машинах; Sortformer на Metal/Vulkan.
+- Windows: `nemo-speech diarize` на Vulkan и на процессоре не запускался.
 - Русская встреча с эталонной разметкой.
 
 ## 8. Что дальше (на выбор)
 
-1. Sortformer через `nemo-speech diarize` — движком для записей до 4 человек; текущую схему
-   оставить для 5 и больше. Дёшево и выигрывает по числу голосов.
-2. community-1 (VBx) — перенос кластеризации в Dart, если важны большие живые встречи.
-3. Ручная проверка на macOS и Windows: см. раздел 7, плюс буфер обмена (скриншот → диктовка →
+1. Ручная проверка на macOS и Windows: см. раздел 7, плюс буфер обмена (скриншот → диктовка →
    Cmd/Ctrl+V должен вставить скриншот).
-4. Русские встречи с ручной разметкой — для окончательного выбора порогов и движка.
-5. Сборка: флаг `[build]` в сообщении коммита, когда будет нужно.
+2. Русская встреча с ручной разметкой — проверить Nemotron-3 на русском.
+3. Сборка: флаг `[build]` в сообщении коммита, когда будет нужно.
 
 ## 9. Как повторить замеры
 
-```sh
-# пороги эмбеддеров
-dart run tool/diarize_probe.dart --lib <sherpa_onnx_linux>/linux/x64 \
-    --segmentation <модели>/sherpa-onnx-pyannote-segmentation-3-0/model.int8.onnx \
-    --embedder <модели>/nemo_en_titanet_small.onnx \
-    --from 0.6 --to 1.2 --step 0.1 [--speakers N] записи/*.wav
+Движок голосов — см. `docs/diarization-engine.md`.
 
+```sh
 # «Только мой голос»: в папке — по папке на диктора с enroll.wav и test*.wav
 dart run tool/own_voice_probe.dart --lib <sherpa_onnx_linux>/linux/x64 \
     --vad <модели>/silero_vad.onnx --embedder <модели>/nemo_en_titanet_small.onnx дикторы/
 ```
 
-Рядом с `x.wav` может лежать `x.rttm` — тогда считается ошибка. Тест с моделями включается
-переменной `TSUKIKO_DIARIZATION_MODELS` (см. `test/core/diarization_test.dart`).
+Тест с настоящим движком включается переменными `TSUKIKO_NEMO_SPEECH` и
+`TSUKIKO_DIARIZATION_MODELS` (см. `test/core/diarization_test.dart`).
