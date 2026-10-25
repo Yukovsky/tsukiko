@@ -143,7 +143,7 @@ struct HUDPlacementTests {
     hud.onModeChanged = { changedMode = $0 }
     let center = NSPoint(x: hud.previewFrame.midX, y: hud.previewFrame.midY)
     hud.setMode("timer")
-    assert(hud.isVisible && hud.previewFrame.size == NSSize(width: 148, height: 44))
+    assert(hud.isVisible && hud.previewFrame.size == NSSize(width: 176, height: 44))
     assert(near(hud.previewFrame.midX, center.x) && near(hud.previewFrame.midY, center.y))
     hud.setMode("status")
     assert(!hud.isVisible && statusActive)

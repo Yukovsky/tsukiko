@@ -158,7 +158,10 @@ void main() {
     });
     await Future<void>.delayed(const Duration(milliseconds: 100));
     await pumpEventQueue();
-    final job = b.state.jobs.singleWhere((j) => j.path == audio.path);
+    // На Windows путь в очереди нормализован (обратные косые), сверяем имя.
+    final job = b.state.jobs.singleWhere(
+      (j) => j.path.endsWith('Разговор.wav'),
+    );
     expect(b.state.optionsFor(job).diarize, isTrue);
     expect(b.state.defaults.diarize, isFalse, reason: 'общие не трогаем');
     await b.close();
