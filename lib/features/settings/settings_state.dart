@@ -73,6 +73,7 @@ class SettingsState extends Equatable {
     this.speakerProfileExists = false,
     this.wakeProfileExists = false,
     this.closeProfileExists = false,
+    this.calibrationOutdated = false,
     this.speakerThreshold = 0.60,
     // приложение
     this.toLibrary = true,
@@ -207,6 +208,9 @@ class SettingsState extends Equatable {
   final bool speakerProfileExists;
   final bool wakeProfileExists;
   final bool closeProfileExists;
+
+  /// Образцы есть, а написаний слова в них нет: стоит перезаписать.
+  final bool calibrationOutdated;
   final double speakerThreshold;
 
   // ── приложение ────────────────────────────────────────────────────────────
@@ -296,6 +300,7 @@ class SettingsState extends Equatable {
     bool? speakerProfileExists,
     bool? wakeProfileExists,
     bool? closeProfileExists,
+    bool? calibrationOutdated,
     double? speakerThreshold,
     bool? toLibrary,
     bool? saveNextToSource,
@@ -363,6 +368,7 @@ class SettingsState extends Equatable {
     speakerProfileExists: speakerProfileExists ?? this.speakerProfileExists,
     wakeProfileExists: wakeProfileExists ?? this.wakeProfileExists,
     closeProfileExists: closeProfileExists ?? this.closeProfileExists,
+    calibrationOutdated: calibrationOutdated ?? this.calibrationOutdated,
     speakerThreshold: speakerThreshold ?? this.speakerThreshold,
     toLibrary: toLibrary ?? this.toLibrary,
     saveNextToSource: saveNextToSource ?? this.saveNextToSource,
@@ -420,6 +426,7 @@ class SettingsState extends Equatable {
     speakerProfileExists,
     wakeProfileExists,
     closeProfileExists,
+    calibrationOutdated,
     speakerThreshold,
     toLibrary,
     saveNextToSource,

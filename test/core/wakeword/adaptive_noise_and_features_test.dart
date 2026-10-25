@@ -175,6 +175,66 @@ void main() {
       }
     });
 
+    test(
+      'с выученными написаниями слово принимается только точно и первым',
+      () {
+        const learned = ['джеф', 'дев'];
+        bool wake(String heard) => SpeechVerifier.matchesSpokenKeyword(
+          heard,
+          'Джев',
+          spellings: learned,
+        );
+        expect(wake('Джефф, напиши письмо.'), isTrue);
+        expect(wake('Дев.'), isTrue);
+        expect(wake('Джев'), isTrue);
+        // Видео упомянуло имя посреди фразы и созвучные слова из сессии.
+        expect(wake('Понятно, что это за Джефф такой.'), isFalse);
+        for (final heard in ['Джеп', 'Джек', 'Джем', 'Джет', 'Дже', 'Жев']) {
+          expect(wake(heard), isFalse, reason: heard);
+        }
+        expect(wake('Джефри'), isFalse);
+      },
+    );
+
+    test('без написаний старый допуск только для первого слова', () {
+      expect(
+        SpeechVerifier.matchesSpokenKeyword('Джеев, привет', 'Джев'),
+        isTrue,
+      );
+      expect(SpeechVerifier.matchesSpokenKeyword('это Джев', 'Джев'), isFalse);
+    });
+
+    test('язык без пробелов сверяется по началу', () {
+      expect(
+        SpeechVerifier.matchesSpokenKeyword('小月你好', '小月', spellings: ['小月']),
+        isTrue,
+      );
+      expect(
+        SpeechVerifier.matchesSpokenKeyword('你好小月', '小月', spellings: ['小月']),
+        isFalse,
+      );
+      expect(SpeechVerifier.keywordLanguage('ツキコ'), 'ja');
+      expect(SpeechVerifier.keywordLanguage('小月'), 'zh');
+      expect(SpeechVerifier.keywordLanguage('Jarvis'), 'en');
+    });
+
+    test('слово завершения с написаниями', () {
+      expect(
+        SpeechVerifier.matchesOnlyCommand(
+          'Стоп. Стоп!',
+          'Стоп',
+          spellings: ['стоп'],
+        ),
+        isTrue,
+      );
+      expect(
+        SpeechVerifier.matchesOnlyCommand('Сто', 'Стоп', spellings: ['стоп']),
+        isFalse,
+      );
+      expect(SpeechVerifier.spellingKey('Джеффф!'), 'джеф');
+      expect(SpeechVerifier.spellingKey('Ёлка.'), 'елка');
+    });
+
     test('калибровка требует только ключевое слово', () {
       expect(SpeechVerifier.matchesOnlyKeyword('Джеф.', 'Джеф'), isTrue);
       expect(SpeechVerifier.matchesOnlyKeyword('Джефф', 'Джеф'), isTrue);

@@ -111,7 +111,7 @@ class SpeechVerifier {
         '-m',
         model,
         '-l',
-        targetWord.contains(RegExp(r'[А-Яа-яЁё]')) ? 'ru' : 'en',
+        keywordLanguage(targetWord),
         '-f',
         wavPath,
         '-np',
@@ -222,20 +222,42 @@ class SpeechVerifier {
     }
   }
 
-  /// Second stage of voice activation: recognize a short candidate window.
-  /// Returns null when no recognizer is available or it fails.
-  Future<bool?> confirmKeyword(
-    Float32List samples,
-    String keyword, {
-    required bool isClose,
-  }) async {
+  /// Язык, на котором whisper распознаёт окно со словом: по письменности
+  /// самого слова. Латиница — английский, а не «auto»: на секундном окне
+  /// автоопределение прыгает между языками и пишет одно и то же слово то
+  /// так, то эдак, а написания из калибровки рассчитаны на один и тот же
+  /// способ записи при калибровке и при срабатывании.
+  static String keywordLanguage(String word) {
+    for (final (pattern, lang) in const [
+      (r'[\p{Script=Hiragana}\p{Script=Katakana}]', 'ja'),
+      (r'\p{Script=Hangul}', 'ko'),
+      (r'\p{Script=Han}', 'zh'),
+      (r'\p{Script=Cyrillic}', 'ru'),
+      (r'\p{Script=Greek}', 'el'),
+      (r'\p{Script=Arabic}', 'ar'),
+      (r'\p{Script=Hebrew}', 'he'),
+      (r'\p{Script=Thai}', 'th'),
+      (r'\p{Script=Devanagari}', 'hi'),
+      (r'\p{Script=Georgian}', 'ka'),
+      (r'\p{Script=Armenian}', 'hy'),
+    ]) {
+      if (RegExp(pattern, unicode: true).hasMatch(word)) return lang;
+    }
+    return 'en';
+  }
+
+  /// Распознать короткое окно тем же движком, что проверяет срабатывания:
+  /// русские слова — встроенным zipformer, остальные — whisper. null —
+  /// распознать нечем или движок сломался.
+  ///
+  /// Калибровка зовёт его же на каждом образце слова: так написания в
+  /// профиле получаются тем самым распознавателем, который потом и
+  /// проверяет.
+  Future<String?> recognize(Float32List samples, String keyword) async {
     if (samples.isEmpty) return null;
-    bool matches(String text) => isClose
-        ? matchesOnlyCommand(text, keyword)
-        : matchesSpokenKeyword(text, keyword);
     if (isRussian(keyword)) {
       final text = _recognizeRussian(samples);
-      if (text != null) return matches(text);
+      if (text != null) return text;
     }
     final exe = recognizerExe;
     final model = fastModelPath;
@@ -250,7 +272,7 @@ class SpeechVerifier {
         '-m',
         model,
         '-l',
-        keyword.contains(RegExp(r'[А-Яа-яЁё]')) ? 'ru' : 'en',
+        keywordLanguage(keyword),
         '-t',
         '2',
         '-f',
@@ -270,15 +292,35 @@ class SpeechVerifier {
         },
       );
       if (code != 0) return null;
-      return matches(await stdoutText);
+      return await stdoutText;
     } catch (e) {
-      Log.warn('SpeechVerifier', 'Keyword confirmation failed: $e');
+      Log.warn('SpeechVerifier', 'Keyword recognition failed: $e');
       return null;
     } finally {
       try {
         File(wav).deleteSync();
       } catch (_) {}
     }
+  }
+
+  /// Что услышал последний [confirmKeyword] — для диагностики.
+  String? lastHeard;
+
+  /// Second stage of voice activation: recognize a short candidate window.
+  /// Returns null when no recognizer is available or it fails.
+  ///
+  /// [spellings] — написания слова из калибровки (`SpeakerProfile`).
+  Future<bool?> confirmKeyword(
+    Float32List samples,
+    String keyword, {
+    required bool isClose,
+    List<String> spellings = const [],
+  }) async {
+    final text = lastHeard = await recognize(samples, keyword);
+    if (text == null) return null;
+    return isClose
+        ? matchesOnlyCommand(text, keyword, spellings: spellings)
+        : matchesSpokenKeyword(text, keyword, spellings: spellings);
   }
 
   static List<String> _words(String text) => _cleanWhisperText(text)
@@ -288,34 +330,99 @@ class SpeechVerifier {
       .where((w) => w.isNotEmpty)
       .toList();
 
-  /// A wake word is usually an invented name; whisper spells it variously
-  /// ("Джев", "Дев", "Джеев", "Древ"), so one edit per word is tolerated.
-  static bool matchesSpokenKeyword(String recognizedText, String keyword) {
-    final target = _words(keyword);
-    final words = _words(recognizedText);
-    if (target.isEmpty) return false;
-    const jeff = {'джеф', 'джефф', 'джев', 'jeff', 'geoff'};
-    bool same(String heard, String expected) =>
-        (jeff.contains(expected) && jeff.contains(heard)) ||
-        _editDistance(heard, expected) <= (expected.length >= 4 ? 1 : 0);
-    for (var i = 0; i + target.length <= words.length; i++) {
-      var all = true;
-      for (var j = 0; j < target.length && all; j++) {
-        all = same(words[i + j], target[j]);
+  /// Ключ для сравнения написаний на любом языке: без регистра, знаков и
+  /// повторов букв («Джефф» и «джеф», «heyyy» и «hey» — одно), «ё» как
+  /// «е». Правил произношения конкретных языков здесь нет и не нужно:
+  /// оглушение на конце, редукция гласных, кана против иероглифов — всё
+  /// это уже есть в написаниях, которые распознаватель выдал на образцах
+  /// при калибровке.
+  static String spellingKey(String text) => _cleanWhisperText(text)
+      .toLowerCase()
+      .replaceAll('ё', 'е')
+      .replaceAllMapped(RegExp(r'(\p{L})\1+', unicode: true), (m) => m[1]!);
+
+  /// Пишется ли язык без пробелов между словами — тогда слово ищется
+  /// в начале фразы как в строке, а не по словам.
+  static bool _spaceless(String text) => RegExp(
+    r'[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}'
+    r'\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]',
+    unicode: true,
+  ).hasMatch(text);
+
+  /// Начинается ли услышанное с одного из [accepted]. Именно начинается:
+  /// слово посреди фразы («что это за Джефф такой» из видео) — разговор,
+  /// а не обращение. И именно целым словом: «Джеффри» — не «Джефф».
+  static bool startsWithKeyword(
+    String recognizedText,
+    Iterable<String> accepted,
+  ) {
+    final heard = spellingKey(recognizedText);
+    if (heard.isEmpty) return false;
+    final words = heard.split(' ');
+    for (final spelling in accepted) {
+      final key = spellingKey(spelling);
+      if (key.isEmpty) continue;
+      if (_spaceless(key)) {
+        if (heard.replaceAll(' ', '').startsWith(key.replaceAll(' ', ''))) {
+          return true;
+        }
+        continue;
       }
-      if (all) return true;
+      final target = key.split(' ');
+      if (words.length >= target.length &&
+          words.take(target.length).join(' ') == key) {
+        return true;
+      }
     }
     return false;
   }
 
+  /// Слово активации в начале услышанного.
+  ///
+  /// С написаниями из калибровки — строгое сравнение с ними. Без них
+  /// (профиль старше этой проверки) — прежнее мягкое: одна буква на слово
+  /// и «Джефф»/«Jeff» за «Джев», но тоже только в начале фразы. Мягкое
+  /// пропускало «Джеп», «Джем», «Джек», «Джес» — замер на диагностике
+  /// 2026-10-25: 12 ложных срабатываний на 30 созвучных словах; оно
+  /// остаётся только до новой калибровки.
+  static bool matchesSpokenKeyword(
+    String recognizedText,
+    String keyword, {
+    List<String> spellings = const [],
+  }) {
+    if (spellings.isNotEmpty) {
+      return startsWithKeyword(recognizedText, [keyword, ...spellings]);
+    }
+    final target = _words(keyword);
+    final words = _words(recognizedText);
+    if (target.isEmpty || words.length < target.length) return false;
+    const jeff = {'джеф', 'джефф', 'джев', 'jeff', 'geoff'};
+    bool same(String heard, String expected) =>
+        (jeff.contains(expected) && jeff.contains(heard)) ||
+        _editDistance(heard, expected) <= (expected.length >= 4 ? 1 : 0);
+    for (var j = 0; j < target.length; j++) {
+      if (!same(words[j], target[j])) return false;
+    }
+    return true;
+  }
+
   /// A close word is a common word ("пока"), so it must be exact and be the
   /// only thing said: "всем пока" or "я пока" is dictation, not a command.
-  static bool matchesOnlyCommand(String recognizedText, String keyword) {
-    final target = _words(keyword).join(' ');
-    final words = _words(recognizedText);
-    if (target.isEmpty || words.isEmpty) return false;
-    final spoken = words.join(' ');
-    return RegExp('^(${RegExp.escape(target)} ?)+\$').hasMatch(spoken);
+  static bool matchesOnlyCommand(
+    String recognizedText,
+    String keyword, {
+    List<String> spellings = const [],
+  }) {
+    final heard = spellingKey(recognizedText);
+    if (heard.isEmpty) return false;
+    for (final spelling in {keyword, ...spellings}) {
+      final target = spellingKey(spelling);
+      if (target.isEmpty) continue;
+      if (RegExp('^(${RegExp.escape(target)} ?)+\$').hasMatch(heard)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static int _editDistance(String a, String b) {

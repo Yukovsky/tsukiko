@@ -158,6 +158,11 @@ class SettingsCubit extends Cubit<SettingsState> {
         profile?.hasCloseTemplatesFor(_dictation.closeWord) ?? false;
     final profileExists =
         wakeExists && (_dictation.closeWord.trim().isEmpty || closeExists);
+    // Образцы, записанные до того, как калибровка запоминала написания:
+    // по ним слово проверяется по-старому, нестрого.
+    final spellingsMissing =
+        (wakeExists && profile!.wakeSpellings.isEmpty) ||
+        (closeExists && profile!.closeSpellings.isEmpty);
     _emit(
       state.copyWith(
         hold: _dictation.hold,
@@ -180,6 +185,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         speakerProfileExists: profileExists,
         wakeProfileExists: wakeExists,
         closeProfileExists: closeExists,
+        calibrationOutdated: spellingsMissing,
       ),
     );
   }

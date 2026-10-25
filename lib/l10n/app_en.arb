@@ -730,6 +730,7 @@
   "sectionVoiceCalibration": "Voice Calibration",
   "checkVoiceCalibration": "Respond only to my voice",
   "hintVoiceCalibration": "For each word, record three pronunciations and one similar word that must not trigger it. Recalibrate after changing either word.",
+  "hintCalibrationOutdated": "Your samples were recorded before the app learned how you say the word, so similar words and videos can still wake it. Record them again.",
   "voiceProfileStatusCalibrated": "Keywords calibrated ({count, plural, one{{count} recording} other{{count} recordings}})",
   "@voiceProfileStatusCalibrated": {
     "placeholders": {

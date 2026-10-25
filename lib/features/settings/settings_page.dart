@@ -622,6 +622,7 @@ class _SettingsBodyState extends State<SettingsBody>
       const SizedBox(height: Gap.item),
       SectionTitle(l10n.sectionVoiceCalibration),
       Hint(l10n.hintVoiceCalibration),
+      if (s.calibrationOutdated) Hint(l10n.hintCalibrationOutdated),
       const SizedBox(height: Gap.inner),
       _buildCalibrationCard(
         context: context,
