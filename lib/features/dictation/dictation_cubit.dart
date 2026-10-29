@@ -238,7 +238,6 @@ class DictationCubit extends Cubit<DictationState> {
   List<String> _models = findModels();
   Download? _vadDownload;
   String? _wav;
-  String _clipboardResults = '';
   DateTime? _startedAt;
 
   /// Распознавание прервали крестиком. Отличать это от неудачи обязательно:
@@ -604,7 +603,6 @@ class DictationCubit extends Cubit<DictationState> {
   Future<void> start({bool startedByVoice = false}) async {
     if (_finishingRecording != null) await _finishingRecording;
     if (isClosed || state.recording || _startingRecording != null) return;
-    if (state.phase == Phase.idle) _clipboardResults = '';
     _finishAfterStart = null;
     _startingRecording = _beginRecording(startedByVoice: startedByVoice);
     try {
@@ -1186,11 +1184,8 @@ class DictationCubit extends Cubit<DictationState> {
   }
 
   Future<void> _copyResult(String text) async {
-    _clipboardResults = _clipboardResults.isEmpty
-        ? text
-        : '$_clipboardResults\n$text';
-    _emit(state.copyWith(last: _clipboardResults));
-    await bridge.copyText(_clipboardResults);
+    _emit(state.copyWith(last: text));
+    await bridge.copyText(text);
   }
 
   Future<void> copyLast() async {
@@ -1253,7 +1248,7 @@ class DictationCubit extends Cubit<DictationState> {
     return result.future;
   }
 
-  /// Copies one transcript, rather than the accumulated clipboard queue.
+  /// Copies one transcript to the clipboard.
   /// NativeBridge serializes this operation with automatic pastes.
   Future<bool> copyEntry(String id) async {
     final entry = state.history.where((e) => e.id == id).firstOrNull;

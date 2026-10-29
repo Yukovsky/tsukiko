@@ -476,7 +476,7 @@ void main() {
       expect(server.holds, 0);
     });
 
-    test('очередь в режиме буфера накапливает все результаты', () async {
+    test('очередь в режиме буфера отдаёт результаты по отдельности', () async {
       final settings = DictationSettings.load()..insert = false;
       settings.save();
       await cubit.reloadSettingsForTesting();
@@ -490,7 +490,7 @@ void main() {
       server.gate!.complete('first');
       server.gate = null;
       await Future.wait([first, next]);
-      expect(cubit.state.last, 'first\nсказанное вслух');
+      expect(cubit.state.last, 'сказанное вслух');
       expect(cubit.state.history.map((e) => e.text), [
         'сказанное вслух',
         'first',
