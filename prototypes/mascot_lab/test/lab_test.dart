@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tsukiko_mascot_lab/cat.dart';
 import 'package:tsukiko_mascot_lab/main.dart';
+import 'render_preview.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -27,9 +28,9 @@ void main() {
   });
 
   testWidgets(
-    'reference comparison retains state while reacting and fits a compact window',
+    'full and face rigs retain recording during petting and fit a small window',
     (tester) async {
-      tester.view.physicalSize = const Size(1100, 900);
+      tester.view.physicalSize = const Size(1100, 1080);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -37,22 +38,46 @@ void main() {
       await tester.pumpWidget(
         const RepaintBoundary(key: captureKey, child: MascotLab()),
       );
-      await tester.runAsync(
-        () => precacheImage(
-          const AssetImage('assets/reference/current-cat.png'),
-          tester.element(find.byType(Image)),
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(LivingCat), findsNWidgets(3));
+      expect(find.text('Кот целиком'), findsOneWidget);
+      expect(find.text('Только мордочка'), findsOneWidget);
+      final painted = find.descendant(
+        of: find.byKey(const ValueKey('cat-full')),
+        matching: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is CatPainter,
         ),
       );
-      await tester.pumpAndSettle();
-      expect(find.byType(LivingCat), findsOneWidget);
-      expect(find.text('Твой референс'), findsOneWidget);
-      await tester.tap(find.text('Слушает'));
+      CatFrame frame() =>
+          (tester.widget<CustomPaint>(painted).painter! as CatPainter).frame();
+      final idle = frame().rig!;
+      await tester.tap(find.text('Слушает').first);
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('cat-moon')));
-      await tester.pump(const Duration(milliseconds: 1300));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(frame().rig!.headY, lessThan(idle.headY - 3));
+      expect(frame().rig!.attention, 1);
+      await tester.tap(find.byKey(const ValueKey('cat-full')));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(frame().pet, greaterThan(0));
+      expect(frame().rig!.attention, 1);
       expect(find.text('Записывает · демо'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1400));
+      expect(frame().rig!.attention, 1);
+      await tester.tap(find.text('Думает').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+      final interruptedTilt = frame().rig!.headTilt;
+      await tester.tap(find.text('Радуется').first);
+      await tester.pump();
+      expect(frame().rig!.headTilt, closeTo(interruptedTilt, .0001));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(frame().rig!.smile, 1);
       await tester.tap(find.text('Покой'));
-      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Остановить'));
+      await tester.pumpAndSettle();
+      expect(tester.hasRunningAnimations, isFalse);
       final output = Platform.environment['PREVIEW_DIR'];
       if (output != null) {
         await tester.runAsync(() async {
@@ -63,11 +88,29 @@ void main() {
           final image = await boundary.toImage(pixelRatio: 1);
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
           File(
-            '$output/reference-comparison.png',
+            '$output/living-cat-lab.png',
           ).writeAsBytesSync(bytes!.buffer.asUint8List());
           image.dispose();
+          if (Platform.environment['MOTION_PREVIEW'] == '1')
+            await renderMotion(output);
         });
       }
+      await tester.enterText(find.byType(TextFormField), 'komorebi');
+      await tester.pump();
+      expect(
+        tester
+            .widget<LivingCat>(find.byKey(const ValueKey('cat-full')))
+            .profile
+            .kind,
+        CatKind.personal,
+      );
+      expect(
+        tester
+            .widget<LivingCat>(find.byKey(const ValueKey('cat-face')))
+            .profile
+            .seed,
+        'komorebi',
+      );
       tester.view.physicalSize = const Size(390, 844);
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.takeException(), isNull);

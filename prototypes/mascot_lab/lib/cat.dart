@@ -11,7 +11,14 @@ enum CatKind { moon, sun, personal }
 enum CatMood {
   idle('Покой', 'Просто рядом', blob.idle),
   armed('Ждёт голос', 'Ждёт ключевое слово', blob.idle),
-  listening('Слушает', 'Записывает · демо', blob.idle),
+  listening(
+    'Слушает',
+    'Записывает · демо',
+    blob.Expression(
+      'attentive',
+      blob.Pose(esx: 1.02, esy: 1.08, edy: -1.5, edx: -.3),
+    ),
+  ),
   thinking('Думает', 'Распознаёт · демо', blob.thinking),
   happy('Радуется', 'Всё получилось', blob.happy),
   sad('Грустит', 'Нужна помощь', blob.sad),
@@ -22,6 +29,130 @@ enum CatMood {
   final String label, status;
   final blob.Expression expression;
 }
+
+/// A small articulated rig, additive to Blobatar's facial expression.
+/// Held poses remain distinct even when all continuous motion is disabled.
+class CatRig {
+  const CatRig({
+    this.headTilt = .075,
+    this.headX = 0,
+    this.headY = 0,
+    this.leftEar = 0,
+    this.rightEar = 0,
+    this.lean = 0,
+    this.stretch = 1,
+    this.tail = 0,
+    this.energy = .25,
+    this.smile = 0,
+    this.attention = 0,
+    this.down = 0,
+  });
+  final double headTilt,
+      headX,
+      headY,
+      leftEar,
+      rightEar,
+      lean,
+      stretch,
+      tail,
+      energy,
+      smile,
+      attention,
+      down;
+
+  static CatRig forMood(CatMood mood) => switch (mood) {
+    CatMood.idle => const CatRig(),
+    CatMood.armed => const CatRig(
+      headTilt: -.015,
+      headY: -1,
+      leftEar: -.10,
+      rightEar: .09,
+      attention: .45,
+      energy: .12,
+    ),
+    CatMood.listening => const CatRig(
+      headTilt: -.13,
+      headX: 3.5,
+      headY: -5,
+      leftEar: -.24,
+      rightEar: .20,
+      lean: .045,
+      stretch: 1.055,
+      tail: .65,
+      attention: 1,
+      energy: .35,
+    ),
+    CatMood.thinking => const CatRig(
+      headTilt: .19,
+      headX: -1,
+      headY: 1,
+      leftEar: .15,
+      rightEar: -.09,
+      lean: -.025,
+      tail: -.25,
+      energy: .20,
+    ),
+    CatMood.happy => const CatRig(
+      headTilt: -.035,
+      headY: -3,
+      leftEar: -.11,
+      rightEar: .12,
+      stretch: 1.035,
+      tail: 1,
+      smile: 1,
+      energy: 1,
+    ),
+    CatMood.sad => const CatRig(
+      headTilt: .16,
+      headY: 5,
+      leftEar: -.42,
+      rightEar: .43,
+      stretch: .96,
+      tail: -.75,
+      down: 1,
+      energy: .06,
+    ),
+    CatMood.surprised => const CatRig(
+      headTilt: -.07,
+      headY: -6,
+      leftEar: .10,
+      rightEar: -.10,
+      stretch: 1.06,
+      tail: .8,
+      energy: .5,
+    ),
+    CatMood.sleepy => const CatRig(
+      headTilt: .20,
+      headY: 7,
+      leftEar: -.25,
+      rightEar: .30,
+      stretch: .94,
+      tail: -.55,
+      down: .7,
+      energy: .04,
+    ),
+  };
+
+  static CatRig lerp(CatRig a, CatRig b, double t) {
+    double v(double x, double y) => x + (y - x) * t;
+    return CatRig(
+      headTilt: v(a.headTilt, b.headTilt),
+      headX: v(a.headX, b.headX),
+      headY: v(a.headY, b.headY),
+      leftEar: v(a.leftEar, b.leftEar),
+      rightEar: v(a.rightEar, b.rightEar),
+      lean: v(a.lean, b.lean),
+      stretch: v(a.stretch, b.stretch),
+      tail: v(a.tail, b.tail),
+      energy: v(a.energy, b.energy),
+      smile: v(a.smile, b.smile),
+      attention: v(a.attention, b.attention),
+      down: v(a.down, b.down),
+    );
+  }
+}
+
+enum CatView { full, face }
 
 /// The profile is intentionally separate from temporary expressions and gaze.
 class CatProfile {
@@ -108,6 +239,8 @@ class LivingCat extends StatefulWidget {
     this.gaze = true,
     this.size = 260,
     this.height,
+    this.view = CatView.full,
+    this.voiceLevel = .65,
     this.onPoke,
   });
   final CatProfile profile;
@@ -115,6 +248,8 @@ class LivingCat extends StatefulWidget {
   final bool animate, gaze;
   final double size;
   final double? height;
+  final CatView view;
+  final double voiceLevel;
   final VoidCallback? onPoke;
 
   @override
@@ -128,17 +263,19 @@ class _LivingCatState extends State<LivingCat>
   late blob.MotionSeeds _seeds = blob.motionSeedsFor(widget.profile.motionSeed);
   late blob.Pose _from = widget.mood.expression.pose;
   late blob.Pose _to = widget.mood.expression.pose;
+  late CatRig _rigFrom = CatRig.forMood(widget.mood);
+  late CatRig _rigTo = CatRig.forMood(widget.mood);
+  double? _petStart;
   double _time = 0, _runBase = 0, _morphStart = -1000, _tracking = 0;
   Offset _target = Offset.zero, _look = Offset.zero;
   bool _hovered = false, _focused = false, _reduced = false;
   Timer? _pokeTimer;
   String? _reaction;
 
-  blob.Pose get _pose => blob.lerpPose(
-    _from,
-    _to,
-    blob.easeInOut(((_time - _morphStart) / 340).clamp(0, 1)),
-  );
+  double get _progress =>
+      blob.easeInOut(((_time - _morphStart) / 420).clamp(0, 1));
+  CatRig get _rig => CatRig.lerp(_rigFrom, _rigTo, _progress);
+  blob.Pose get _pose => blob.lerpPose(_from, _to, _progress);
 
   @override
   void initState() {
@@ -171,6 +308,7 @@ class _LivingCatState extends State<LivingCat>
     if (!active && _ticker.isActive) _ticker.stop();
     if (!active) {
       _from = _to;
+      _rigFrom = _rigTo;
       _look = Offset.zero;
       _tracking = 0;
       _repaint.value++;
@@ -190,10 +328,15 @@ class _LivingCatState extends State<LivingCat>
   }
 
   void _morph(blob.Pose target) {
+    _rigFrom = _rig;
+    _rigTo = CatRig.forMood(widget.mood);
     _from = _pose;
     _to = target;
     _morphStart = _time;
-    if (!_ticker.isActive) _from = _to;
+    if (!_ticker.isActive) {
+      _from = _to;
+      _rigFrom = _rigTo;
+    }
     _repaint.value++;
   }
 
@@ -214,6 +357,7 @@ class _LivingCatState extends State<LivingCat>
   void _poke() {
     widget.onPoke?.call();
     _pokeTimer?.cancel();
+    _petStart = _time;
     setState(() => _reaction = 'Подмигнул');
     _morph(blob.wink.pose);
     _pokeTimer = Timer(const Duration(milliseconds: 1200), () {
@@ -288,10 +432,26 @@ class _LivingCatState extends State<LivingCat>
                 child: CustomPaint(
                   painter: CatPainter(
                     profile: widget.profile,
+                    view: widget.view,
                     mood: widget.mood,
                     repaint: _repaint,
                     frame: () => CatFrame(
                       pose: _pose,
+                      rig: _rig,
+                      pet: _petStart == null || !widget.animate || _reduced
+                          ? 0
+                          : math.sin(
+                              math.pi *
+                                  ((_time - _petStart!) / 1200).clamp(0, 1),
+                            ),
+                      speech: widget.mood == CatMood.listening
+                          ? widget.voiceLevel *
+                                (widget.animate && !_reduced
+                                    ? .35 +
+                                          .65 *
+                                              math.pow(math.sin(_time / 130), 2)
+                                    : .55)
+                          : 0,
                       motion: blob.motionAt(
                         _seeds,
                         _time,
@@ -320,26 +480,32 @@ class CatFrame {
     this.gaze = Offset.zero,
     this.tracking = 0,
     this.time = 0,
+    this.rig,
+    this.pet = 0,
+    this.speech = 0,
   });
   final blob.Pose pose;
   final blob.MotionFrame motion;
   final Offset gaze;
   final double tracking;
-  final double time;
+  final double time, pet, speech;
+  final CatRig? rig;
 }
 
-/// Vector study of the existing mascot's silhouette and proportions.
-/// Reference used for visual comparison; this is not a cleared replacement asset.
+/// Original layered geometry in Tsukiko's visual language: big pale eyes,
+/// unequal tall ears, soft cheek points and a small side-facing body.
 class CatPainter extends CustomPainter {
   CatPainter({
     required this.profile,
     required this.mood,
     required this.frame,
+    this.view = CatView.full,
     super.repaint,
   });
   final CatProfile profile;
   final CatMood mood;
   final CatFrame Function() frame;
+  final CatView view;
 
   Paint fill(Color color) => Paint()..color = color;
   Paint stroke(Color color, double width) => Paint()
@@ -352,153 +518,236 @@ class CatPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final f = frame();
-    final s = math.min(size.width / 220, size.height / 227);
+    final r = f.rig ?? CatRig.forMood(mood);
+    final camera = view == CatView.face
+        ? const Rect.fromLTWH(0, -18, 200, 167)
+        : const Rect.fromLTWH(-10, -12, 220, 245);
+    final scale = math.min(
+      size.width / camera.width,
+      size.height / camera.height,
+    );
     canvas.save();
-    canvas.translate((size.width - 220 * s) / 2, (size.height - 227 * s) / 2);
-    canvas.scale(s);
-    canvas.translate(35.2, 27.2);
+    canvas.translate(
+      (size.width - camera.width * scale) / 2,
+      (size.height - camera.height * scale) / 2,
+    );
+    canvas.scale(scale);
+    canvas.translate(-camera.left, -camera.top);
     canvas.saveLayer(
       null,
-      Paint()..color = Colors.white.withValues(alpha: .85),
+      Paint()..color = Colors.white.withValues(alpha: .91),
     );
-    canvas.translate(f.motion.shake.$1, f.motion.bob * .35 + f.pose.bdy * .35);
-    final color = profile.kind == CatKind.moon
-        ? const Color(0xff7775a1)
-        : profile.head;
-    final dark = Color.lerp(color, const Color(0xff272536), .48)!;
+    final time = f.time;
+    final wave = math.sin(time / 1050);
+    final joy = r.smile * math.pow(math.sin(time / 470), 2);
+    canvas.translate(f.motion.shake.$1, f.motion.bob * .55 - joy * 1.8);
+    final fur = profile.head;
+    final shade = Color.lerp(fur, const Color(0xff292736), .32)!;
 
-    // Small side-facing body, tucked tail and a dissolving lower edge.
-    // This study follows the proportions of the user's existing mascot.
-    canvas.saveLayer(null, Paint());
-    final body = Path()
-      ..moveTo(64, 133)
-      ..cubicTo(60, 153, 48, 171, 12, 186)
-      ..lineTo(121, 187)
-      ..cubicTo(126, 174, 118, 158, 103, 151)
-      ..cubicTo(95, 147, 88, 147, 87, 146)
-      ..lineTo(91, 145)
-      ..quadraticBezierTo(94, 140, 91, 134)
-      ..quadraticBezierTo(80, 130, 64, 133)
-      ..close();
-    canvas.drawPath(
-      body,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [color, color, dark],
-          stops: const [0, .5, 1],
-        ).createShader(const Rect.fromLTWH(10, 130, 120, 60)),
-    );
-    final tail = Path()
-      ..moveTo(88, 148)
-      ..cubicTo(69, 143, 61, 158, 68, 171)
-      ..cubicTo(72, 179, 82, 185, 96, 187);
-    canvas.drawPath(tail, stroke(dark.withValues(alpha: .8), 2));
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 128, 160, 70),
-      Paint()
-        ..blendMode = BlendMode.dstIn
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.white, Colors.white, Colors.transparent],
-          stops: [0, .53, 1],
-        ).createShader(const Rect.fromLTWH(0, 128, 160, 59)),
-    );
-    canvas.restore();
+    if (view == CatView.full) {
+      canvas.drawOval(
+        const Rect.fromLTWH(39, 193, 112, 18),
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              profile.accent.withValues(alpha: .10 + f.speech * .06),
+              profile.accent.withValues(alpha: 0),
+            ],
+          ).createShader(const Rect.fromLTWH(37, 182, 116, 35)),
+      );
+      canvas.save();
+      canvas.translate(100, 194);
+      canvas.rotate(-r.lean);
+      canvas.scale(
+        f.motion.breathe.$1,
+        f.motion.breathe.$2 * r.stretch - f.pet * .018,
+      );
+      canvas.translate(-100, -194);
+      canvas.saveLayer(null, Paint());
+      final swish =
+          wave * (1.0 + r.energy * 3) + f.pet * math.sin(time / 110) * 3;
+      final lift = r.tail * 11 + f.speech * 1.5;
+      final tail = Path()
+        ..moveTo(112, 181)
+        ..cubicTo(140 + swish, 195, 155 + swish, 181, 146 + swish, 167 - lift)
+        ..cubicTo(141, 152 - lift, 127, 153 - lift, 124, 162 - lift)
+        ..cubicTo(118, 176 - lift, 137, 174, 127, 184)
+        ..close();
+      canvas.drawPath(tail, fill(Color.lerp(fur, shade, .16)!));
+      final body = Path()
+        ..moveTo(87, 132)
+        ..cubicTo(83, 151, 69, 173, 43, 190)
+        ..cubicTo(66, 202, 113, 206, 135, 193)
+        ..cubicTo(146, 185, 139, 166, 121, 153)
+        ..quadraticBezierTo(113, 148, 111, 144)
+        ..lineTo(114, 140)
+        ..quadraticBezierTo(115, 135, 111, 132)
+        ..quadraticBezierTo(100, 130, 87, 132)
+        ..close();
+      canvas.drawPath(
+        body,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [fur, fur, shade],
+            stops: const [0, .55, 1],
+          ).createShader(const Rect.fromLTWH(40, 130, 105, 76)),
+      );
+      canvas.drawPath(
+        Path()
+          ..moveTo(115, 150)
+          ..cubicTo(94, 145 - lift * .2, 89, 165, 98 + swish * .25, 179)
+          ..quadraticBezierTo(106, 192, 121, 194),
+        stroke(shade.withValues(alpha: .75), 1.6),
+      );
+      canvas.drawRect(
+        const Rect.fromLTWH(20, 125, 150, 90),
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.white, Colors.white, Colors.transparent],
+            stops: [0, .69, 1],
+          ).createShader(const Rect.fromLTWH(20, 125, 150, 81)),
+      );
+      canvas.restore();
+      canvas.restore();
+    }
 
+    // Head and ears have their own pivots; pose, gaze and petting compose.
     canvas.save();
-    canvas.translate(76, 84);
-    canvas.scale(profile.kind == CatKind.moon ? 1 : profile.headWidth, 1);
-    canvas.translate(-76, -84);
-    final earDrop = f.pose.bdy * .5;
-    final ear = profile.kind == CatKind.moon ? 1.0 : profile.earHeight;
-    final twitch = mood == CatMood.listening
-        ? math.sin(f.time / 230) * .45
-        : 0.0;
-    final shape = Path()
-      ..moveTo(20.4, 85.7)
-      ..cubicTo(
-        17,
-        61,
-        44,
-        18 / ear + earDrop,
-        69.4 + twitch,
-        7.5 / ear + earDrop,
-      )
-      ..cubicTo(76, 2 / ear + earDrop, 75, 29, 76, 52.2)
-      ..quadraticBezierTo(82, 51.4, 88.4, 57.1)
-      ..cubicTo(
-        103,
-        42.2,
-        128,
-        24 / ear + earDrop,
-        135.3 - twitch,
-        24.5 / ear + earDrop,
-      )
-      ..cubicTo(143, 24, 140.8, 53, 140, 66.6)
-      ..quadraticBezierTo(137, 86, 128, 97)
-      ..quadraticBezierTo(149, 104, 141, 111.5)
-      ..cubicTo(126, 127, 94, 130, 65, 123)
-      ..cubicTo(34, 117, 8, 108, 6, 98)
-      ..quadraticBezierTo(2, 91, 20.4, 85.7)
+    canvas.translate(r.headX + f.gaze.dx * .22, r.headY + f.pet * 1.6);
+    canvas.translate(100, 117);
+    canvas.rotate(r.headTilt + wave * .009 + f.gaze.dx * .008 - f.pet * .065);
+    canvas.scale(profile.headWidth, 1 + r.attention * .015);
+    canvas.translate(-100, -117);
+    final microEar = math.sin(time / 690) * .012;
+    _ear(
+      canvas,
+      false,
+      r.leftEar + microEar - f.speech * .035 + f.pet * .15,
+      fur,
+    );
+    _ear(
+      canvas,
+      true,
+      r.rightEar - microEar + f.speech * .045 - f.pet * .08,
+      fur,
+    );
+    final cheek = profile.fluffy ? 3.0 : 0.0;
+    final head = Path()
+      ..moveTo(43, 77)
+      ..cubicTo(59, 64, 90, 61, 112, 68)
+      ..quadraticBezierTo(139, 69, 154, 87)
+      ..quadraticBezierTo(161, 92, 165 + cheek, 97)
+      ..quadraticBezierTo(173 + cheek, 103, 163, 109)
+      ..cubicTo(141, 129, 86, 131, 47, 115)
+      ..quadraticBezierTo(28 - cheek, 108, 28 - cheek, 100)
+      ..quadraticBezierTo(28, 95, 40, 90)
+      ..quadraticBezierTo(41, 82, 43, 77)
       ..close();
-    canvas.drawPath(shape, fill(color));
+    canvas.drawPath(head, fill(fur));
     canvas.save();
-    canvas.clipPath(shape);
+    canvas.clipPath(head);
     final blush = Paint()
-      ..color = const Color(0xffd86fa6).withValues(alpha: .42)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.7);
-    canvas.drawOval(const Rect.fromLTWH(10, 89, 36, 17), blush);
-    canvas.drawOval(const Rect.fromLTWH(111, 104, 28, 13), blush);
+      ..color = const Color(
+        0xffd97baf,
+      ).withValues(alpha: .35 + .12 * r.smile + f.pet * .10)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.8);
+    canvas.drawOval(const Rect.fromLTWH(33, 99, 34, 15), blush);
+    canvas.drawOval(const Rect.fromLTWH(134, 103, 29, 13), blush);
     canvas.restore();
 
     final gaze =
         f.gaze +
         Offset(f.motion.saccade.$1, f.motion.saccade.$2) * (1 - f.tracking);
     for (var i = 0; i < 2; i++) {
-      final pose = f.pose;
+      final p = f.pose;
       final side = i == 0 ? -1.0 : 1.0;
-      final rock = pose.rock * side * f.motion.thinkingPhase * 1.4;
-      final x = (i == 0 ? 49.6 : 100.6) + pose.edx * side + gaze.dx;
-      final y =
-          (i == 0 ? 82.3 : 91.8) + pose.edy + i * pose.edy2 + rock + gaze.dy;
+      final phase =
+          i * (1 - p.rock) + p.rock * ((1 + side * f.motion.thinkingPhase) / 2);
+      final x = (i == 0 ? 72.0 : 124.0) + p.edx * side + gaze.dx;
+      final y = (i == 0 ? 92.0 : 96.0) + p.edy + phase * p.edy2 + gaze.dy;
+      final rx = (i == 0 ? 12.8 : 12.2) * profile.eyes;
+      final ry = (i == 0 ? 17.0 : 16.1) * profile.eyes;
       canvas.save();
       canvas.translate(x, y);
       canvas.rotate(
-        (i == 0 ? .16 : .27) * (1 - pose.lock) +
-            (pose.tilt + i * pose.tilt2) * side * math.pi / 180,
+        (.10 + i * .05) * (1 - p.lock) +
+            (p.tilt + i * p.tilt2) * side * math.pi / 180,
       );
+      final eyeFill = fill(profile.eyeColor.withValues(alpha: .92));
+      // Keep Blobatar's expression channels; a happy cat also has curved lids.
+      canvas.save();
       canvas.scale(
-        (pose.esx + i * pose.esx2).clamp(.2, 1.5),
-        (pose.esy + i * pose.esy2).clamp(.12, 1.4) * f.motion.blink,
+        (p.esx + i * p.esx2).clamp(.2, 1.5),
+        (p.esy + i * p.esy2).clamp(.12, 1.4) * f.motion.blink,
       );
-      final eye = blob.blobPath(
+      final outline = blob.blobPath(
         0,
         0,
-        (i == 0 ? 14 : 12.7) * profile.eyes,
-        (i == 0 ? 17.5 : 16.5) * profile.eyes,
+        rx,
+        ry,
         i == 0
-            ? const [1.0, .97, 1.02, 1.0, .94, 1.02, .98]
-            : const [.97, 1.02, .98, 1.0, 1.02, .96, 1.0],
+            ? const [1, .98, 1.02, 1, .96, 1.02, .98]
+            : const [.98, 1.02, .97, 1, 1.01, .97, 1],
         0,
       );
-      canvas.drawPath(
-        _path(eye),
-        fill(const Color(0xffdeded6).withValues(alpha: .88)),
-      );
+      eyeFill.color = eyeFill.color.withValues(alpha: .92 * (1 - r.smile));
+      canvas.drawPath(_path(outline), eyeFill);
+      canvas.restore();
+      if (r.smile > .001) {
+        final lid = ((p.esy + i * p.esy2) / math.max(p.esy, .01)).clamp(
+          .05,
+          1.0,
+        );
+        final arc = Path()
+          ..moveTo(-rx * 1.04, 1.5)
+          ..cubicTo(-rx * .5, -8 * lid, rx * .5, -8 * lid, rx * 1.04, 1.5);
+        canvas.drawPath(
+          arc,
+          stroke(profile.eyeColor.withValues(alpha: .92 * r.smile), 4.6),
+        );
+      }
       canvas.restore();
     }
+    final mouthY = 109.0 + r.down * 1.1;
     canvas.drawPath(
       Path()
-        ..moveTo(71.6, 98.4)
-        ..quadraticBezierTo(73, 100, 74.2, 97.8)
-        ..quadraticBezierTo(75.2, 100.2, 77, 100.1),
-      stroke(const Color(0xffe7dce8).withValues(alpha: .62), .9),
+        ..moveTo(95.3, mouthY)
+        ..quadraticBezierTo(97.7, mouthY + 2.0, 99.1, mouthY - .8)
+        ..quadraticBezierTo(100.6, mouthY + 2.2, 102.5, mouthY + .6),
+      stroke(profile.eyeColor.withValues(alpha: .63), .95),
     );
     canvas.restore();
     canvas.restore();
+    canvas.restore();
+  }
+
+  void _ear(Canvas canvas, bool right, double rotation, Color fur) {
+    final pivot = right ? const Offset(140, 78) : const Offset(60, 76);
+    canvas.save();
+    canvas.translate(pivot.dx, pivot.dy);
+    canvas.rotate(rotation);
+    canvas.scale(1, profile.earHeight);
+    canvas.translate(-pivot.dx, -pivot.dy);
+    final path = right
+        ? (Path()
+            ..moveTo(116, 74)
+            ..cubicTo(124, 56, 148, 33, 157, 32)
+            ..cubicTo(163, 31, 162, 56, 158, 72)
+            ..quadraticBezierTo(156, 86, 151, 93)
+            ..close())
+        : (Path()
+            ..moveTo(43, 89)
+            ..cubicTo(40, 67, 47, 34, 65, 17)
+            ..cubicTo(69, 13, 73, 17, 73, 26)
+            ..quadraticBezierTo(74, 44, 78, 68)
+            ..quadraticBezierTo(65, 82, 43, 89)
+            ..close());
+    canvas.drawPath(path, fill(fur));
     canvas.restore();
   }
 
