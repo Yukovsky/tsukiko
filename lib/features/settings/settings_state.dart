@@ -69,6 +69,7 @@ class SettingsState extends Equatable {
     this.insert = true,
     this.keepClipboard = false,
     this.returnToTarget = true,
+    this.warnNoField = true,
     this.hud = true,
     this.indicatorMode = IndicatorMode.panel,
     this.wakeWordEnabled = false,
@@ -214,7 +215,7 @@ class SettingsState extends Equatable {
   final List<VocabularyItem> vocabulary;
   final bool vocabularyDictationEnabled, vocabularyTranscriberEnabled;
   final int idleSeconds;
-  final bool insert, keepClipboard, returnToTarget, hud;
+  final bool insert, keepClipboard, returnToTarget, warnNoField, hud;
   DictationDelivery get delivery => !insert
       ? DictationDelivery.clipboard
       : keepClipboard
@@ -325,6 +326,7 @@ class SettingsState extends Equatable {
     bool? insert,
     bool? keepClipboard,
     bool? returnToTarget,
+    bool? warnNoField,
     bool? hud,
     IndicatorMode? indicatorMode,
     bool? wakeWordEnabled,
@@ -401,6 +403,7 @@ class SettingsState extends Equatable {
     insert: insert ?? this.insert,
     keepClipboard: keepClipboard ?? this.keepClipboard,
     returnToTarget: returnToTarget ?? this.returnToTarget,
+    warnNoField: warnNoField ?? this.warnNoField,
     hud: hud ?? this.hud,
     indicatorMode: indicatorMode ?? this.indicatorMode,
     wakeWordEnabled: wakeWordEnabled ?? this.wakeWordEnabled,
@@ -472,6 +475,7 @@ class SettingsState extends Equatable {
     insert,
     keepClipboard,
     returnToTarget,
+    warnNoField,
     hud,
     indicatorMode,
     wakeWordEnabled,

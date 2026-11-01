@@ -17,6 +17,7 @@ import '../../core/models.dart';
 import '../../core/recognition.dart';
 import '../../core/whisper.dart';
 import '../../platform/os.dart';
+import '../../platform/paste_check.dart';
 import '../../core/settings.dart';
 import '../../core/text_commands.dart';
 import '../../core/vocabulary.dart';
@@ -272,6 +273,7 @@ class DictationCubit extends Cubit<DictationState> {
         processing: _active != null,
         mode: _settings.indicatorMode,
         enter: _enterShown,
+        fieldHint: !state.recording && (_active?.fieldHint ?? false),
       );
 
   /// Значок «⏎» на плашке: пометка у идущей записи, а когда записи нет — у
@@ -742,8 +744,8 @@ class DictationCubit extends Cubit<DictationState> {
       _wav = null;
       if (path != null && path.isNotEmpty) {
         // Место для текста запоминаем сейчас, пока человек ещё в нём.
-        final target = _settings.insert && _settings.returnToTarget
-            ? await bridge.markTarget()
+        final marked = _settings.insert && _settings.returnToTarget
+            ? await bridge.markTarget(probe: _settings.warnNoField)
             : null;
         job = _DictationJob(
           path,
@@ -755,7 +757,12 @@ class DictationCubit extends Cubit<DictationState> {
           List.of(_vocabulary),
           ownVoiceOnly: _settings.ownVoiceOnly,
           ownVoiceThreshold: _settings.ownVoiceThreshold,
-          target: target,
+          target: marked?.id,
+          fieldHint: showFieldHint(
+            marked?.field ?? FieldState.unknown,
+            warn: _settings.warnNoField,
+            hasTarget: marked != null,
+          ),
         );
         // Enter остаётся только у последнего задания — решаем здесь, в миг
         // постановки в очередь, а не при начале записи.
@@ -897,7 +904,11 @@ class DictationCubit extends Cubit<DictationState> {
               await _copyResult(text);
               ok = true;
             } else {
-              ok = await bridge.insert(text, target: job.target);
+              final outcome = await bridge.insertChecked(
+                text,
+                target: job.target,
+              );
+              ok = outcome == PasteOutcome.pasted;
               // Родная сторона вернёт прежний буфер через 1,5 с, но только
               // если его никто не менял: наша запись это и отменяет.
               if (ok && job.keepClipboard) await _copyResult(text);
@@ -911,11 +922,14 @@ class DictationCubit extends Cubit<DictationState> {
                 }
               }
               if (!ok) {
-                // Вставка не состоялась — почти всегда это отозванный
-                // «Универсальный доступ». Текст при этом уже распознан,
-                // и терять его нельзя: кладём в буфер и говорим вслух.
+                // Вставка не состоялась: либо отозван «Универсальный доступ»,
+                // либо курсор не в поле и ⌘V вслепую слать не стали. Текст
+                // уже распознан, терять его нельзя: кладём в буфер ПОСЛЕДНИМ
+                // (прежний не возвращаем — пусть сразу жмут ⌘V) и говорим вслух.
                 await _copyResult(text);
-                failure = currentL10n().insertFailed(os.accessibilityName);
+                failure = outcome == PasteOutcome.focusLost
+                    ? currentL10n().insertNoField
+                    : currentL10n().insertFailed(os.accessibilityName);
               }
             }
           }
@@ -973,6 +987,7 @@ class DictationCubit extends Cubit<DictationState> {
       processing: _pending.isNotEmpty,
       mode: _settings.indicatorMode,
       enter: _enterShown,
+      fieldHint: !state.recording && _pending.isNotEmpty && _pending.first.fieldHint,
     );
   }
 
@@ -1470,12 +1485,16 @@ class _DictationJob extends EnterMark {
     this.ownVoiceOnly = false,
     this.ownVoiceThreshold = ownVoiceDefaultThreshold,
     this.target,
+    this.fieldHint = false,
   });
   final String path;
 
   /// Где стоял курсор при остановке (номер у родной стороны), или null —
   /// вставлять в то, что будет впереди.
   final int? target;
+
+  /// На плашке горит «Поставьте курсор в поле», пока идёт расшифровка.
+  final bool fieldHint;
   final bool ownVoiceOnly;
   final double ownVoiceThreshold;
   final RunOptions options;

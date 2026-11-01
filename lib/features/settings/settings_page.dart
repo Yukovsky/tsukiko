@@ -570,6 +570,10 @@ class _SettingsBodyState extends State<SettingsBody>
         _cubit.setReturnToTarget,
       ),
       Hint(l10n.hintReturnToTarget, under: true),
+      if (s.returnToTarget) ...[
+        Check(l10n.checkWarnNoField, s.warnNoField, _cubit.setWarnNoField),
+        Hint(l10n.hintWarnNoField, under: true),
+      ],
     ],
     const SizedBox(height: Gap.item),
     SectionTitle(l10n.indicatorTitle),

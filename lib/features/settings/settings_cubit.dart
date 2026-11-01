@@ -180,6 +180,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         insert: _dictation.insert,
         keepClipboard: _dictation.keepClipboard,
         returnToTarget: _dictation.returnToTarget,
+        warnNoField: _dictation.warnNoField,
         hud: _dictation.hud,
         indicatorMode: _dictation.indicatorMode,
         wakeWordEnabled: _dictation.wakeWordEnabled,
@@ -404,6 +405,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     d.keepClipboard = v == DictationDelivery.insertAndKeep;
   });
   void setReturnToTarget(bool v) => _saveDictation((d) => d.returnToTarget = v);
+  void setWarnNoField(bool v) => _saveDictation((d) => d.warnNoField = v);
 
   void setHud(bool v) => _saveDictation((d) => d.hud = v);
 

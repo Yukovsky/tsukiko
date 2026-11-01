@@ -575,14 +575,20 @@ final class DictationBridge: NSObject {
       // нечем и некуда: надиктованный текст пропадал вместе с буфером,
       // который через 0,4 с возвращался к прежнему содержимому.
       let text = (args?["text"] as? String) ?? ""
-      guard let id = args?["target"] as? Int, let target = targets.removeValue(forKey: id) else {
-        reply(paste(text)); return
+      guard let id = args?["target"] as? Int, var target = targets.removeValue(forKey: id) else {
+        reply(paste(text).reply); return
       }
-      returnTo(target) { [weak self] in reply(self?.paste(text) ?? false) }
+      // Курсор был не в поле, а плашка просила его поставить: смотрим, не
+      // поставили ли. Нет — вслепую не вставляем и фокус не трогаем.
+      if target.field == .no {
+        refresh(&target)
+        if target.field == .no { reply(PasteResult.focus.reply); return }
+      }
+      returnTo(target) { [weak self] in reply(self?.paste(text, expecting: target).reply ?? false) }
     case "pressReturn":
       reply(pressReturn())
     case "markTarget":
-      reply(markTarget())
+      markTarget(probe: (args?["probe"] as? Bool) ?? false, then: reply)
     case "configureHud":
       hud.configure(labels: (call.arguments as? [String: String]) ?? [:])
       reply(nil)
@@ -591,7 +597,7 @@ final class DictationBridge: NSObject {
       reply(nil)
     case "hud":
       hud.setMode((args?["mode"] as? String) ?? "panel")
-      hud.updateQueue(pending: (args?["pending"] as? Int) ?? 0, processing: (args?["processing"] as? Bool) ?? false, enter: (args?["enter"] as? Bool) ?? false, labels: (args?["labels"] as? [String: String]) ?? [:])
+      hud.updateQueue(pending: (args?["pending"] as? Int) ?? 0, processing: (args?["processing"] as? Bool) ?? false, enter: (args?["enter"] as? Bool) ?? false, fieldHint: (args?["fieldHint"] as? Bool) ?? false, labels: (args?["labels"] as? [String: String]) ?? [:])
       switch (args?["state"] as? String) ?? "" {
       case "recording": hud.show()
       case "transcribing": hud.transcribing()
@@ -1229,9 +1235,28 @@ final class DictationBridge: NSObject {
   /// в другие окна, а текст всё равно должен лечь туда, где он говорил.
   private struct PasteTarget {
     let pid: pid_t
-    let window: AXUIElement?
-    let element: AXUIElement?
-    let range: CFTypeRef?
+    var window: AXUIElement?
+    var element: AXUIElement?
+    var range: CFTypeRef?
+    var field: FieldState = .unknown
+  }
+
+  /// Стоит ли курсор в поле ввода. unknown — приложение ничего не
+  /// рассказывает (терминалы, игры, Chromium без дерева доступности):
+  /// тогда ведём себя как раньше и не блокируем.
+  private enum FieldState: String { case yes, no, unknown }
+
+  /// Ответ на `paste`: true — нажато, false — вставить нечем,
+  /// "focus" — фокус не в поле цели, ⌘V вслепую не слали.
+  private enum PasteResult {
+    case pasted, failed, focus
+    var reply: Any {
+      switch self {
+      case .pasted: return true
+      case .failed: return false
+      case .focus: return "focus"
+      }
+    }
   }
   private var targets: [Int: PasteTarget] = [:]
   private var lastTarget = 0
@@ -1241,23 +1266,143 @@ final class DictationBridge: NSObject {
     return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
   }
 
-  /// Номер цели или nil, если запоминать нечего: впереди мы сами или
-  /// нет «Универсального доступа» — тогда текст уйдёт в то, что впереди.
-  private func markTarget() -> Int? {
+  private static let fieldRoles: Set<String> = [
+    "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField", "AXTextView",
+  ]
+  /// Роли, которые точно не поле. AXGroup и AXWebArea сюда не входят: они
+  /// «не поле» только у нативных приложений (см. [classify]).
+  private static let notFieldRoles: Set<String> = [
+    "AXStaticText", "AXButton", "AXImage", "AXLink", "AXMenuItem", "AXMenuButton",
+    "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXRow", "AXCell", "AXColumn",
+    "AXTable", "AXOutline", "AXList", "AXToolbar", "AXTabGroup", "AXScrollArea",
+    "AXSplitGroup", "AXHeading",
+  ]
+  private static let browserIds = [
+    "com.google.Chrome", "com.microsoft.edgemac", "com.brave.Browser",
+    "company.thebrowser.Browser", "org.chromium.Chromium", "com.vivaldi.Vivaldi",
+    "com.operasoftware.Opera",
+  ]
+  private static let chromiumFrameworks = [
+    "Electron", "Chromium", "Google Chrome", "Microsoft Edge", "Brave Browser", "Arc",
+  ]
+  private var chromiumPids: [pid_t: Bool] = [:]
+  private var preparedPids: Set<pid_t> = []
+
+  /// Chromium или Electron: сами дерево доступности не строят, пока
+  /// им не скажут, что оно кому-то нужно.
+  private func isChromium(_ pid: pid_t) -> Bool {
+    if let known = chromiumPids[pid] { return known }
+    var result = false
+    if let app = NSRunningApplication(processIdentifier: pid) {
+      let id = app.bundleIdentifier ?? ""
+      result = Self.browserIds.contains { id.hasPrefix($0) }
+      if !result, let dir = app.bundleURL?.appendingPathComponent("Contents/Frameworks").path,
+        let names = try? FileManager.default.contentsOfDirectory(atPath: dir)
+      {
+        result = names.contains { name in
+          name.hasSuffix(" Framework.framework")
+            && Self.chromiumFrameworks.contains { name.hasPrefix($0) }
+        }
+      }
+    }
+    chromiumPids[pid] = result
+    return result
+  }
+
+  /// Один раз на pid просим приложение построить дерево доступности.
+  /// AXManualAccessibility безвреден для любого приложения; AXEnhancedUserInterface
+  /// у обычных ломает анимацию окон, поэтому только для Chromium/Electron.
+  private func prepareAccessibility(_ pid: pid_t) {
+    guard preparedPids.insert(pid).inserted else { return }
+    let root = AXUIElementCreateApplication(pid)
+    AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    if isChromium(pid) {
+      AXUIElementSetAttributeValue(root, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+    }
+  }
+
+  private static func classify(_ element: AXUIElement, chromium: Bool) -> FieldState {
+    guard let role = attribute(element, kAXRoleAttribute) as? String else { return .unknown }
+    if fieldRoles.contains(role) { return .yes }
+    var settable = DarwinBoolean(false)
+    if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success,
+      settable.boolValue, attribute(element, kAXSelectedTextRangeAttribute) != nil
+    {
+      return .yes
+    }
+    if (attribute(element, "AXEditable") as? Bool) == true { return .yes }
+    if role == "AXGroup" || role == "AXWebArea" { return chromium ? .unknown : .no }
+    return notFieldRoles.contains(role) ? .no : .unknown
+  }
+
+  /// Что сейчас в фокусе у приложения [pid] и поле ли это.
+  private func readFocus(_ pid: pid_t) -> (element: AXUIElement?, window: AXUIElement?, state: FieldState) {
+    prepareAccessibility(pid)
+    let root = AXUIElementCreateApplication(pid)
+    // Зависшее приложение не должно вешать нас на шесть секунд, как по умолчанию.
+    AXUIElementSetMessagingTimeout(root, 0.5)
+    let chromium = isChromium(pid)
+    let window = Self.attribute(root, kAXFocusedWindowAttribute).map { $0 as! AXUIElement }
+    var value: CFTypeRef?
+    let error = AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &value)
+    guard error == .success, let value else {
+      // «Ничего не в фокусе» у нативного приложения с окном — точно не поле.
+      // Любая другая ошибка (нет доступа, не отвечает) ничего не доказывает.
+      return (nil, window, error == .noValue && window != nil && !chromium ? .no : .unknown)
+    }
+    let element = value as! AXUIElement
+    return (element, window, Self.classify(element, chromium: chromium))
+  }
+
+  /// Цель теперь в поле того же приложения — взять новое поле и курсор.
+  private func refresh(_ target: inout PasteTarget) {
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return }
+    let now = readFocus(target.pid)
+    guard now.state == .yes, let element = now.element else { return }
+    target.element = element
+    target.window = now.window ?? target.window
+    target.range = Self.attribute(element, kAXSelectedTextRangeAttribute)
+    target.field = .yes
+  }
+
+  /// Перед ⌘V: фокус действительно в нужном поле? Блокируем только когда
+  /// явно не то — другое приложение, другое окно, не-поле. Нечитаемое
+  /// (Chromium без дерева, терминалы) не повод отказывать.
+  private func focusIsRight(_ target: PasteTarget) -> Bool {
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return false }
+    let now = readFocus(target.pid)
+    if let was = target.element, let current = now.element, CFEqual(was, current) { return true }
+    if let was = target.window, let current = now.window, !CFEqual(was, current) { return false }
+    return now.state != .no
+  }
+
+  /// Запомнить место вставки. [probe] — заодно определить, поле ли это
+  /// (при unknown один повтор через 150 мс: дерево доступности строится не
+  /// сразу); тогда ответ — `{id, field}`, иначе просто номер. nil — запоминать
+  /// нечего: впереди мы сами или нет «Универсального доступа».
+  private func markTarget(probe: Bool, then reply: @escaping (Any?) -> Void) {
     guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication,
       app.processIdentifier != getpid()
-    else { return nil }
-    let root = AXUIElementCreateApplication(app.processIdentifier)
-    let element = Self.attribute(root, kAXFocusedUIElementAttribute).map { $0 as! AXUIElement }
-    lastTarget += 1
-    targets[lastTarget] = PasteTarget(
-      pid: app.processIdentifier,
-      window: Self.attribute(root, kAXFocusedWindowAttribute).map { $0 as! AXUIElement },
-      element: element,
-      range: element.flatMap { Self.attribute($0, kAXSelectedTextRangeAttribute) })
-    // Цели отменённых записей никто не заберёт — держим только свежие.
-    targets = targets.filter { $0.key > lastTarget - 16 }
-    return lastTarget
+    else { return reply(nil) }
+    let pid = app.processIdentifier
+    var focus = readFocus(pid)
+    func finish() {
+      lastTarget += 1
+      targets[lastTarget] = PasteTarget(
+        pid: pid, window: focus.window, element: focus.element,
+        range: focus.element.flatMap { Self.attribute($0, kAXSelectedTextRangeAttribute) },
+        field: focus.state)
+      // Цели отменённых записей никто не заберёт — держим только свежие.
+      targets = targets.filter { $0.key > lastTarget - 16 }
+      reply(probe ? ["id": lastTarget, "field": focus.state.rawValue] : lastTarget)
+    }
+    guard probe, focus.state == .unknown else { return finish() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+      guard let self else { return reply(nil) }
+      let again = self.readFocus(pid)
+      if again.element != nil || focus.element == nil { focus = again }
+      finish()
+    }
   }
 
   /// Вывести приложение цели вперёд, поднять окно, вернуть фокус в поле
@@ -1322,17 +1467,20 @@ final class DictationBridge: NSObject {
   /// - вторая диктовка до возврата не сохраняет «прежним» наш же текст,
   ///   а оставляет то, что было до первой.
   ///
-  /// Возвращает, дошло ли дело до нажатия ⌘V. False значит, что текст
+  /// Возвращает, дошло ли дело до нажатия ⌘V. Иное значит, что текст
   /// в чужое окно не попал, и вызывающая сторона обязана этим заняться:
   /// показать неудачу и оставить текст хотя бы в буфере обмена.
   @discardableResult
-  private func paste(_ text: String) -> Bool {
-    guard !hud.isEditing else { return false }
-    guard !text.isEmpty else { return false }
+  private func paste(_ text: String, expecting target: PasteTarget? = nil) -> PasteResult {
+    guard !hud.isEditing else { return .failed }
+    guard !text.isEmpty else { return .failed }
     // Без «Универсального доступа» событие клавиши не доходит никуда.
     // Проверяем до того, как трогать буфер: иначе мы бы затёрли чужую
     // копию ради нажатия, которое всё равно не состоится.
-    guard AXIsProcessTrusted() else { return false }
+    guard AXIsProcessTrusted() else { return .failed }
+    // Фокус вернули вслепую, не проверив, — и ⌘V мог уйти не в то поле.
+    // Не слать: буфер тоже не трогаем, Dart сам положит текст последним.
+    if let target, !focusIsRight(target) { return .focus }
     let pb = NSPasteboard.general
     let stillOurs = pendingRestoreChange != nil && pb.changeCount == pendingRestoreChange
     if !stillOurs { savedPasteboard = snapshot(pb) }
@@ -1350,7 +1498,7 @@ final class DictationBridge: NSObject {
       // Нажатие не состоялось: текст остаётся в буфере — вызывающая
       // сторона на это и рассчитывает, — а возвращать уже нечего.
       savedPasteboard = []
-      return false
+      return .failed
     }
 
     pasted = FrontWindow.current()
@@ -1358,7 +1506,7 @@ final class DictationBridge: NSObject {
     let work = DispatchWorkItem { [weak self] in self?.restorePasteboard() }
     pendingRestore = work
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay, execute: work)
-    return true
+    return .pasted
   }
 
   /// Что было впереди сразу после ⌘V: Enter уйдёт только туда же.

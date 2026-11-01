@@ -970,6 +970,7 @@ class DictationSettings {
     this.insert = true,
     this.keepClipboard = false,
     this.returnToTarget = true,
+    this.warnNoField = true,
     bool hud = true,
     IndicatorMode? indicatorMode,
     this.punctuate = true,
@@ -1020,6 +1021,10 @@ class DictationSettings {
   /// то окно вперёд, даже если человек успел уйти в другое.
   bool returnToTarget;
 
+  /// Предупреждать на плашке, если при остановке записи курсор не в поле.
+  /// Имеет смысл только при [insert] и [returnToTarget].
+  bool warnNoField;
+
   /// Плавающая панель записи поверх всех окон.
   IndicatorMode indicatorMode;
   bool get hud => indicatorMode != IndicatorMode.off;
@@ -1069,6 +1074,7 @@ class DictationSettings {
         insert: (j['insert'] as bool?) ?? true,
         keepClipboard: (j['keepClipboard'] as bool?) ?? false,
         returnToTarget: (j['returnToTarget'] as bool?) ?? true,
+        warnNoField: (j['warnNoField'] as bool?) ?? true,
         indicatorMode: IndicatorMode.fromValue(j['indicatorMode'], legacyHud: (j['hud'] as bool?) ?? true),
         punctuate: (j['punctuate'] as bool?) ?? true,
         threads: (j['threads'] as int?) ?? 4,
@@ -1106,6 +1112,7 @@ class DictationSettings {
         'insert': insert,
         'keepClipboard': keepClipboard,
         'returnToTarget': returnToTarget,
+        'warnNoField': warnNoField,
         'hud': hud,
         'indicatorMode': indicatorMode.name,
         'punctuate': punctuate,

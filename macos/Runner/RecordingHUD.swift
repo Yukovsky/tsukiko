@@ -13,6 +13,8 @@ final class HUDModel: ObservableObject {
   @Published var processing = false
   /// После вставки будет нажат Enter — на плашке горит «⏎».
   @Published var enter = false
+  /// Курсор был не в поле: пока идёт расшифровка, просим его туда поставить.
+  @Published var fieldHint = false
   @Published var editing = false
   @Published var scale: Double = 1
   @Published var mode: IndicatorStyle = .panel
@@ -133,7 +135,13 @@ struct HUDView: View {
             HUDButton(title: "Остановить", filled: true) { action(model.onStop) }
           } else if displayState == .transcribing {
             ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 20)
-            Text("Распознаю…").font(.system(size: 13, weight: .medium))
+            if model.fieldHint {
+              let hint = model.label("fieldHint", "Поставьте курсор в поле — текст вставится сюда сам")
+              Text(hint).font(.system(size: 12, weight: .medium)).foregroundColor(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.75).help(hint)
+            } else {
+              Text("Распознаю…").font(.system(size: 13, weight: .medium))
+            }
             if model.enter { enterMark }
             if count > 0 { queue }
             Spacer(minLength: 0)
@@ -442,9 +450,9 @@ final class RecordingHUD {
       }
     } else { editor.setFrameOrigin(target.origin) }
   }
-  func updateQueue(pending: Int, processing: Bool, enter: Bool = false, labels: [String: String] = [:]) {
+  func updateQueue(pending: Int, processing: Bool, enter: Bool = false, fieldHint: Bool = false, labels: [String: String] = [:]) {
     let before = size, origin = restingOrigin
-    model.labels.merge(labels) { _, new in new }; model.pending = max(0, pending); model.processing = processing; model.enter = enter
+    model.labels.merge(labels) { _, new in new }; model.pending = max(0, pending); model.processing = processing; model.enter = enter; model.fieldHint = fieldHint
     preserveCenter(from: before, origin: origin)
     if size != before && panel != nil { resize() }
   }

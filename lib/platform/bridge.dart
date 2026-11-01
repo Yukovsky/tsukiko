@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../core/app_locale.dart';
 import '../core/app_theme.dart';
 import '../core/whisper_server.dart';
+import 'paste_check.dart';
 
 /// Мост к родному коду приложения: перехват клавиш, запись с микрофона,
 /// вставка текста, окна и панель у строки меню.
@@ -249,6 +250,7 @@ class NativeBridge {
     bool processing = false,
     IndicatorMode mode = IndicatorMode.panel,
     bool enter = false,
+    bool fieldHint = false,
   }) {
     final l10n = currentL10n();
     return _channel.invokeMethod('hud', {
@@ -257,7 +259,9 @@ class NativeBridge {
       'pending': pending,
       'processing': processing,
       'enter': enter,
+      'fieldHint': fieldHint,
       'labels': {
+        'fieldHint': l10n.hudFieldHint,
         'queueTitle': l10n.hudQueueCount(
           hudBacklogCount(state, pending, processing),
         ),
@@ -407,28 +411,37 @@ class NativeBridge {
   }
 
   /// Запомнить, где сейчас курсор, чтобы потом вставить именно туда.
-  Future<int?> markTarget() async {
+  /// [probe] — заодно определить, стоит ли курсор в поле (с повтором через
+  /// 150 мс, если дерево доступности ещё не построилось).
+  Future<MarkedTarget?> markTarget({bool probe = false}) async {
     try {
-      return await _channel.invokeMethod<int>('markTarget');
+      return MarkedTarget.parse(
+        await _channel.invokeMethod<Object>('markTarget', {'probe': probe}),
+      );
     } on MissingPluginException {
       return null;
     }
   }
 
-  Future<bool> insert(String text, {int? target}) async {
+  Future<bool> insert(String text, {int? target}) async =>
+      await insertChecked(text, target: target) == PasteOutcome.pasted;
+
+  /// Как [insert], но различает «вставить нечем» и «курсор был не в поле».
+  Future<PasteOutcome> insertChecked(String text, {int? target}) async {
     final previous = _pasteReady;
     final ready = Completer<void>();
     _pasteReady = ready.future;
     if (previous != null) await previous;
     var sent = false;
     try {
-      sent =
-          await _channel.invokeMethod<bool>('paste', {
-            'text': text,
-            'target': ?target,
-          }) ??
-          false;
-      return sent;
+      final outcome = PasteOutcome.parse(
+        await _channel.invokeMethod<Object>('paste', {
+          'text': text,
+          'target': ?target,
+        }),
+      );
+      sent = outcome == PasteOutcome.pasted;
+      return outcome;
     } finally {
       if (sent) {
         unawaited(

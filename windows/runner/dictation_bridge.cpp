@@ -2103,6 +2103,13 @@ void DictationBridge::FinishPendingPaste() {
   KillTimer(main_window_, ID_PASTE_TIMER);
   auto paste = std::move(*pending_paste_);
   pending_paste_.reset();
+  // Окно цели так и не вышло вперёд: Ctrl+V ушёл бы в чужое окно. Не шлём,
+  // Dart положит текст в буфер и скажет об этом. Поле на Windows не
+  // определяем — состояние всегда unknown, блокирует только окно.
+  if (paste.top && GetForegroundWindow() != paste.top) {
+    paste.result->Success(flutter::EncodableValue(std::string("focus")));
+    return;
+  }
   paste.result->Success(flutter::EncodableValue(PasteText(paste.text)));
 }
 
