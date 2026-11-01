@@ -26,7 +26,8 @@ import '../../core/labels.dart';
 import '../../core/wakeword/wakeword_service.dart';
 import '../../core/wakeword/speaker_profile.dart';
 import '../../core/wakeword/speech_verifier.dart';
-import '../../core/wakeword/keyword_tokenizer.dart' show stripTrailingCloseWord;
+import '../../core/wakeword/keyword_tokenizer.dart'
+    show effectiveEnterWord, stripTrailingCloseWord, takeTrailingEnterWord;
 import '../../core/diarization/own_voice.dart';
 import '../../core/diarization/own_voice_models.dart';
 
@@ -758,6 +759,11 @@ class DictationCubit extends Cubit<DictationState> {
           ownVoiceOnly: _settings.ownVoiceOnly,
           ownVoiceThreshold: _settings.ownVoiceThreshold,
           target: marked?.id,
+          enterWord: effectiveEnterWord(
+            _settings.enterWord,
+            _settings.wakeWord,
+            _settings.closeWord,
+          ),
           fieldHint: showFieldHint(
             marked?.field ?? FieldState.unknown,
             warn: _settings.warnNoField,
@@ -891,6 +897,18 @@ class DictationCubit extends Cubit<DictationState> {
           var text = recognized;
           if (job.closeWord.trim().isNotEmpty) {
             text = stripTrailingCloseWord(text, job.closeWord);
+          }
+          // Слово «с Enter» — то же, что «Отправить», но голосом. Пометка
+          // ставится по тем же правилам: только со вставкой и только если
+          // за этим заданием в очереди нет более нового, иначе Enter упал бы
+          // в середину чужой серии вставок.
+          final (rest, enterSpoken) = takeTrailingEnterWord(text, job.enterWord);
+          if (enterSpoken) {
+            text = rest;
+            if (job.insert && !job.aborted && _pending.every((j) => !j.markable)) {
+              job.enter = true;
+              unawaited(_showActivity());
+            }
           }
           if (job.commandsEnabled) {
             text = applyVocabularyReplacements(text, job.vocabulary).text;
@@ -1486,6 +1504,7 @@ class _DictationJob extends EnterMark {
     this.ownVoiceThreshold = ownVoiceDefaultThreshold,
     this.target,
     this.fieldHint = false,
+    this.enterWord = '',
   });
   final String path;
 
@@ -1499,6 +1518,9 @@ class _DictationJob extends EnterMark {
   final double ownVoiceThreshold;
   final RunOptions options;
   final String closeWord;
+
+  /// Допустимое слово «с Enter» (пусто — выключено).
+  final String enterWord;
   final bool insert, keepClipboard, commandsEnabled;
   final List<VocabularyItem> vocabulary;
   final done = Completer<void>();

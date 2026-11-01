@@ -16,6 +16,7 @@ import '../../core/models.dart';
 import '../../core/recognition.dart';
 import '../../core/skill_install.dart';
 import '../../core/transcript.dart';
+import '../../core/wakeword/keyword_tokenizer.dart' show effectiveEnterWord;
 import '../../core/whisper_server.dart' show Hotkey, PhraseCompletionMode;
 import '../../design/design.dart';
 import '../../l10n/gen/app_localizations.dart';
@@ -115,10 +116,12 @@ class _SettingsBodyState extends State<SettingsBody>
   final _promptCtrl = TextEditingController();
   final _wakeWordCtrl = TextEditingController();
   final _closeWordCtrl = TextEditingController();
+  final _enterWordCtrl = TextEditingController();
   final _modelsScroll = ScrollController();
   String _promptShown = '';
   String _wakeWordShown = '';
   String _closeWordShown = '';
+  String _enterWordShown = '';
 
   final _vocabSearchCtrl = TextEditingController();
   final _newPhraseCtrl = TextEditingController();
@@ -152,6 +155,7 @@ class _SettingsBodyState extends State<SettingsBody>
     _syncPromptField(_cubit.state.prompt);
     _syncWakeWordField(_cubit.state.wakeWord);
     _syncCloseWordField(_cubit.state.closeWord);
+    _syncEnterWordField(_cubit.state.enterWord);
     // Первый вопрос о разрешении задаём сразу: окно только что открыли.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncVisibility();
@@ -172,6 +176,7 @@ class _SettingsBodyState extends State<SettingsBody>
     _promptCtrl.dispose();
     _wakeWordCtrl.dispose();
     _closeWordCtrl.dispose();
+    _enterWordCtrl.dispose();
     _modelsScroll.dispose();
     _vocabSearchCtrl.dispose();
     _newPhraseCtrl.dispose();
@@ -278,6 +283,16 @@ class _SettingsBodyState extends State<SettingsBody>
     );
   }
 
+  void _syncEnterWordField(String text) {
+    if (text == _enterWordShown) return;
+    _enterWordShown = text;
+    if (_enterWordCtrl.text == text) return;
+    _enterWordCtrl.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
   void _syncCloseWordField(String text) {
     if (text == _closeWordShown) return;
     _closeWordShown = text;
@@ -345,11 +360,13 @@ class _SettingsBodyState extends State<SettingsBody>
             was.prompt != now.prompt ||
             was.wakeWord != now.wakeWord ||
             was.closeWord != now.closeWord ||
+            was.enterWord != now.enterWord ||
             (!was.downloading && now.downloading),
         listener: (context, s) {
           _syncPromptField(s.prompt);
           _syncWakeWordField(s.wakeWord);
           _syncCloseWordField(s.closeWord);
+          _syncEnterWordField(s.enterWord);
           if (s.downloading) _revealModelDownload();
         },
         builder: (context, s) => Container(
@@ -638,6 +655,19 @@ class _SettingsBodyState extends State<SettingsBody>
         ),
       ),
       Hint(l10n.hintCloseWord, under: true),
+      const SizedBox(height: Gap.item),
+      _Field(
+        l10n.fieldEnterWord,
+        AppTextField(
+          controller: _enterWordCtrl,
+          placeholder: l10n.placeholderEnterWord,
+          onChanged: _cubit.setEnterWord,
+        ),
+      ),
+      Hint(l10n.hintEnterWord, under: true),
+      if (s.enterWord.trim().isNotEmpty &&
+          effectiveEnterWord(s.enterWord, s.wakeWord, s.closeWord).isEmpty)
+        Hint(l10n.hintEnterWordConflict, under: true),
       const SizedBox(height: Gap.item),
       _Field(
         l10n.fieldCompletionMode,

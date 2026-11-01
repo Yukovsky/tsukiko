@@ -186,6 +186,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         wakeWordEnabled: _dictation.wakeWordEnabled,
         wakeWord: _dictation.wakeWord,
         closeWord: _dictation.closeWord,
+        enterWord: _dictation.enterWord,
         completionMode: _dictation.completionMode,
         voiceCalibrationEnabled: _dictation.voiceCalibrationEnabled,
         speakerThreshold: _dictation.speakerThreshold,
@@ -418,6 +419,8 @@ class SettingsCubit extends Cubit<SettingsState> {
       _saveDictation((d) => d.wakeWord = v.trim().isEmpty ? 'Джеф' : v);
 
   void setCloseWord(String v) => _saveDictation((d) => d.closeWord = v);
+
+  void setEnterWord(String v) => _saveDictation((d) => d.enterWord = v);
 
   void setCompletionMode(PhraseCompletionMode mode) =>
       _saveDictation((d) => d.completionMode = mode);

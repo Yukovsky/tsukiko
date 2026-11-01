@@ -75,6 +75,7 @@ class SettingsState extends Equatable {
     this.wakeWordEnabled = false,
     this.wakeWord = 'Джеф',
     this.closeWord = '',
+    this.enterWord = '',
     this.completionMode = PhraseCompletionMode.hybrid,
     this.voiceCalibrationEnabled = false,
     this.speakerProfileExists = false,
@@ -225,6 +226,7 @@ class SettingsState extends Equatable {
   final bool wakeWordEnabled;
   final String wakeWord;
   final String closeWord;
+  final String enterWord;
   final PhraseCompletionMode completionMode;
   final bool voiceCalibrationEnabled;
   final bool speakerProfileExists;
@@ -332,6 +334,7 @@ class SettingsState extends Equatable {
     bool? wakeWordEnabled,
     String? wakeWord,
     String? closeWord,
+    String? enterWord,
     PhraseCompletionMode? completionMode,
     bool? voiceCalibrationEnabled,
     bool? speakerProfileExists,
@@ -409,6 +412,7 @@ class SettingsState extends Equatable {
     wakeWordEnabled: wakeWordEnabled ?? this.wakeWordEnabled,
     wakeWord: wakeWord ?? this.wakeWord,
     closeWord: closeWord ?? this.closeWord,
+    enterWord: enterWord ?? this.enterWord,
     completionMode: completionMode ?? this.completionMode,
     voiceCalibrationEnabled:
         voiceCalibrationEnabled ?? this.voiceCalibrationEnabled,
@@ -481,6 +485,7 @@ class SettingsState extends Equatable {
     wakeWordEnabled,
     wakeWord,
     closeWord,
+    enterWord,
     completionMode,
     voiceCalibrationEnabled,
     speakerProfileExists,

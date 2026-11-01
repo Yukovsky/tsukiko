@@ -978,6 +978,7 @@ class DictationSettings {
     this.wakeWordEnabled = false,
     this.wakeWord = 'Джеф',
     this.closeWord = '',
+    this.enterWord = '',
     this.completionMode = PhraseCompletionMode.hybrid,
     this.voiceCalibrationEnabled = false,
     this.speakerProfilePath = '',
@@ -1040,6 +1041,10 @@ class DictationSettings {
   bool wakeWordEnabled;
   String wakeWord;
   String closeWord;
+
+  /// Второе завершающее слово: кончает запись и шлёт Enter после вставки.
+  /// Пусто — выключено.
+  String enterWord;
   PhraseCompletionMode completionMode;
   bool voiceCalibrationEnabled;
   String speakerProfilePath;
@@ -1081,6 +1086,7 @@ class DictationSettings {
         wakeWordEnabled: (j['wakeWordEnabled'] as bool?) ?? false,
         wakeWord: (j['wakeWord'] as String?) ?? 'Джеф',
         closeWord: (j['closeWord'] as String?) ?? '',
+        enterWord: (j['enterWord'] as String?) ?? '',
         completionMode: PhraseCompletionMode.fromString(j['completionMode'] as String?),
         voiceCalibrationEnabled: (j['voiceCalibrationEnabled'] as bool?) ?? false,
         speakerProfilePath: (j['speakerProfilePath'] as String?) ?? '',
@@ -1120,6 +1126,7 @@ class DictationSettings {
         'wakeWordEnabled': wakeWordEnabled,
         'wakeWord': wakeWord,
         'closeWord': closeWord,
+        'enterWord': enterWord,
         'completionMode': completionMode.name,
         'voiceCalibrationEnabled': voiceCalibrationEnabled,
         'speakerProfilePath': speakerProfilePath,

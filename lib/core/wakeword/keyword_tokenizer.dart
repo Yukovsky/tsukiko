@@ -254,7 +254,8 @@ String stripTrailingCloseWord(String text, String closeWord) {
 
     if (matchStartIdx != null) {
       final isAtStart = matchStartIdx == 0;
-      final hasWordBoundary = isAtStart ||
+      final hasWordBoundary =
+          isAtStart ||
           boundarySeparators.hasMatch(core.substring(0, matchStartIdx));
 
       if (hasWordBoundary) {
@@ -272,4 +273,26 @@ String stripTrailingCloseWord(String text, String closeWord) {
   }
 
   return current;
+}
+
+/// Слово «с Enter» из настроек, если оно допустимо: пустое, совпадающее
+/// с закрывающим словом или словом активации не работает — иначе одно
+/// слово означало бы два разных действия.
+String effectiveEnterWord(String enterWord, String wakeWord, String closeWord) {
+  final enter = KeywordTokenizer.normalizeKeywordText(enterWord);
+  if (enter.isEmpty ||
+      enter == KeywordTokenizer.normalizeKeywordText(wakeWord) ||
+      enter == KeywordTokenizer.normalizeKeywordText(closeWord)) {
+    return '';
+  }
+  return enterWord;
+}
+
+/// Вырезать слово «с Enter» из конца текста. Слово считается только как
+/// последнее в фразе (как закрывающее): в середине предложения оно остаётся
+/// обычным словом. Возвращает текст без слова и признак, что оно было.
+(String, bool) takeTrailingEnterWord(String text, String enterWord) {
+  if (enterWord.trim().isEmpty) return (text, false);
+  final rest = stripTrailingCloseWord(text, enterWord);
+  return (rest, rest != text);
 }
