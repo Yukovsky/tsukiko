@@ -85,6 +85,10 @@ jobs:
         )
       )
     runs-on: macos-14
+    # Секреты подписи лежат в окружении release, а оно открыто только
+    # ветке main и тегам v*: ни одна другая ветка и ни один pull request
+    # до сертификата не доберётся.
+    environment: release
     permissions:
       contents: write
 
@@ -158,7 +162,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -s "$keychain"
-          security find-identity -v -p codesigning "$keychain" | grep -q 'Apple Development'
+          security find-identity -v -p codesigning "$keychain" | grep -Eq 'Apple Development|Developer ID Application'
           rm -f "$certificate"
           echo "TSUKIKO_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           if [ -n "${{ secrets.MACOS_TEAM_ID }}" ]; then
@@ -175,6 +179,44 @@ jobs:
           set -o pipefail
           ./tool/dmg.sh 2>&1 | tee logs/dmg.txt
           build/dmg-tools-venv/bin/python3 tool/verify-dmg.py build/tsukiko.dmg
+
+      - name: Нотаризация и степлинг
+        env:
+          NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          if [ -z "$NOTARY_KEY" ] || [ -z "$NOTARY_KEY_ID" ] || [ -z "$NOTARY_ISSUER" ]; then
+            echo "Нет ключа App Store Connect: нотаризация пропущена."
+            exit 0
+          fi
+          if ! codesign -dvv build/macos/Build/Products/Release/tsukiko.app 2>&1 |
+            grep -q 'Authority=Developer ID Application'; then
+            echo "Подпись не Developer ID Application: нотаризация пропущена."
+            exit 0
+          fi
+          key="$RUNNER_TEMP/notary-key.p8"
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$NOTARY_KEY" | base64 -D > "$key"
+          xcrun notarytool submit build/tsukiko.dmg \
+            --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" \
+            --wait --output-format json | tee logs/notary.json
+          python3 - <<'PY'
+          import json, sys
+          result = json.load(open("logs/notary.json"))
+          if result.get("status") != "Accepted":
+              sys.exit("Нотаризация не принята: %s" % result.get("status"))
+          PY
+          xcrun stapler staple build/tsukiko.dmg
+          xcrun stapler validate build/tsukiko.dmg
+
+      - name: Удалить связку ключей с сертификатом
+        if: always()
+        run: |
+          if [ -n "$TSUKIKO_SIGNING_KEYCHAIN" ]; then
+            security delete-keychain "$TSUKIKO_SIGNING_KEYCHAIN" || true
+          fi
 
       - name: Приложение в артефакты
         if: always() && steps.sign.outcome == 'success'

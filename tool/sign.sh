@@ -19,12 +19,22 @@ APP=build/macos/Build/Products/Release/tsukiko.app
 # Строка «0 valid identities found» — итог, а не сертификат. Прежний awk
 # принимал слово `valid` за его идентификатор, и codesign закономерно падал.
 if [ -n "$TSUKIKO_SIGNING_KEYCHAIN" ]; then
-  ID=$(security find-identity -v -p codesigning "$TSUKIKO_SIGNING_KEYCHAIN" |
-    awk '/^[[:space:]]*[0-9]+\)/ {print $2; exit}')
+  IDENTITIES=$(security find-identity -v -p codesigning "$TSUKIKO_SIGNING_KEYCHAIN")
 else
-  ID=$(security find-identity -v -p codesigning |
-    awk '/^[[:space:]]*[0-9]+\)/ {print $2; exit}')
+  IDENTITIES=$(security find-identity -v -p codesigning)
 fi
+# «Developer ID Application» — сертификат для раздачи вне App Store, под
+# нотаризацию годится только он; при его наличии берём его, а не
+# «Apple Development».
+LINE=$(printf '%s\n' "$IDENTITIES" | grep -E '^[[:space:]]*[0-9]+\)' |
+  grep 'Developer ID Application' | head -1)
+[ -n "$LINE" ] ||
+  LINE=$(printf '%s\n' "$IDENTITIES" | grep -E '^[[:space:]]*[0-9]+\)' | head -1)
+ID=$(printf '%s\n' "$LINE" | awk '{print $2}')
+# Hardened runtime обязателен для нотаризации и не нужен для разработческой
+# подписи, где только мешал бы отладке.
+RUNTIME=
+case "$LINE" in *'Developer ID Application'*) RUNTIME="--options=runtime" ;; esac
 if [ -z "$ID" ]; then
   if [ -n "$TSUKIKO_ADHOC_SIGN" ] && [ -z "$CI" ]; then
     echo "Локальная тестовая сборка: ad-hoc подпись (-)."
@@ -161,10 +171,10 @@ fi
 
 # Вложенное подписывается первым: подпись бандла запечатывает то, что внутри.
 find "$APP/Contents/Frameworks" -depth 1 -print0 |
-  xargs -0 -I{} codesign --force --sign "$ID" "$STAMP" {}
+  xargs -0 -I{} codesign --force --sign "$ID" "$STAMP" $RUNTIME {}
 find "$APP/Contents/Helpers" -type f \( -perm -111 -o -name '*.dylib' \) -print0 |
-  xargs -0 -I{} codesign --force --sign "$ID" "$STAMP" {}
-codesign --force --sign "$ID" "$STAMP" \
+  xargs -0 -I{} codesign --force --sign "$ID" "$STAMP" $RUNTIME {}
+codesign --force --sign "$ID" "$STAMP" $RUNTIME \
   --entitlements macos/Runner/Release.entitlements "$APP"
 codesign --verify --deep --strict "$APP"
 SIGN_DETAILS=$(codesign -dv "$APP" 2>&1)

@@ -43,10 +43,25 @@ mkdir -p "$(dirname "$OUT")"
 TSUKIKO_DMG_APP="$APP" "$PYTHON" -m dmgbuild --no-hidpi \
   -s tool/dmg-settings.py "$VOLUME" "$OUT"
 
-DMG_ID=$(security find-identity -v -p codesigning |
-  awk '/^[[:space:]]*[0-9]+\)/ {print $2; exit}')
-if [ -n "$DMG_ID" ]; then
-  codesign --force --sign "$DMG_ID" --timestamp=none "$OUT" 2>/dev/null || true
+# Образ подписывается тем же сертификатом, что и приложение: для нотаризации
+# нужен «Developer ID Application» и метка времени Apple. Для разработческой
+# подписи оставляем прежнее поведение — без метки и без требования успеха.
+if [ -n "$TSUKIKO_SIGNING_KEYCHAIN" ]; then
+  DMG_IDENTITIES=$(security find-identity -v -p codesigning "$TSUKIKO_SIGNING_KEYCHAIN")
+else
+  DMG_IDENTITIES=$(security find-identity -v -p codesigning)
+fi
+DMG_LINE=$(printf '%s\n' "$DMG_IDENTITIES" | grep -E '^[[:space:]]*[0-9]+\)' |
+  grep 'Developer ID Application' | head -1)
+if [ -n "$DMG_LINE" ]; then
+  DMG_ID=$(printf '%s\n' "$DMG_LINE" | awk '{print $2}')
+  codesign --force --sign "$DMG_ID" --timestamp "$OUT"
+else
+  DMG_ID=$(printf '%s\n' "$DMG_IDENTITIES" | grep -E '^[[:space:]]*[0-9]+\)' |
+    awk 'NR==1 {print $2}')
+  if [ -n "$DMG_ID" ]; then
+    codesign --force --sign "$DMG_ID" --timestamp=none "$OUT" 2>/dev/null || true
+  fi
 fi
 
 echo "готово: $OUT ($(du -h "$OUT" | cut -f1))"
