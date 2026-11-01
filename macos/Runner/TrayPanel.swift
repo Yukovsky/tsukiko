@@ -27,6 +27,7 @@ final class PanelController: NSObject, NSWindowDelegate {
   private var localClickMonitor: Any?
   private var outsideClickMonitor: Any?
   private var activationObserver: NSObjectProtocol?
+  private var spaceObserver: NSObjectProtocol?
 
   // Ширина поповера постоянна, высота — нет: её сообщает Flutter, померив
   // содержимое. Здесь только первое значение, до первого замера.
@@ -270,6 +271,10 @@ final class PanelController: NSObject, NSWindowDelegate {
       }
     }
 
+    // Если поповер открыли поверх другого окна (в том числе в полноэкранном
+    // режиме), повторная активация этого приложения не должна закрывать панель.
+    // Закрываем только при переключении на третье приложение или смене пространства.
+    let hostApp = NSWorkspace.shared.frontmostApplication
     activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification,
       object: nil,
@@ -277,9 +282,18 @@ final class PanelController: NSObject, NSWindowDelegate {
     ) { [weak self] notification in
       guard let self,
         let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-        app.bundleIdentifier != Bundle.main.bundleIdentifier
+        app.bundleIdentifier != Bundle.main.bundleIdentifier,
+        app.processIdentifier != hostApp?.processIdentifier
       else { return }
       self.hide()
+    }
+
+    spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.activeSpaceDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.hide()
     }
   }
 
@@ -293,8 +307,12 @@ final class PanelController: NSObject, NSWindowDelegate {
       outsideClickMonitor = nil
     }
     if let observer = activationObserver {
-      NotificationCenter.default.removeObserver(observer)
+      NSWorkspace.shared.notificationCenter.removeObserver(observer)
       activationObserver = nil
+    }
+    if let observer = spaceObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(observer)
+      spaceObserver = nil
     }
   }
 

@@ -125,8 +125,9 @@ void main() {
   test('сбой разметки не теряет готовую расшифровку', () async {
     final b = await opened();
     // Звука в «встреча.m4a» нет — подготовка звука падает.
+    final done = b.stream.firstWhere((s) => !s.running);
     b.add(DiarizationRequested(lead(b)));
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await done;
     await pumpEventQueue();
     final job = lead(b);
     expect(job.state, JobState.done);
