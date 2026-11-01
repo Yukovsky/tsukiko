@@ -965,6 +965,7 @@ class DictationSettings {
     Hotkey? hold,
     Hotkey? toggle,
     Hotkey? cancel,
+    Hotkey? send,
     this.idleSeconds = 180,
     this.insert = true,
     this.keepClipboard = false,
@@ -985,7 +986,8 @@ class DictationSettings {
   })  : indicatorMode = indicatorMode ?? (hud ? IndicatorMode.panel : IndicatorMode.off),
         hold = hold ?? Hotkey.holdDefault,
         toggle = toggle ?? Hotkey.toggleDefault,
-        cancel = cancel ?? Hotkey.none;
+        cancel = cancel ?? Hotkey.none,
+        send = send ?? Hotkey.none;
 
   bool enabled;
 
@@ -999,6 +1001,11 @@ class DictationSettings {
   /// Бросить начатое, не вставив ни буквы: запись выбрасывается, идущий
   /// счёт прерывается. По умолчанию не назначено — см. [Hotkey.none].
   Hotkey cancel;
+
+  /// «Отправить (Enter)»: после вставки нажать Enter. Одна клавиша на три
+  /// состояния — идёт запись, ждёт очередь или покой. По умолчанию не
+  /// назначено — см. [Hotkey.none].
+  Hotkey send;
   int idleSeconds;
 
   /// Вставлять готовый текст в активное окно. Выключено — текст только
@@ -1057,6 +1064,7 @@ class DictationSettings {
         hold: Hotkey.fromJson(j['hold'], Hotkey.holdDefault),
         toggle: Hotkey.fromJson(j['toggle'], Hotkey.toggleDefault),
         cancel: Hotkey.fromJson(j['cancel'], Hotkey.none),
+        send: Hotkey.fromJson(j['send'], Hotkey.none),
         idleSeconds: (j['idleSeconds'] as int?) ?? 180,
         insert: (j['insert'] as bool?) ?? true,
         keepClipboard: (j['keepClipboard'] as bool?) ?? false,
@@ -1093,6 +1101,7 @@ class DictationSettings {
         'hold': hold.toJson(),
         'toggle': toggle.toJson(),
         'cancel': cancel.toJson(),
+        'send': send.toJson(),
         'idleSeconds': idleSeconds,
         'insert': insert,
         'keepClipboard': keepClipboard,

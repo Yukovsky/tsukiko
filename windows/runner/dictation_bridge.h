@@ -137,6 +137,9 @@ class DictationBridge {
 
   // Вставка текста и буфер обмена
   bool PasteText(const std::string& text);
+  /// Enter в то окно, куда только что вставили. False — окно уже другое
+  /// или нажатие не дошло.
+  bool PressReturn();
 
   /// Куда вставлять: окно и его внутреннее окно с фокусом в момент, когда
   /// запись остановили. Chromium, Electron и Teams принимают клавиши не
@@ -316,6 +319,10 @@ class DictationBridge {
   /// «Бросить начатое». Может остаться пустым: это единственное сочетание,
   /// которое разрешено не назначать вовсе.
   HotkeySpec cancel_spec_;
+  /// «Отправить (Enter)». Тоже может быть пустым.
+  HotkeySpec send_spec_;
+  /// Окно впереди сразу после Ctrl+V: Enter уйдёт только в него.
+  HWND pasted_window_ = nullptr;
   bool is_capturing_ = false;
   std::set<std::string> captured_mods_;
   std::set<int> captured_keys_;
@@ -333,6 +340,7 @@ class DictationBridge {
   TapState hold_state_;
   TapState toggle_state_;
   TapState cancel_state_;
+  TapState send_state_;
 
   // Аудио запись
   void* ma_device_ = nullptr;

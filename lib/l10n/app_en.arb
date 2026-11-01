@@ -14,6 +14,9 @@
   "tooltipClearHotkey": "Unassign",
   "hotkeyCancel": "Discard",
   "hintHotkeyCancel": "Discard stops recording without inserting text. The cross unassigns the shortcut.",
+  "hotkeySend": "Send (Enter)",
+  "hintHotkeySend": "Send presses Enter after the paste: while recording or while the text waits in the queue it sets or clears the mark, when idle it starts a recording with the mark. Enter is sent only in the paste modes and only to the window that got the text; in a terminal it will run the command.",
+  "hintHotkeySendClipboard": "In clipboard-only mode nothing is pasted, so Enter is never pressed. Pick a paste mode to make this shortcut work.",
   "hintHotkeyCapture": "Click a row and press a shortcut. Left and right modifiers are distinct; single keys and double presses are supported.",
   "singleHotkeyTitle": "Assign “{combo}” as a single key?",
   "@singleHotkeyTitle": {

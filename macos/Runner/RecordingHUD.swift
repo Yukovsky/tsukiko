@@ -11,6 +11,8 @@ final class HUDModel: ObservableObject {
   @Published var state: HUDState = .hidden
   @Published var pending = 0
   @Published var processing = false
+  /// После вставки будет нажат Enter — на плашке горит «⏎».
+  @Published var enter = false
   @Published var editing = false
   @Published var scale: Double = 1
   @Published var mode: IndicatorStyle = .panel
@@ -53,6 +55,12 @@ struct HUDView: View {
     preview ? (0..<22).map { Double(($0 * 7) % 13 + 2) / 16 } : model.levels
   }
   private func action(_ callback: () -> Void) { if !model.editing { callback() } }
+  /// «⏎»: после вставки уйдёт Enter.
+  private var enterMark: some View {
+    Image(systemName: "return").font(.system(size: 10, weight: .bold)).foregroundColor(.accentColor)
+      .help("После вставки будет нажат Enter").accessibilityLabel("После вставки будет нажат Enter")
+  }
+
   private var queue: some View {
     Menu {
       Text(model.label("queueTitle", "В очереди: \(model.pending)"))
@@ -81,9 +89,11 @@ struct HUDView: View {
               Image(systemName: model.warming ? "mic" : "mic.fill")
                 .foregroundColor(model.warming ? .secondary : .red).frame(width: 18)
                 .accessibilityLabel(model.warming ? "Включаю микрофон" : "Идёт запись")
+                .overlay(alignment: .bottomTrailing) { if model.enter { enterMark.offset(x: 2, y: 2) } }
             } else {
               ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 18)
                 .accessibilityLabel("Распознаю")
+                .overlay(alignment: .bottomTrailing) { if model.enter { enterMark.offset(x: 2, y: 2) } }
             }
             Spacer(minLength: 0)
             if recording {
@@ -116,6 +126,7 @@ struct HUDView: View {
           } else if displayState == .recording {
             Meter(levels: levels, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             Text(time).font(.system(size: 13, weight: .medium).monospacedDigit()).fixedSize()
+            if model.enter { enterMark }
             if count > 0 { queue }
             Spacer(minLength: 0)
             HUDButton(title: "Отменить", filled: false) { action(model.onCancel) }
@@ -123,6 +134,7 @@ struct HUDView: View {
           } else if displayState == .transcribing {
             ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 20)
             Text("Распознаю…").font(.system(size: 13, weight: .medium))
+            if model.enter { enterMark }
             if count > 0 { queue }
             Spacer(minLength: 0)
             Button { action(model.onAbort) } label: {
@@ -430,9 +442,9 @@ final class RecordingHUD {
       }
     } else { editor.setFrameOrigin(target.origin) }
   }
-  func updateQueue(pending: Int, processing: Bool, labels: [String: String] = [:]) {
+  func updateQueue(pending: Int, processing: Bool, enter: Bool = false, labels: [String: String] = [:]) {
     let before = size, origin = restingOrigin
-    model.labels.merge(labels) { _, new in new }; model.pending = max(0, pending); model.processing = processing
+    model.labels.merge(labels) { _, new in new }; model.pending = max(0, pending); model.processing = processing; model.enter = enter
     preserveCenter(from: before, origin: origin)
     if size != before && panel != nil { resize() }
   }

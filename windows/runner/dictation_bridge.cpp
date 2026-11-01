@@ -511,11 +511,18 @@ void DictationBridge::RegisterHandler(
             cancel_spec_ = parseSpec(*cMap);
           }
         }
+        auto sendIt = args->find(flutter::EncodableValue("send"));
+        if (sendIt != args->end()) {
+          if (const auto* sMap = std::get_if<flutter::EncodableMap>(&sendIt->second)) {
+            send_spec_ = parseSpec(*sMap);
+          }
+        }
         // Защёлки относятся к прежним сочетаниям: с новыми они соврут
         // о том, что клавиша уже нажата.
         hold_state_ = TapState();
         toggle_state_ = TapState();
         cancel_state_ = TapState();
+        send_state_ = TapState();
       }
       result->Success();
     } else if (method == "capture") {
@@ -625,6 +632,8 @@ void DictationBridge::RegisterHandler(
       result->Success(flutter::EncodableValue(GetAudioLevel()));
     } else if (method == "micLive") {
       result->Success(flutter::EncodableValue(mic_live_.load()));
+    } else if (method == "pressReturn") {
+      result->Success(flutter::EncodableValue(PressReturn()));
     } else if (method == "markTarget") {
       const int id = MarkPasteTarget();
       result->Success(id ? flutter::EncodableValue(id) : flutter::EncodableValue());
@@ -1525,6 +1534,17 @@ void DictationBridge::ProcessKeyEvent(const KeyEvent& event) {
       bridge.cancel_state_.SuppressUntilRelease();
     }
   }
+
+  // «Отправить» — тоже одно нажатие; лишнее сверху гасит его так же.
+  if (bridge.send_state_.Update(matchSpec(bridge.send_spec_),
+                                bridge.send_spec_.is_double(),
+                                containsSpec(bridge.send_spec_), now)) {
+    if (bridge.send_state_.active) {
+      bridge.SendHotkeyEvent("send", true);
+    } else if (exceedsSpec(bridge.send_spec_)) {
+      bridge.send_state_.SuppressUntilRelease();
+    }
+  }
 }
 
 void DictationBridge::SendHotkeyEvent(const std::string& id, bool down, bool cancel) {
@@ -1693,6 +1713,7 @@ void DictationBridge::ResetKeyState() {
   hold_state_ = TapState{};
   toggle_state_ = TapState{};
   cancel_state_ = TapState{};
+  send_state_ = TapState{};
 }
 
 void DictationBridge::SendSystemSleep() {
@@ -2156,7 +2177,38 @@ bool DictationBridge::PasteText(const std::string& text) {
   }
   clipboard_restore_pending_ = true;
   SetTimer(main_window_, ID_CLIPBOARD_TIMER, CLIPBOARD_RESTORE_MS, nullptr);
+  pasted_window_ = GetForegroundWindow();
   return true;
+}
+
+bool DictationBridge::PressReturn() {
+  if (hud_ && hud_->editing()) return false;
+  // За паузу после вставки человек мог уйти в другое окно — Enter тогда
+  // попал бы в чужое поле.
+  HWND top = GetForegroundWindow();
+  if (!top || top != pasted_window_) return false;
+
+  // Удерживаемые модификаторы отпускаем сами: иначе вместо Enter придёт
+  // Ctrl+Enter или Shift+Enter. Ctrl здесь тоже, в отличие от вставки.
+  std::vector<INPUT> inputs;
+  auto key = [&](WORD vk, bool up) {
+    INPUT in = {};
+    in.type = INPUT_KEYBOARD;
+    in.ki.wVk = vk;
+    in.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+    in.ki.dwExtraInfo = kOurInput;
+    inputs.push_back(in);
+  };
+  for (int vk : {VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN}) {
+    if (GetAsyncKeyState(vk) & 0x8000) key(static_cast<WORD>(vk), true);
+  }
+  key(VK_RETURN, false);
+  key(VK_RETURN, true);
+
+  const bool sent =
+      SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
+  if (sent) pasted_window_ = nullptr;
+  return sent;
 }
 
 void DictationBridge::RestoreClipboard() {

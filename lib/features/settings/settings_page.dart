@@ -462,6 +462,17 @@ class _SettingsBodyState extends State<SettingsBody>
       // выбиваться из столбика ради кнопки, которой не на что нажать.
       onClear: s.cancel.empty ? null : _cubit.clearCancelHotkey,
     ),
+    // Тоже необязательное. В режиме «В буфер» вставки нет, и Enter
+    // слать некуда — строка приглушена, назначить сочетание всё равно можно.
+    Opacity(
+      opacity: s.insert ? 1 : 0.5,
+      child: HotkeyRow(
+        label: l10n.hotkeySend,
+        keys: s.send.label,
+        onTap: () => _reassignHotkey('send'),
+        onClear: s.send.empty ? null : _cubit.clearSendHotkey,
+      ),
+    ),
     // Пара, где одно сочетание входит в другое, ведёт себя непонятно,
     // а не ломается: запись начинается по дороге ко второму. Молчать
     // об этом нельзя — человеку неоткуда догадаться.
@@ -473,6 +484,7 @@ class _SettingsBodyState extends State<SettingsBody>
         ),
       ),
     Hint(l10n.hintHotkeyCancel),
+    Hint(s.insert ? l10n.hintHotkeySend : l10n.hintHotkeySendClipboard),
     Hint(l10n.hintHotkeyCapture),
     SectionTitle(l10n.sectionDictationRecognition),
     Hint(l10n.hintDictationOwnSettings),

@@ -310,10 +310,14 @@ final class DictationBridge: NSObject {
   /// (см. `pressed`).
   private var cancelKey = HotkeySpec()
 
+  /// «Отправить (Enter)». Тоже может быть пустым.
+  private var sendKey = HotkeySpec()
+
   /// Состояние каждого сочетания: нажато ли оно и ждёт ли второго стука.
   private var holdState = TapState()
   private var toggleState = TapState()
   private var cancelState = TapState()
+  private var sendState = TapState()
 
   private var tap: CFMachPort?
   private var tapSource: CFRunLoopSource?
@@ -435,11 +439,13 @@ final class DictationBridge: NSObject {
       hold = HotkeySpec(args?["hold"] as? [String: Any])
       toggle = HotkeySpec(args?["toggle"] as? [String: Any])
       cancelKey = HotkeySpec(args?["cancel"] as? [String: Any])
+      sendKey = HotkeySpec(args?["send"] as? [String: Any])
       // Защёлки относятся к прежним сочетаниям: с новыми они соврут
       // о том, что клавиша уже нажата.
       holdState = TapState()
       toggleState = TapState()
       cancelState = TapState()
+      sendState = TapState()
       swallowed = []
       reply(nil)
     case "capture":
@@ -573,6 +579,8 @@ final class DictationBridge: NSObject {
         reply(paste(text)); return
       }
       returnTo(target) { [weak self] in reply(self?.paste(text) ?? false) }
+    case "pressReturn":
+      reply(pressReturn())
     case "markTarget":
       reply(markTarget())
     case "configureHud":
@@ -583,7 +591,7 @@ final class DictationBridge: NSObject {
       reply(nil)
     case "hud":
       hud.setMode((args?["mode"] as? String) ?? "panel")
-      hud.updateQueue(pending: (args?["pending"] as? Int) ?? 0, processing: (args?["processing"] as? Bool) ?? false, labels: (args?["labels"] as? [String: String]) ?? [:])
+      hud.updateQueue(pending: (args?["pending"] as? Int) ?? 0, processing: (args?["processing"] as? Bool) ?? false, enter: (args?["enter"] as? Bool) ?? false, labels: (args?["labels"] as? [String: String]) ?? [:])
       switch (args?["state"] as? String) ?? "" {
       case "recording": hud.show()
       case "transcribing": hud.transcribing()
@@ -670,6 +678,7 @@ final class DictationBridge: NSObject {
     holdState = TapState()
     toggleState = TapState()
     cancelState = TapState()
+    sendState = TapState()
     captureKeys.removeAll()
     captureMods.removeAll()
     captureStartedAt = nil
@@ -972,13 +981,25 @@ final class DictationBridge: NSObject {
       }
     }
 
+    // «Отправить» — тоже одно нажатие; лишний модификатор поверх гасит его
+    // так же, как «бросить».
+    if sendState.update(
+      raw: sendKey.pressed(mods, heldKeys), double: sendKey.isDouble,
+      baseHeld: sendKey.contained(in: mods, heldKeys))
+    {
+      if sendState.active { send("send", down: true) }
+      else if sendKey.exceeded(mods, heldKeys) {
+        sendState.suppressUntilRelease()
+      }
+    }
+
     // Свою клавишу поглощаем, чтобы буква не попала в чужое поле ввода.
     // Отпускание поглощаем по памяти: к этому моменту модификаторы могли
     // уже отпустить, и признак «наша» перестал бы совпадать.
     switch type {
     case .keyDown:
       if hold.claims(code, mods) || toggle.claims(code, mods)
-        || cancelKey.claims(code, mods)
+        || cancelKey.claims(code, mods) || sendKey.claims(code, mods)
       {
         swallowed.insert(code)
         return nil
@@ -1332,11 +1353,36 @@ final class DictationBridge: NSObject {
       return false
     }
 
+    pasted = FrontWindow.current()
     pendingRestoreChange = change
     let work = DispatchWorkItem { [weak self] in self?.restorePasteboard() }
     pendingRestore = work
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay, execute: work)
     return true
+  }
+
+  /// Что было впереди сразу после ⌘V: Enter уйдёт только туда же.
+  private var pasted: FrontWindow?
+
+  /// Приложение и окно впереди. Окно сравниваем, если оба удалось узнать:
+  /// не у каждого приложения оно отдаётся через «Универсальный доступ».
+  private struct FrontWindow {
+    let pid: pid_t
+    let window: AXUIElement?
+
+    static func current() -> FrontWindow? {
+      guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+      let root = AXUIElementCreateApplication(app.processIdentifier)
+      return FrontWindow(
+        pid: app.processIdentifier,
+        window: DictationBridge.attribute(root, kAXFocusedWindowAttribute).map { $0 as! AXUIElement })
+    }
+
+    func sameAs(_ other: FrontWindow) -> Bool {
+      guard pid == other.pid else { return false }
+      guard let a = window, let b = other.window else { return true }
+      return CFEqual(a, b)
+    }
   }
 
   /// Через сколько вернуть прежний буфер после ⌘V.
@@ -1412,6 +1458,33 @@ final class DictationBridge: NSObject {
     up.flags = .maskCommand
     down.post(tap: .cgAnnotatedSessionEventTap)
     up.post(tap: .cgAnnotatedSessionEventTap)
+    return true
+  }
+
+  /// Enter после вставки. Сверяем, что впереди всё то же приложение и окно,
+  /// что сразу после ⌘V: за паузу человек мог уйти, и тогда Enter попал бы
+  /// в чужое поле. Возвращает, нажат ли он.
+  private func pressReturn() -> Bool {
+    guard AXIsProcessTrusted(), !hud.isEditing, let was = pasted,
+      let now = FrontWindow.current(), was.sameAs(now)
+    else { return false }
+    let source = CGEventSource(stateID: .combinedSessionState)
+    source?.setLocalEventsFilterDuringSuppressionState(
+      [.permitLocalMouseEvents, .permitLocalKeyboardEvents],
+      state: .eventSuppressionStateSuppressionInterval)
+    guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true),
+      let up = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
+    else {
+      NSLog("tsukiko: не удалось создать событие Return")
+      return false
+    }
+    // Как и в ⌘V: удерживаемые модификаторы не наследуем, иначе вместо
+    // Enter получатель увидит ⌘Enter или ⇧Enter.
+    down.flags = []
+    up.flags = []
+    down.post(tap: .cgAnnotatedSessionEventTap)
+    up.post(tap: .cgAnnotatedSessionEventTap)
+    pasted = nil
     return true
   }
 

@@ -11,6 +11,7 @@ import '../../core/logger.dart';
 import '../../core/whisper_server.dart';
 import 'dictation_state.dart';
 import 'dictation_history.dart';
+import 'enter_mark.dart';
 import '../../core/library.dart';
 import '../../core/models.dart';
 import '../../core/recognition.dart';
@@ -270,7 +271,14 @@ class DictationCubit extends Cubit<DictationState> {
         pending: _pending.length,
         processing: _active != null,
         mode: _settings.indicatorMode,
+        enter: _enterShown,
       );
+
+  /// Значок «⏎» на плашке: пометка у идущей записи, а когда записи нет — у
+  /// последнего недоставленного задания.
+  bool get _enterShown => state.recording || _startingRecording != null
+      ? _recordEnter
+      : lastMarkable([?_active, ..._pending])?.enter ?? false;
 
   /// Идущий подбор сирот и идущий подъём сервера под нынешнюю запись.
   Future<void>? _sweeping;
@@ -293,6 +301,14 @@ class DictationCubit extends Cubit<DictationState> {
   /// нетрудно: fn+ctrl+opt разом не нажать, и отмена приходит через
   /// миллисекунды после начала.
   Future<void> Function()? _finishAfterStart;
+
+  /// Пометка «с Enter» у идущей записи. Задание получает её в [stop];
+  /// [cancel] её просто забывает.
+  bool _recordEnter = false;
+
+  /// Пауза между вставкой и Enter: приложение должно успеть принять текст.
+  /// Короче — Enter обгоняет вставку и уходит с пустым полем.
+  static const _enterPause = Duration(milliseconds: 250);
 
   // ── настройки распознавания ────────────────────────────────────────────────
 
@@ -400,6 +416,7 @@ class DictationCubit extends Cubit<DictationState> {
         hold: _settings.hold,
         toggle: _settings.toggle,
         cancel: _settings.cancel,
+        send: _settings.send,
       );
     }
     _emit(_withSnapshots(state));
@@ -440,7 +457,8 @@ class DictationCubit extends Cubit<DictationState> {
       rebind:
           !was.hold.sameAs(_settings.hold) ||
           !was.toggle.sameAs(_settings.toggle) ||
-          !was.cancel.sameAs(_settings.cancel),
+          !was.cancel.sameAs(_settings.cancel) ||
+          !was.send.sameAs(_settings.send),
     );
     if (was.indicatorMode != _settings.indicatorMode) await _showActivity();
   }
@@ -591,6 +609,10 @@ class DictationCubit extends Cubit<DictationState> {
     // длится минутами, и случайное нажатие «записать фразу» не должно
     // обрывать его посреди. Остановить — кнопкой в панели или отменой.
     if (state.conversation) return;
+    if (e.id == 'send') {
+      if (e.edge == HotkeyEdge.down) _onSend();
+      return;
+    }
     if (e.id == 'hold') {
       e.edge == HotkeyEdge.down ? start() : stop();
       return;
@@ -600,10 +622,32 @@ class DictationCubit extends Cubit<DictationState> {
     }
   }
 
-  Future<void> start({bool startedByVoice = false}) async {
+  /// «Отправить (Enter)» — одна клавиша, ведёт себя по состоянию: пишем —
+  /// переключает пометку у записи; ждёт очередь — у последнего недоставленного
+  /// задания; покой — начинает запись сразу с пометкой. Без вставки Enter
+  /// слать некуда, поэтому в режиме «В буфер» клавиша молчит.
+  void _onSend() {
+    if (!_settings.insert) return;
+    if (state.recording || _startingRecording != null) {
+      _recordEnter = !_recordEnter;
+      unawaited(_showActivity());
+      return;
+    }
+    if (_finishingRecording != null) return;
+    final job = lastMarkable([?_active, ..._pending]);
+    if (job != null) {
+      job.enter = !job.enter;
+      unawaited(_showActivity());
+    } else if (_active == null && _pending.isEmpty) {
+      start(enter: true);
+    }
+  }
+
+  Future<void> start({bool startedByVoice = false, bool enter = false}) async {
     if (_finishingRecording != null) await _finishingRecording;
     if (isClosed || state.recording || _startingRecording != null) return;
     _finishAfterStart = null;
+    _recordEnter = enter;
     _startingRecording = _beginRecording(startedByVoice: startedByVoice);
     try {
       await _startingRecording;
@@ -713,6 +757,10 @@ class DictationCubit extends Cubit<DictationState> {
           ownVoiceThreshold: _settings.ownVoiceThreshold,
           target: target,
         );
+        // Enter остаётся только у последнего задания — решаем здесь, в миг
+        // постановки в очередь, а не при начале записи.
+        clearEnterBefore([?_active, ..._pending]);
+        job.enter = _recordEnter && _settings.insert;
         _pending.add(job);
       }
       _emit(state.copyWith(phase: _restingPhase));
@@ -853,6 +901,15 @@ class DictationCubit extends Cubit<DictationState> {
               // Родная сторона вернёт прежний буфер через 1,5 с, но только
               // если его никто не менял: наша запись это и отменяет.
               if (ok && job.keepClipboard) await _copyResult(text);
+              // Enter идёт внутри доставки: следующее задание очереди ждёт
+              // нас, и ни с его вставкой, ни с буфером он не пересечётся.
+              // Пометку снимают, пока ждём, — поэтому проверка повторная.
+              if (ok && job.enter && !job.aborted) {
+                await Future<void>.delayed(_enterPause);
+                if (job.enter && !job.aborted && !isClosed) {
+                  await bridge.pressReturn();
+                }
+              }
               if (!ok) {
                 // Вставка не состоялась — почти всегда это отозванный
                 // «Универсальный доступ». Текст при этом уже распознан,
@@ -915,6 +972,7 @@ class DictationCubit extends Cubit<DictationState> {
       pending: _pending.length,
       processing: _pending.isNotEmpty,
       mode: _settings.indicatorMode,
+      enter: _enterShown,
     );
   }
 
@@ -1400,7 +1458,7 @@ class DictationCubit extends Cubit<DictationState> {
   }
 }
 
-class _DictationJob {
+class _DictationJob extends EnterMark {
   _DictationJob(
     this.path,
     this.options,
@@ -1425,7 +1483,5 @@ class _DictationJob {
   final bool insert, keepClipboard, commandsEnabled;
   final List<VocabularyItem> vocabulary;
   final done = Completer<void>();
-  bool aborted = false;
-  bool delivering = false;
   Future<void>? cancelling;
 }

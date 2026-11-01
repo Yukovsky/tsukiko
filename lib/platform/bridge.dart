@@ -29,7 +29,7 @@ enum HotkeyEdge { down, up }
 class HotkeyEvent {
   const HotkeyEvent(this.id, this.edge, {this.cancel = false});
 
-  /// 'hold', 'toggle' или 'cancel' — какое из сочетаний сработало.
+  /// 'hold', 'toggle', 'cancel' или 'send' — какое из сочетаний сработало.
   final String id;
   final HotkeyEdge edge;
 
@@ -248,6 +248,7 @@ class NativeBridge {
     int pending = 0,
     bool processing = false,
     IndicatorMode mode = IndicatorMode.panel,
+    bool enter = false,
   }) {
     final l10n = currentL10n();
     return _channel.invokeMethod('hud', {
@@ -255,6 +256,7 @@ class NativeBridge {
       'mode': mode.name,
       'pending': pending,
       'processing': processing,
+      'enter': enter,
       'labels': {
         'queueTitle': l10n.hudQueueCount(
           hudBacklogCount(state, pending, processing),
@@ -272,10 +274,12 @@ class NativeBridge {
     required Hotkey hold,
     required Hotkey toggle,
     required Hotkey cancel,
+    required Hotkey send,
   }) => _channel.invokeMethod('bind', {
     'hold': hold.toJson(),
     'toggle': toggle.toJson(),
     'cancel': cancel.toJson(),
+    'send': send.toJson(),
   });
 
   Future<Hotkey?> capture() {
@@ -435,6 +439,17 @@ class NativeBridge {
       } else {
         ready.complete();
       }
+    }
+  }
+
+  /// Нажать Enter в том окне, куда только что вставили. Родная сторона
+  /// сверяет, что впереди всё то же приложение; нет — пропускает и
+  /// отвечает false. Буфером не пользуется, поэтому `_pasteReady` не держит.
+  Future<bool> pressReturn() async {
+    try {
+      return await _channel.invokeMethod<bool>('pressReturn') ?? false;
+    } on MissingPluginException {
+      return false;
     }
   }
 

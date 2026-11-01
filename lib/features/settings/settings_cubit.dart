@@ -171,6 +171,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         hold: _dictation.hold,
         toggle: _dictation.toggle,
         cancel: _dictation.cancel,
+        send: _dictation.send,
         dictationModel: _dictation.model,
         threads: _dictation.threads,
         punctuate: _dictation.punctuate,
@@ -310,6 +311,7 @@ class SettingsCubit extends Cubit<SettingsState> {
       'hold': _dictation.hold,
       'toggle': _dictation.toggle,
       'cancel': _dictation.cancel,
+      'send': _dictation.send,
     }..remove(id);
     if (taken.values.any((other) => !other.empty && hk.sameAs(other))) {
       return _emit(
@@ -325,6 +327,7 @@ class SettingsCubit extends Cubit<SettingsState> {
       (d) => switch (id) {
         'hold' => d.hold = hk,
         'cancel' => d.cancel = hk,
+        'send' => d.send = hk,
         _ => d.toggle = hk,
       },
     );
@@ -334,6 +337,8 @@ class SettingsCubit extends Cubit<SettingsState> {
   /// и говорить» и «включить» диктовки нет вовсе, а бросать начатое можно
   /// и мышью — по крестику на плавающей панели.
   void clearCancelHotkey() => _saveDictation((d) => d.cancel = Hotkey.none);
+
+  void clearSendHotkey() => _saveDictation((d) => d.send = Hotkey.none);
 
   Future<void> setDictationModel(String path) async {
     if (path.isEmpty && state.transcriberUsesDictationModel) {
