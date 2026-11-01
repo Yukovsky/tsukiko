@@ -967,6 +967,7 @@ class DictationSettings {
     Hotkey? cancel,
     this.idleSeconds = 180,
     this.insert = true,
+    this.keepClipboard = false,
     this.returnToTarget = true,
     bool hud = true,
     IndicatorMode? indicatorMode,
@@ -1003,6 +1004,10 @@ class DictationSettings {
   /// Вставлять готовый текст в активное окно. Выключено — текст только
   /// ложится в буфер обмена.
   bool insert;
+
+  /// После вставки оставить надиктованное в буфере обмена последним.
+  /// Имеет смысл только при [insert].
+  bool keepClipboard;
 
   /// Вставлять туда, где стоял курсор, когда запись остановили: вернуть
   /// то окно вперёд, даже если человек успел уйти в другое.
@@ -1054,6 +1059,7 @@ class DictationSettings {
         cancel: Hotkey.fromJson(j['cancel'], Hotkey.none),
         idleSeconds: (j['idleSeconds'] as int?) ?? 180,
         insert: (j['insert'] as bool?) ?? true,
+        keepClipboard: (j['keepClipboard'] as bool?) ?? false,
         returnToTarget: (j['returnToTarget'] as bool?) ?? true,
         indicatorMode: IndicatorMode.fromValue(j['indicatorMode'], legacyHud: (j['hud'] as bool?) ?? true),
         punctuate: (j['punctuate'] as bool?) ?? true,
@@ -1089,6 +1095,7 @@ class DictationSettings {
         'cancel': cancel.toJson(),
         'idleSeconds': idleSeconds,
         'insert': insert,
+        'keepClipboard': keepClipboard,
         'returnToTarget': returnToTarget,
         'hud': hud,
         'indicatorMode': indicatorMode.name,

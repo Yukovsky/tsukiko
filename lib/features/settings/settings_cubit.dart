@@ -177,6 +177,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         prompt: _dictation.prompt,
         idleSeconds: _dictation.idleSeconds,
         insert: _dictation.insert,
+        keepClipboard: _dictation.keepClipboard,
         returnToTarget: _dictation.returnToTarget,
         hud: _dictation.hud,
         indicatorMode: _dictation.indicatorMode,
@@ -389,6 +390,14 @@ class SettingsCubit extends Cubit<SettingsState> {
   void setIdleSeconds(int v) => _saveDictation((d) => d.idleSeconds = v);
 
   void setInsert(bool v) => _saveDictation((d) => d.insert = v);
+
+  /// Три способа доставки текста: вставить, вставить и оставить в буфере,
+  /// только в буфер. Хранятся двумя флагами, чтобы старый settings.json
+  /// читался как раньше.
+  void setDelivery(DictationDelivery v) => _saveDictation((d) {
+    d.insert = v != DictationDelivery.clipboard;
+    d.keepClipboard = v == DictationDelivery.insertAndKeep;
+  });
   void setReturnToTarget(bool v) => _saveDictation((d) => d.returnToTarget = v);
 
   void setHud(bool v) => _saveDictation((d) => d.hud = v);

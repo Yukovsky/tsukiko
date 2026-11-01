@@ -534,8 +534,23 @@ class _SettingsBodyState extends State<SettingsBody>
     // для Large v3 Turbo и неправда для всех остальных.
     Hint('${l10n.hintMemoryCostPrefix} ${_memoryCost(s)}'),
     SectionTitle(l10n.sectionAfterDictation),
-    Check(l10n.checkInsertText, s.insert, _cubit.setInsert),
-    Hint(l10n.hintInsertOff, under: true),
+    _SegmentedPicker<DictationDelivery>(
+      value: s.delivery,
+      onChanged: _cubit.setDelivery,
+      options: [
+        (DictationDelivery.insert, l10n.deliveryInsert),
+        (DictationDelivery.insertAndKeep, l10n.deliveryInsertKeep),
+        (DictationDelivery.clipboard, l10n.deliveryClipboard),
+      ],
+    ),
+    AnimatedSwitcher(
+      duration: Motion.dur(context, Motion.quick),
+      child: Hint(switch (s.delivery) {
+        DictationDelivery.insert => l10n.hintDeliveryInsert,
+        DictationDelivery.insertAndKeep => l10n.hintDeliveryInsertKeep,
+        DictationDelivery.clipboard => l10n.hintDeliveryClipboard,
+      }, key: ValueKey(s.delivery)),
+    ),
     if (s.insert) ...[
       Check(
         l10n.checkReturnToTarget,
@@ -2214,6 +2229,136 @@ class _FilterSegmentState extends State<_FilterSegment> {
           ),
           child: Text(
             '${widget.label} (${widget.count})',
+            style: Type.caption.copyWith(
+              fontWeight: widget.selected ? FontWeight.w600 : FontWeight.normal,
+              color: widget.selected ? null : Surface.secondaryText(context),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Переключатель из нескольких вариантов: подложка выбранного скользит
+/// на новое место пружиной, а не прыгает. Вид тот же, что у фильтра словаря.
+class _SegmentedPicker<T> extends StatelessWidget {
+  const _SegmentedPicker({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Surface.isDark(context);
+    final index = options
+        .indexWhere((o) => o.$1 == value)
+        .clamp(0, options.length - 1);
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0x1F2A2A2E) : const Color(0x0F000000),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: Surface.hairline(context)),
+      ),
+      child: Stack(
+        children: [
+          AnimatedAlign(
+            duration: Motion.dur(context, Motion.settle),
+            curve: Motion.curve(context, Motion.settleCurve),
+            alignment: Alignment(
+              options.length < 2 ? 0 : -1 + 2 * index / (options.length - 1),
+              0,
+            ),
+            child: FractionallySizedBox(
+              widthFactor: 1 / options.length,
+              heightFactor: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF3A3A3C)
+                      : const Color(0xFFFFFFFF),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(
+                    color: Surface.hairline(context),
+                    width: 0.5,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1F000000),
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (final (v, label) in options)
+                Expanded(
+                  child: _PickerSegment(
+                    label: label,
+                    selected: v == value,
+                    onTap: () => onChanged(v),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickerSegment extends StatefulWidget {
+  const _PickerSegment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_PickerSegment> createState() => _PickerSegmentState();
+}
+
+class _PickerSegmentState extends State<_PickerSegment> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Surface.isDark(context);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: Motion.dur(context, Motion.quick),
+          curve: Motion.curve(context, Motion.quickCurve),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: !widget.selected && _hover
+                ? (isDark ? const Color(0x10FFFFFF) : const Color(0x08000000))
+                : MacosColors.transparent,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Text(
+            widget.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: Type.caption.copyWith(
               fontWeight: widget.selected ? FontWeight.w600 : FontWeight.normal,
               color: widget.selected ? null : Surface.secondaryText(context),

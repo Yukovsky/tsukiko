@@ -32,6 +32,9 @@ List<int> threadChoices(int current) {
 /// От `DictationSettings` здесь лежат разобранные значения, а не сам
 /// объект: он меняется внутри себя, и сравнение снимков такую правку
 /// не заметило бы — окно замирало бы на устаревшем виде.
+/// Что делать с готовым текстом диктовки.
+enum DictationDelivery { insert, insertAndKeep, clipboard }
+
 class SettingsState extends Equatable {
   /// Не `const`: сочетания по умолчанию у каждой системы свои, а `const`
   /// про систему знать не может.
@@ -63,6 +66,7 @@ class SettingsState extends Equatable {
     this.vocabularyTranscriberEnabled = true,
     this.idleSeconds = 180,
     this.insert = true,
+    this.keepClipboard = false,
     this.returnToTarget = true,
     this.hud = true,
     this.indicatorMode = IndicatorMode.panel,
@@ -204,7 +208,12 @@ class SettingsState extends Equatable {
   final List<VocabularyItem> vocabulary;
   final bool vocabularyDictationEnabled, vocabularyTranscriberEnabled;
   final int idleSeconds;
-  final bool insert, returnToTarget, hud;
+  final bool insert, keepClipboard, returnToTarget, hud;
+  DictationDelivery get delivery => !insert
+      ? DictationDelivery.clipboard
+      : keepClipboard
+      ? DictationDelivery.insertAndKeep
+      : DictationDelivery.insert;
   final IndicatorMode indicatorMode;
   final bool wakeWordEnabled;
   final String wakeWord;
@@ -307,6 +316,7 @@ class SettingsState extends Equatable {
     bool? vocabularyTranscriberEnabled,
     int? idleSeconds,
     bool? insert,
+    bool? keepClipboard,
     bool? returnToTarget,
     bool? hud,
     IndicatorMode? indicatorMode,
@@ -381,6 +391,7 @@ class SettingsState extends Equatable {
         vocabularyTranscriberEnabled ?? this.vocabularyTranscriberEnabled,
     idleSeconds: idleSeconds ?? this.idleSeconds,
     insert: insert ?? this.insert,
+    keepClipboard: keepClipboard ?? this.keepClipboard,
     returnToTarget: returnToTarget ?? this.returnToTarget,
     hud: hud ?? this.hud,
     indicatorMode: indicatorMode ?? this.indicatorMode,
@@ -450,6 +461,7 @@ class SettingsState extends Equatable {
     vocabularyTranscriberEnabled,
     idleSeconds,
     insert,
+    keepClipboard,
     returnToTarget,
     hud,
     indicatorMode,

@@ -706,6 +706,7 @@ class DictationCubit extends Cubit<DictationState> {
           _options,
           _settings.closeWord,
           _settings.insert,
+          _settings.keepClipboard,
           _commandsEnabled,
           List.of(_vocabulary),
           ownVoiceOnly: _settings.ownVoiceOnly,
@@ -849,6 +850,9 @@ class DictationCubit extends Cubit<DictationState> {
               ok = true;
             } else {
               ok = await bridge.insert(text, target: job.target);
+              // Родная сторона вернёт прежний буфер через 1,5 с, но только
+              // если его никто не менял: наша запись это и отменяет.
+              if (ok && job.keepClipboard) await _copyResult(text);
               if (!ok) {
                 // Вставка не состоялась — почти всегда это отозванный
                 // «Универсальный доступ». Текст при этом уже распознан,
@@ -1402,6 +1406,7 @@ class _DictationJob {
     this.options,
     this.closeWord,
     this.insert,
+    this.keepClipboard,
     this.commandsEnabled,
     this.vocabulary, {
     this.ownVoiceOnly = false,
@@ -1417,7 +1422,7 @@ class _DictationJob {
   final double ownVoiceThreshold;
   final RunOptions options;
   final String closeWord;
-  final bool insert, commandsEnabled;
+  final bool insert, keepClipboard, commandsEnabled;
   final List<VocabularyItem> vocabulary;
   final done = Completer<void>();
   bool aborted = false;
