@@ -273,6 +273,11 @@ class WakeWordService {
     _isSuspendedForSleep = true;
     _audioWatchdog?.cancel();
     _audioWatchdog = null;
+    // Рестарт потока мог уже идти (после пробуждения вотчдог срабатывает
+    // как раз перед уходом в сон): stop из паузы и stop/start рестарта,
+    // наложившись, роняют CoreAudio. Дожидаемся рестарта — он увидит флаг
+    // сна и сам остановит поток.
+    await _audioRestartDone?.future;
     await _audioSub?.cancel();
     _audioSub = null;
     await _audioSource.stopStream();

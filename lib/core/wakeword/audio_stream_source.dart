@@ -19,6 +19,15 @@ class MicrophoneAudioStreamSource implements AudioStreamSource {
   StreamSubscription<Uint8List>? _rawSub;
   StreamController<Float32List>? _controller;
   bool _isStreaming = false;
+  // Нативный рекордер нельзя дёргать параллельно: наложившиеся stop/start
+  // во время смены устройства при сне/пробуждении падают в CoreAudio.
+  Future<void> _queue = Future.value();
+
+  Future<T> _serial<T>(Future<T> Function() op) {
+    final result = _queue.then((_) => op());
+    _queue = result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
 
   @override
   Future<bool> hasPermission() async {
@@ -30,12 +39,15 @@ class MicrophoneAudioStreamSource implements AudioStreamSource {
   }
 
   @override
-  Future<Stream<Float32List>> startStream({int sampleRate = 16000}) async {
+  Future<Stream<Float32List>> startStream({int sampleRate = 16000}) =>
+      _serial(() => _start(sampleRate));
+
+  Future<Stream<Float32List>> _start(int sampleRate) async {
     if (_isStreaming && _controller != null) {
       return _controller!.stream;
     }
 
-    await stopStream();
+    await _stop();
 
     final controller = StreamController<Float32List>.broadcast();
     _controller = controller;
@@ -77,7 +89,9 @@ class MicrophoneAudioStreamSource implements AudioStreamSource {
   }
 
   @override
-  Future<void> stopStream() async {
+  Future<void> stopStream() => _serial(_stop);
+
+  Future<void> _stop() async {
     _isStreaming = false;
     await _rawSub?.cancel();
     _rawSub = null;
@@ -93,10 +107,10 @@ class MicrophoneAudioStreamSource implements AudioStreamSource {
   }
 
   @override
-  Future<void> dispose() async {
-    await stopStream();
+  Future<void> dispose() => _serial(() async {
+    await _stop();
     await _recorder.dispose();
-  }
+  });
 
   /// Преобразование сырых байтов 16-битного PCM в массив Float32List [-1.0, 1.0].
   static Float32List pcm16ToFloat32(Uint8List bytes) {
