@@ -13,8 +13,11 @@ import 'recognition.dart';
 /// Файл модели распознавания. Имя VAD-модели устроено так же
 /// (ggml-silero-….bin), но речь она не распознаёт — в списке моделей ей
 /// не место, иначе её можно выбрать и получить пустую расшифровку.
+/// То же с моделью разметки голосов: она тоже `.gguf`, но делит речь
+/// по говорящим и текста не выдаёт.
 bool looksLikeSpeechModel(String name) {
   final lower = name.toLowerCase();
+  if (lower.contains('diarization')) return false;
   if (lower.endsWith('.gguf')) return true;
   return lower.startsWith('ggml-') &&
       lower.endsWith('.bin') &&

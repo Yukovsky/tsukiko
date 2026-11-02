@@ -906,6 +906,8 @@ void main() {
     // получил бы пустую расшифровку.
     expect(looksLikeSpeechModel(vadModelFile), isFalse);
     expect(looksLikeSpeechModel('ggml-large-v3-turbo.bin'), isTrue);
+    expect(looksLikeSpeechModel('Nemotron-3-Diarization.q8_0.gguf'), isFalse);
+    expect(looksLikeSpeechModel('parakeet-tdt-0.6b-v3.q8_0.gguf'), isTrue);
     expect(
         looksLikeSpeechModel(
             'nemotron-3.5-asr-streaming-0.6b.q8_0.gguf'),
