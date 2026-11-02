@@ -1,13 +1,12 @@
 import 'dart:io';
-import 'dart:ui' as ui;
-import 'package:blobatar/blobatar.dart' as blob;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tsukiko_mascot_lab/cat.dart';
+import 'package:tsukiko_mascot_lab/genome.dart';
 import 'package:tsukiko_mascot_lab/main.dart';
-import 'render_preview.dart';
+import 'package:tsukiko_mascot_lab/silhouette.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,224 +20,137 @@ void main() {
         ),
       );
     await fonts.load();
-    await (FontLoader(
-      'MaterialIcons',
-    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
 
-  testWidgets(
-    'three native shapes share controls and keep recording during petting',
-    (tester) async {
-      tester.view.physicalSize = const Size(1100, 1080);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      const capture = ValueKey('capture');
-      await tester.pumpWidget(
-        const RepaintBoundary(key: capture, child: MascotLab()),
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.byType(LivingCat), findsNWidgets(4));
-      for (final shape in CatShape.values) {
-        expect(
-          tester
-              .widget<LivingCat>(find.byKey(ValueKey('cat-${shape.name}')))
-              .profile
-              .layout
-              .shape,
-          switch (shape) {
-            CatShape.round => 'round',
-            CatShape.square => 'boxy',
-            CatShape.drop => 'droplet',
-          },
-        );
-      }
-      final painted = find.descendant(
-        of: find.byKey(const ValueKey('cat-round')),
-        matching: find.byWidgetPredicate(
-          (w) => w is CustomPaint && w.painter is CatPainter,
-        ),
-      );
-      CatFrame frame() =>
-          (tester.widget<CustomPaint>(painted).painter! as CatPainter).frame();
-      await tester.tap(find.text('Слушает').first);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(frame().rig!.attention, 1);
-      await tester.tap(find.byKey(const ValueKey('cat-round')));
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(frame().pet, greaterThan(0));
-      expect(find.text('Записывает · демо'), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 1400));
-      expect(frame().rig!.attention, 1);
-      await tester.tap(find.text('Сердится'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      final tint = frame().headColor;
-      await tester.tap(find.text('Влюблён'));
-      await tester.pump();
-      expect(
-        frame().headColor,
-        tint,
-      ); // Retarget from the current tint, without a jump.
-      await tester.tap(find.text('Покой'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.tap(find.byTooltip('Остановить движение'));
-      await tester.pumpAndSettle();
-      expect(tester.hasRunningAnimations, isFalse);
-      final output = Platform.environment['PREVIEW_DIR'];
-      if (output != null)
-        await tester.runAsync(() async {
-          Directory(output).createSync(recursive: true);
-          final boundary = tester.renderObject<RenderRepaintBoundary>(
-            find.byKey(capture),
-          );
-          final image = await boundary.toImage();
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          File(
-            '$output/blob-cats-lab.png',
-          ).writeAsBytesSync(bytes!.buffer.asUint8List());
-          image.dispose();
-          if (Platform.environment['MOTION_PREVIEW'] == '1')
-            await renderMotion(output);
-        });
-      await tester.enterText(find.byType(TextFormField), 'komorebi');
-      await tester.pump();
-      for (final shape in CatShape.values) {
-        expect(
-          tester
-              .widget<LivingCat>(find.byKey(ValueKey('cat-${shape.name}')))
-              .profile
-              .seed,
-          'komorebi',
-        );
-      }
-      await tester.tap(find.byKey(const ValueKey('cat-drop')));
-      await tester.pump();
-      expect(
-        tester
-            .widget<LivingCat>(find.byKey(const ValueKey('compact-cat')))
-            .profile
-            .shape,
-        CatShape.drop,
-      );
-      await tester.pump(const Duration(milliseconds: 1300));
-      for (final width in [536.0, 390.0]) {
-        tester.view.physicalSize = Size(width, 844);
-        await tester.pump(const Duration(milliseconds: 400));
-        expect(tester.takeException(), isNull);
-      }
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
+  test('the look string pins genes and keeps the name', () {
+    final g = CatGenome.parse('Yuko  сакура ЛОПУХИ звезды');
+    expect(g.seed, 'Yuko');
+    expect(CatLook(g, g.traits).coat, CatCoat.sakura);
+    expect(CatLook(g, g.traits).ears, CatEars.wide);
+    expect(CatLook(g, g.traits).mark, CatMark.stars);
 
-  testWidgets('reduced motion stops frames and keeps keyboard reaction', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MediaQuery(
-          data: const MediaQueryData(disableAnimations: true),
-          child: LivingCat(profile: CatProfile(), mood: CatMood.thinking),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.hasRunningAnimations, isFalse);
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
-    expect(find.bySemanticsLabel(RegExp('Подмигнул')), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1300));
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+    final swapped = CatGenome.parse(g.withPin(earsGene, CatEars.bear));
+    expect(swapped.pins[earsGene], CatEars.bear);
+    expect(swapped.pins[coatGene], CatCoat.sakura);
+    expect(CatGenome.parse(g.withPin(earsGene, null)).pins[earsGene], isNull);
+    expect(CatGenome.parse(g.withSeed('mori')).seed, 'mori');
 
-  testWidgets('gaze pursues, releases and pauses', (tester) async {
-    Widget subject(bool active) => MaterialApp(
-      home: Center(
-        child: LivingCat(
-          profile: CatProfile(),
-          animate: active,
-          key: const ValueKey('subject'),
-        ),
-      ),
-    );
-    await tester.pumpWidget(subject(true));
-    final painted = find.byWidgetPredicate(
-      (w) => w is CustomPaint && w.painter is CatPainter,
-    );
-    CatFrame frame() =>
-        (tester.widget<CustomPaint>(painted).painter! as CatPainter).frame();
-    final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
-    await mouse.addPointer(location: Offset.zero);
-    await mouse.moveTo(tester.getCenter(painted) + const Offset(80, -45));
-    for (var i = 0; i < 12; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
+    // Picks are written as a syllable tail, read back the same way, and a
+    // hyphenated name that is not all syllables stays a name.
+    expect(CatGenome.parse('yuko').withPin(earsGene, CatEars.wide), 'yuko-mi');
+    expect(g.withPin(earsGene, CatEars.bear), 'Yuko-balihu');
+    final tail = CatGenome.parse('yuko-mukahu');
+    expect(tail.seed, 'yuko');
+    expect(tail.pins, {
+      headGene: CatHead.mochi,
+      earsGene: CatEars.tuft,
+      coatGene: CatCoat.sakura,
+    });
+    expect(CatGenome.parse('anna-maria').seed, 'anna-maria');
+    expect(CatGenome.parse('').withPin(eyesGene, CatEyes.bead), 'tsukiko-no');
+
+    final painted = CatGenome.parse('yuko #7fb8ec');
+    expect(painted.seed, 'yuko');
+    expect(painted.paint, const Color(0xff7fb8ec));
+    expect(CatGenome.parse(painted.withPin(coatGene, null)).paint, isNull);
+    expect(CatGenome.parse('сакура').name, brandName);
+
+    CatLook resolve(String text) {
+      final g = CatGenome.parse(text);
+      return CatLook(g, g.traits);
     }
-    expect(frame().gaze.dx, greaterThan(1));
-    expect(frame().gaze.dy, lessThan(-.4));
-    await mouse.moveTo(Offset.zero);
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    expect(frame().gaze.distance, lessThan(.05));
-    await tester.pumpWidget(subject(false));
-    await tester.pumpAndSettle();
-    expect(tester.hasRunningAnimations, isFalse);
-    await mouse.removePointer();
-    await tester.pumpWidget(const SizedBox.shrink());
+
+    expect(resolve('mori бусинки').size, CatSize.kitten);
+    expect(resolve('mori бусинки взрослый').size, CatSize.grown);
+
+    final brand = CatGenome.parse(brandName);
+    final look = CatLook(brand, brand.traits);
+    expect(genes.map(look.of), genes.map((g) => g.values.first));
   });
 
-  test(
-    'all native expressions and seeded shapes fit the transparent frame',
-    () async {
-      for (final word in ['yuko', '日本語', '🌙', 'Кот', '']) {
-        for (final shape in CatShape.values) {
-          final p = CatProfile(seed: word, shape: shape);
-          expect(
-            blob.contrast(
-              blob.fromHex(p.base[blob.colorHead]!),
-              blob.fromHex(p.base[blob.colorEye]!),
-            ),
-            greaterThanOrEqualTo(4.5),
-          );
-          for (final mood in CatMood.values) {
-            final recorder = ui.PictureRecorder();
-            CatPainter(
-              profile: p,
-              mood: mood,
-              frame: () => CatFrame(
-                pose: mood.expression.pose,
-                rig: CatRig.forMood(mood),
-                motion: blob.motionAt(blob.motionSeedsFor(word), 700, 1),
-                gaze: const Offset(3, -2),
-                tracking: 1,
-              ),
-            ).paint(Canvas(recorder), const Size(128, 128));
-            final picture = recorder.endRecording();
-            final image = await picture.toImage(128, 128);
-            final data = (await image.toByteData())!.buffer.asUint8List();
-            for (var i = 0; i < 128; i++) {
-              for (final index in [
-                i * 4 + 3,
-                ((127 * 128 + i) * 4) + 3,
-                (i * 128 * 4) + 3,
-                ((i * 128 + 127) * 4) + 3,
-              ]) {
-                expect(
-                  data[index],
-                  0,
-                  reason:
-                      '$word / ${shape.name} / ${mood.name} clips the frame',
-                );
-              }
+  test('names spread over every gene', () {
+    final looks = [
+      for (var i = 0; i < 400; i++)
+        () {
+          final g = CatGenome.parse('cat$i');
+          return CatLook(g, g.traits);
+        }(),
+    ];
+    for (final gene in genes) {
+      expect(
+        looks.map((l) => l.of(gene)).toSet().length,
+        gene.values.length,
+        reason: gene.title,
+      );
+    }
+  });
+
+  test('every head and ear stays inside the frame at any droop', () {
+    for (final head in CatHead.values) {
+      for (final ears in CatEars.values) {
+        for (final seed in ['yuko', 'mori', 'lumi', 'cat7']) {
+          final p = CatProfile('$seed ${head.word} ${ears.word}');
+          for (final droop in [-.2, 0.0, .6]) {
+            final box = toPath(
+              p.silhouette.trace(p.layout.body, left: droop, right: droop),
+            ).getBounds();
+            expect(box.top, greaterThan(-6), reason: p.text);
+            expect(box.left, greaterThan(-6), reason: p.text);
+            expect(box.right, lessThan(106), reason: p.text);
+            expect(box.bottom, lessThan(106), reason: p.text);
+            if (ears == CatEars.tuft) {
+              // The hair reaches past the corner the outline rounds off.
+              final (_, corner, _) = p.silhouette.earTip(p.layout.body, droop);
+              expect(corner.dy - .3 * p.layout.body.rx, greaterThan(-6));
             }
-            image.dispose();
-            picture.dispose();
           }
         }
       }
-    },
-  );
+    }
+  });
+
+  testWidgets('pinning, moods and petting all work from the lab', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1240, 1500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const MascotLab());
+    await tester.pump(const Duration(milliseconds: 300));
+
+    String look() => tester
+        .widget<TextField>(find.byKey(const ValueKey('look')))
+        .controller!
+        .text;
+
+    await tester.tap(find.byKey(const ValueKey('option-лопухи')));
+    await tester.pump();
+    expect(look(), 'tsukiko-mi');
+    await tester.tap(find.byKey(const ValueKey('option-лопухи')));
+    await tester.pump();
+    expect(look(), 'tsukiko');
+
+    await tester.tap(find.text('Слушает'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const ValueKey('hero')));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('Записывает'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1400));
+
+    await tester.tap(find.byTooltip('Остановить движение'));
+    await tester.pumpAndSettle();
+    expect(tester.hasRunningAnimations, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('layout survives a phone width', (tester) async {
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const MascotLab());
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+  });
 }
