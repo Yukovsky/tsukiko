@@ -19,6 +19,7 @@ import '../../core/whisper.dart';
 import '../../platform/os.dart';
 import '../../platform/paste_check.dart';
 import '../../core/settings.dart';
+import '../../core/update.dart';
 import '../../core/text_commands.dart';
 import '../../core/vocabulary.dart';
 import '../../core/app_locale.dart';
@@ -68,6 +69,7 @@ class DictationCubit extends Cubit<DictationState> {
     WakeWordService? wakeWordService,
     List<DictationEntry>? initialHistory,
     Future<void> Function(List<DictationEntry>)? historyWriter,
+    Future<Update?> Function()? checkUpdate,
   }) : super(_initialState(initialHistory)) {
     _writeHistory = historyWriter ?? _storeHistory;
     _server =
@@ -124,6 +126,10 @@ class DictationCubit extends Cubit<DictationState> {
     // падения может не быть вовсе. Не синхронно на старте, а фоном: `ps`
     // и добивание процессов задерживали первый кадр панели на полсекунды.
     _sweeping = _sweepOrphans();
+    // Без сети в тестах: проверку передаёт только сама панель.
+    checkUpdate?.call().then((u) {
+      if (u != null) _emit(state.copyWith(updateVersion: u.version));
+    });
 
     // Подписки и таймер живут ровно столько же, сколько само приложение:
     // движок панели не выгружается никогда, отменять их негде и незачем.
@@ -1384,6 +1390,15 @@ class DictationCubit extends Cubit<DictationState> {
   }
 
   void forgetSweep() => _emit(state.copyWith(sweptMb: 0));
+
+  /// Обновление ставит главное окно: там диалоги и прогресс.
+  void openUpdate() {
+    IsolateNameServer.lookupPortByName(updateInboxPort)?.send(null);
+    _emit(state.copyWith(clearUpdate: true));
+    unawaited(bridge.openMainWindow());
+  }
+
+  void forgetUpdate() => _emit(state.copyWith(clearUpdate: true));
 
   /// Убрать сохранённую запись в Корзину. Не `unlink`: промах по кнопке
   /// после часа речи иначе стоил бы этого часа, а из Корзины файл

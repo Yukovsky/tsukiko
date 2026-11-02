@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:isolate' show ReceivePort;
 import 'dart:io' show Directory, File, Platform, stderr;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' show ImageFilter, IsolateNameServer;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/cupertino.dart';
@@ -105,6 +106,8 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   void _sendResetOverrides() => _send(const OverridesReset());
   void _sendMakeDefault() => _send(const LeadOptionsMadeDefault());
   void _sendDownload(ModelOffer m) => _send(ModelDownloadRequested(m));
+  final _updateInbox = ReceivePort();
+
   void _sendEnableVad() => _send(const VadRequested(true));
 
   @override
@@ -145,6 +148,15 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _checkUpdates(quiet: true),
     );
+    // «Обновить» в панели у строки меню приходит сюда.
+    IsolateNameServer.removePortNameMapping(updateInboxPort);
+    IsolateNameServer.registerPortWithName(
+      _updateInbox.sendPort,
+      updateInboxPort,
+    );
+    _updateInbox.listen((_) {
+      if (mounted) _checkUpdates();
+    });
   }
 
   /// Раннер присылает, где курсор (логические точки от левого верхнего угла
@@ -167,6 +179,8 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   @override
   void dispose() {
     _fileInput.setMethodCallHandler(null);
+    IsolateNameServer.removePortNameMapping(updateInboxPort);
+    _updateInbox.close();
     WidgetsBinding.instance.removeObserver(this);
     _searchCtrl.dispose();
     _searchFocus.dispose();

@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:macos_ui/macos_ui.dart';
 
 import '../../platform/bridge.dart';
+import '../../core/update.dart';
 import '../../platform/os.dart';
 import '../../design/design.dart';
 import '../../design/mascot.dart';
@@ -56,7 +57,10 @@ class PanelApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => BlocProvider(
-    create: (_) => DictationCubit(NativeBridge()),
+    create: (_) => DictationCubit(
+      NativeBridge(),
+      checkUpdate: () => checkForUpdate(appVersion),
+    ),
     child: const _PanelApp(),
   );
 }
@@ -599,6 +603,14 @@ class _Notices extends StatelessWidget {
                   : null,
               second: s.failurePath != null ? l10n.buttonDelete : null,
               onSecond: s.failurePath != null ? cubit.discardFailure : null,
+            ),
+          if (s.updateVersion != null)
+            _Warning(
+              l10n.updateFoundTitle(s.updateVersion!),
+              button: l10n.buttonUpdate,
+              onPressed: cubit.openUpdate,
+              second: l10n.buttonLater,
+              onSecond: cubit.forgetUpdate,
             ),
           if (s.sweptMb > 0)
             _Warning(

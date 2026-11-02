@@ -30,6 +30,7 @@ class DictationState extends Equatable {
     this.elapsed = Duration.zero,
     this.allowed = true,
     this.sweptMb = 0,
+    this.updateVersion,
     this.failure,
     this.failurePath,
     this.vadProgress,
@@ -66,6 +67,9 @@ class DictationState extends Equatable {
 
   /// Сколько мегабайт вернул подбор забытых серверов на старте.
   final int sweptMb;
+
+  /// Вышла версия новее этой: панель зовёт обновиться.
+  final String? updateVersion;
 
   /// Что пошло не так и где лежит спасённая запись. Путь есть — можно
   /// показать её в проводнике и убрать в Корзину; пути нет — беда была
@@ -115,6 +119,7 @@ class DictationState extends Equatable {
     Duration? elapsed,
     bool? allowed,
     int? sweptMb,
+    String? updateVersion,
     String? failure,
     String? failurePath,
     String? vadProgress,
@@ -134,6 +139,7 @@ class DictationState extends Equatable {
     bool clearUnload = false,
     bool clearHistory = false,
     bool clearHistoryError = false,
+    bool clearUpdate = false,
   }) => DictationState(
     phase: phase ?? this.phase,
     pendingCount: pendingCount ?? this.pendingCount,
@@ -150,6 +156,7 @@ class DictationState extends Equatable {
     elapsed: elapsed ?? this.elapsed,
     allowed: allowed ?? this.allowed,
     sweptMb: sweptMb ?? this.sweptMb,
+    updateVersion: clearUpdate ? null : (updateVersion ?? this.updateVersion),
     failure: clearFailure ? null : (failure ?? this.failure),
     failurePath: clearFailure || clearFailurePath
         ? null
@@ -180,6 +187,7 @@ class DictationState extends Equatable {
     elapsed,
     allowed,
     sweptMb,
+    updateVersion,
     failure,
     failurePath,
     vadProgress,

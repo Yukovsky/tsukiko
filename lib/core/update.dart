@@ -37,6 +37,10 @@ class Update {
 const releasesUrl =
     'https://api.github.com/repos/Yukovsky/tsukiko/releases/latest';
 
+/// Порт главного окна: панель у строки меню знает о новой версии, но
+/// ставит её окно, где живут диалоги. Сообщение сюда открывает их.
+const updateInboxPort = 'app.yuko.tsukiko/update-inbox';
+
 /// Какой файл выпуска ставит эту систему.
 String get updateAsset =>
     Platform.isMacOS ? 'tsukiko.dmg' : 'tsukiko-setup.exe';
