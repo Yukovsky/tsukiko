@@ -208,6 +208,18 @@ class Type {
   );
 }
 
+/// Включает у потомков более светлый вторичный текст: поповер лежит на
+/// затемнённом стекле, и обычный серый там теряет контраст.
+class HudContrast extends InheritedWidget {
+  const HudContrast({super.key, required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HudContrast>() != null;
+
+  @override
+  bool updateShouldNotify(HudContrast oldWidget) => false;
+}
+
 /// Материалы. Крупная поверхность читается плотнее мелкой, светлое
 /// полупрозрачное не кладётся на светлое полупрозрачное.
 class Surface {
@@ -232,8 +244,11 @@ class Surface {
   static Color pressed(BuildContext context) =>
       isDark(context) ? const Color(0x24FFFFFF) : const Color(0x17000000);
 
-  static Color secondaryText(BuildContext context) =>
-      isDark(context) ? const Color(0x99FFFFFF) : const Color(0x8C000000);
+  static Color secondaryText(BuildContext context) => isDark(context)
+      // В панели под текстом стекло с затемнением: 60 % белого там давали
+      // контраст около 3,7, меньше AA для мелкого текста. 75 % даёт ~4,9.
+      ? (HudContrast.of(context) ? const Color(0xBFFFFFFF) : const Color(0x99FFFFFF))
+      : const Color(0x8C000000);
 
   /// Фон боковой колонки и поповера там, где системного материала окна
   /// нет вовсе (Windows). На macOS возвращает null — материал должен быть

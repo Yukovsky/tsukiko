@@ -27,6 +27,8 @@ class _FakeNative {
               return true;
             case 'level':
               return 0.2;
+            case 'showMenu':
+              throw MissingPluginException();
             default:
               return null;
           }
@@ -215,6 +217,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  /// В тестах родной стороны нет: первое нажатие на выбор модели уходит
+  /// в MissingPluginException, и панель переключается на запасной список.
+  Future<void> toFallbackPicker(WidgetTester tester) async {
+    if (find.byType(MacosPopupButton<String>).evaluate().isNotEmpty) return;
+    final picker = find.byWidgetPredicate(
+      (w) => w.runtimeType.toString() == '_ModelPicker',
+    );
+    await tester.ensureVisible(picker);
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('общий селектор модели открывает меню по клику', (tester) async {
     const models = [
       '/path/to/ggml-large-v3-turbo.bin',
@@ -226,6 +240,7 @@ void main() {
 
     await pumpPanel(tester);
 
+    await toFallbackPicker(tester);
     expect(find.byType(MacosPopupButton<String>), findsOneWidget);
     await tester.tap(find.byType(MacosPopupButton<String>));
     await tester.pumpAndSettle();
@@ -240,6 +255,7 @@ void main() {
         cubit.state.copyWith(models: models, chosenModel: models.first),
       );
       await pumpPanel(tester);
+      await toFallbackPicker(tester);
       await tester.binding.setSurfaceSize(const Size(320, 420));
       await tester.pumpAndSettle();
       final selector = find.byType(MacosPopupButton<String>);

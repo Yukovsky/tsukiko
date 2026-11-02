@@ -145,6 +145,13 @@ String modelLabel(String path, List<String> all) {
   return '$name · $where';
 }
 
+/// Пункты системного меню выбора модели: подпись, значение и отметка
+/// выбранной. Чистая функция, чтобы состав меню проверялся без macOS.
+List<Map<String, Object>> modelMenuItems(List<String> all, String? chosen) => [
+  for (final path in all)
+    {'title': modelLabel(path, all), 'value': path, 'checked': path == chosen},
+];
+
 // ── откуда берутся модели ───────────────────────────────────────────────────
 //
 // Без файла модели приложение бесполезно, а взять его новому человеку

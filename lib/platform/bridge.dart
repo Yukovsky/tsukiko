@@ -488,6 +488,22 @@ class NativeBridge {
   Future<void> setPanelHeight(double height) =>
       _channel.invokeMethod('panelHeight', {'height': height});
 
+  /// Системное меню выбора под кнопкой панели. [x], [y] — левый нижний
+  /// угол кнопки в логических пикселях окна, [width] — её ширина (меню не
+  /// уже). Возвращает выбранное `value` или null при отмене. Без родной
+  /// стороны бросает [MissingPluginException].
+  static Future<String?> showMenu(
+    List<Map<String, Object>> items, {
+    required double x,
+    required double y,
+    required double width,
+  }) => _channel.invokeMethod<String>('showMenu', {
+    'items': items,
+    'x': x,
+    'y': y,
+    'width': width,
+  });
+
   Future<void> openMainWindow() => _channel.invokeMethod('openMainWindow');
 
   Future<void> openSettings([String tab = 'dictation']) =>

@@ -24,6 +24,16 @@ final class PanelController: NSObject, NSWindowDelegate {
   /// и спрашивать память сервера не для кого.
   private var onHidden: (() -> Void)?
 
+  /// Пока открыто системное меню выбора, панель не закрывается: щелчок
+  /// по меню и снятие фокуса монитор принял бы за «мимо панели».
+  private var menuOpen = false
+
+  /// Затемнение под содержимым, над стеклом. Материал сам по себе светлеет
+  /// над белым окном, и серые подписи теряют контраст; чёрная подложка
+  /// делает фон панели почти одинаковым над любым содержимым за окном.
+  /// 0,35: ниже стекло ещё светится на белом, выше оно перестаёт быть стеклом.
+  private static let dimAlpha: CGFloat = 0.35
+
   private var localClickMonitor: Any?
   private var outsideClickMonitor: Any?
   private var activationObserver: NSObjectProtocol?
@@ -122,12 +132,23 @@ final class PanelController: NSObject, NSWindowDelegate {
     // и стекло у них обязано быть одним и тем же.
     let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
     effect.material = .hudWindow
+    // Тёмный «HUD» всегда, а не по теме системы: читаемость панели не
+    // должна зависеть от того, светлая она у человека или тёмная.
+    let dark = NSAppearance(named: .vibrantDark)
+    panel.appearance = dark
+    effect.appearance = dark
     effect.blendingMode = .behindWindow
     effect.state = .active
     effect.wantsLayer = true
     effect.layer?.cornerRadius = 12
     effect.layer?.masksToBounds = true
     effect.autoresizingMask = [.width, .height]
+
+    let dim = NSView(frame: effect.bounds)
+    dim.wantsLayer = true
+    dim.layer?.backgroundColor = NSColor.black.withAlphaComponent(Self.dimAlpha).cgColor
+    dim.autoresizingMask = [.width, .height]
+    effect.addSubview(dim)
 
     controller.view.frame = effect.bounds
     controller.view.autoresizingMask = [.width, .height]
@@ -137,6 +158,52 @@ final class PanelController: NSObject, NSWindowDelegate {
     panel.contentView = effect
     self.panel = panel
     self.controller = controller
+  }
+
+  /// Системное меню выбора под кнопкой Flutter. Рисует его macOS (стекло,
+  /// шрифт, галочка), а не Flutter, поэтому вид совпадает с остальными
+  /// меню. Координаты — логические пиксели окна панели, начало слева сверху.
+  /// Ответ — выбранное `value` или nil при отмене.
+  func popUpMenu(
+    items: [[String: Any]], x: CGFloat, y: CGFloat, width: CGFloat,
+    reply: @escaping FlutterResult
+  ) {
+    guard let panel, let view = controller?.view else {
+      reply(nil)
+      return
+    }
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    menu.minimumWidth = width
+    for item in items {
+      guard let title = item["title"] as? String else { continue }
+      let entry = NSMenuItem(title: title, action: #selector(menuPicked(_:)), keyEquivalent: "")
+      entry.target = self
+      entry.representedObject = item["value"]
+      entry.state = (item["checked"] as? Bool) == true ? .on : .off
+      menu.addItem(entry)
+    }
+    pickedValue = nil
+    menuOpen = true
+    // Выходим из обработчика вызова: popUp держит свой цикл событий.
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      // Окно считает снизу вверх, Flutter — сверху вниз; convert учтёт и
+      // перевёрнутость самого вида.
+      let inWindow = NSPoint(x: x, y: panel.contentLayoutRect.height - y)
+      menu.popUp(positioning: nil, at: view.convert(inWindow, from: nil), in: view)
+      reply(self.pickedValue)
+      self.pickedValue = nil
+      // Щелчок, закрывший меню мимо пунктов, доходит до мониторов уже после
+      // popUp; флаг снимаем на следующем витке, иначе панель схлопнется.
+      DispatchQueue.main.async { self.menuOpen = false }
+    }
+  }
+
+  private var pickedValue: Any?
+
+  @objc private func menuPicked(_ sender: NSMenuItem) {
+    pickedValue = sender.representedObject
   }
 
   func setRecordingIndicator(_ active: Bool) {
@@ -251,7 +318,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     let mouseEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
 
     localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
-      guard let self, let panel, panel.isVisible else { return event }
+      guard let self, let panel, panel.isVisible, !self.menuOpen else { return event }
       if event.window !== panel, !self.mouseIsInside(panel) {
         if self.isClickOnStatusItem() {
           return event
@@ -262,7 +329,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
-      guard let self, let panel, panel.isVisible else { return }
+      guard let self, let panel, panel.isVisible, !self.menuOpen else { return }
       if event.windowNumber != panel.windowNumber, !self.mouseIsInside(panel) {
         if self.isClickOnStatusItem() {
           return
@@ -283,7 +350,8 @@ final class PanelController: NSObject, NSWindowDelegate {
       guard let self,
         let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
         app.bundleIdentifier != Bundle.main.bundleIdentifier,
-        app.processIdentifier != hostApp?.processIdentifier
+        app.processIdentifier != hostApp?.processIdentifier,
+        !self.menuOpen
       else { return }
       self.hide()
     }
@@ -293,6 +361,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       object: nil,
       queue: .main
     ) { [weak self] _ in
+      guard self?.menuOpen != true else { return }
       self?.hide()
     }
   }

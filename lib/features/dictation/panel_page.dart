@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:macos_ui/macos_ui.dart';
 
@@ -70,14 +72,19 @@ class _PanelApp extends StatelessWidget {
       locale: appLocale.value,
       title: appName,
       // Тему строит сам MacosApp — см. комментарий в main.dart.
-      themeMode: appThemeMode.value,
+      // На macOS панель всегда тёмная: окно закреплено за тёмным HUD
+      // (vibrantDark) с затемнением под Flutter, и светлая палитра на нём
+      // нечитаема. На Windows стекла нет, там тема как в настройках.
+      themeMode: os.hasWindowMaterial ? ThemeMode.dark : appThemeMode.value,
       debugShowCheckedModeBanner: false,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       // Фон рисует NSVisualEffectView под этим слоем — своим здесь
       // ничего не закрашиваем, иначе материал не будет виден.
       color: const Color(0x00000000),
-      home: const PanelBody(),
+      home: os.hasWindowMaterial
+          ? const HudContrast(child: PanelBody())
+          : const PanelBody(),
     ),
   );
 }
@@ -960,6 +967,130 @@ class _PanelQuietButtonState extends State<_PanelQuietButton> {
   );
 }
 
+/// Выбор модели. На macOS список показывает система (NSMenu): стекло,
+/// шрифт и галочка настоящие, а не нарисованные Flutter. Без родной
+/// стороны (Windows, тесты) остаётся прежний [MacosPopupButton].
+class _ModelPicker extends StatefulWidget {
+  const _ModelPicker({
+    required this.models,
+    required this.chosen,
+    required this.onChanged,
+  });
+  final List<String> models;
+  final String? chosen;
+  final ValueChanged<String> onChanged;
+  @override
+  State<_ModelPicker> createState() => _ModelPickerState();
+}
+
+class _ModelPickerState extends State<_ModelPicker> {
+  bool _hover = false, _down = false, _open = false;
+
+  /// Родной метод не ответил: дальше рисуем запасной список.
+  static bool _nativeMissing = false;
+
+  String? get _value =>
+      widget.models.contains(widget.chosen) ? widget.chosen : null;
+
+  Future<void> _openMenu() async {
+    final box = context.findRenderObject() as RenderBox;
+    final at = box.localToGlobal(Offset(0, box.size.height));
+    setState(() => _open = true);
+    try {
+      final picked = await NativeBridge.showMenu(
+        modelMenuItems(widget.models, _value),
+        x: at.dx,
+        y: at.dy + 4,
+        width: box.size.width,
+      );
+      if (picked != null) widget.onChanged(picked);
+    } on MissingPluginException {
+      if (mounted) setState(() => _nativeMissing = true);
+    } finally {
+      if (mounted) setState(() => _open = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (!os.hasWindowMaterial || _nativeMissing) {
+      return MacosPopupButton<String>(
+        value: _value,
+        hint: Text(l10n.modelNotChosen, style: Type.fileName),
+        items: [
+          for (final path in widget.models)
+            MacosPopupMenuItem(
+              value: path,
+              // modelLabel, а не modelDisplayName: одна и та же
+              // модель в двух папках дала бы две одинаковые строки,
+              // и какая из них выбрана — не понять.
+              child: Text(
+                modelLabel(path, widget.models),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: (v) => v == null ? null : widget.onChanged(v),
+      );
+    }
+    final label = _value == null
+        ? l10n.modelNotChosen
+        : modelLabel(_value!, widget.models);
+    return Semantics(
+      label: label,
+      button: true,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _down = true),
+          onTapCancel: () => setState(() => _down = false),
+          onTapUp: (_) => setState(() => _down = false),
+          onTap: _open ? null : _openMenu,
+          child: AnimatedContainer(
+            duration: _down
+                ? Motion.press
+                : Motion.dur(context, Motion.quick),
+            curve: Motion.quickCurve,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: _down || _open
+                  ? Surface.pressed(context)
+                  : _hover
+                  ? Surface.hover(context)
+                  : MacosColors.transparent,
+              border: Border.all(color: Surface.hairline(context)),
+              borderRadius: const BorderRadius.all(Radius.circular(5)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Type.fileName,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  CupertinoIcons.chevron_up_chevron_down,
+                  size: 12,
+                  color: Surface.secondaryText(context),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Report layout changes even when only a child disclosure or animation rebuilds.
 class _PanelMeasure extends SingleChildRenderObjectWidget {
   const _PanelMeasure({required this.onHeight, required super.child});
@@ -1042,27 +1173,13 @@ class _Model extends StatelessWidget {
           else
             SizedBox(
               width: double.infinity,
-              child: MacosPopupButton<String>(
-                value: s.models.contains(s.chosenModel) ? s.chosenModel : null,
-                hint: Text(l10n.modelNotChosen, style: Type.fileName),
-                items: [
-                  for (final path in s.models)
-                    MacosPopupMenuItem(
-                      value: path,
-                      // modelLabel, а не modelDisplayName: одна и та же
-                      // модель в двух папках дала бы две одинаковые строки,
-                      // и какая из них выбрана — не понять.
-                      child: Text(
-                        modelLabel(path, s.models),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
+              child: _ModelPicker(
+                models: s.models,
+                chosen: s.chosenModel,
                 // Выбранное вступает в силу сразу; сервер при этом
                 // перезапускается только если модель правда сменилась —
                 // об этом заботится сам cubit.setModel.
-                onChanged: (v) => v == null ? null : cubit.setModel(v),
+                onChanged: cubit.setModel,
               ),
             ),
           const SizedBox(height: Gap.hint),

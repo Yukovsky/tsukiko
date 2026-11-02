@@ -616,6 +616,13 @@ final class DictationBridge: NSObject {
     case "panelHeight":
       panel.setHeight(CGFloat((args?["height"] as? Double) ?? 0))
       reply(nil)
+    case "showMenu":
+      panel.popUpMenu(
+        items: (args?["items"] as? [[String: Any]]) ?? [],
+        x: CGFloat((args?["x"] as? Double) ?? 0),
+        y: CGFloat((args?["y"] as? Double) ?? 0),
+        width: CGFloat((args?["width"] as? Double) ?? 0),
+        reply: reply)
     case "dockIcon":
       NSApp.setActivationPolicy(
         (args?["visible"] as? Bool) ?? true ? .regular : .accessory)
