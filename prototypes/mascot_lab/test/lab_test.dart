@@ -131,6 +131,13 @@ void main() {
     await tester.pump();
     expect(look(), 'tsukiko');
 
+    await tester.tap(find.byKey(const ValueKey('body')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('body'))).value,
+      false,
+    );
+
     await tester.tap(find.text('Слушает'));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byKey(const ValueKey('hero')));

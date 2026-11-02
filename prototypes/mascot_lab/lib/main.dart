@@ -42,6 +42,7 @@ class _MascotLabState extends State<MascotLab> {
   final field = TextEditingController(text: brandName);
   CatMood mood = CatMood.idle;
   bool animate = true;
+  bool body = false;
   int roll = 0;
 
   CatProfile get profile => CatProfile(field.text);
@@ -171,6 +172,7 @@ class _MascotLabState extends State<MascotLab> {
               profile: p,
               mood: mood,
               animate: animate,
+              body: body,
               size: 300,
             ),
           ),
@@ -205,7 +207,29 @@ class _MascotLabState extends State<MascotLab> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Тело и лапки', style: TextStyle(fontSize: 13)),
+                    Text(
+                      'Кот сидит целиком, лапы и хвост двигаются с настроением',
+                      style: TextStyle(fontSize: 11, color: _muted),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                key: const ValueKey('body'),
+                value: body,
+                onChanged: (value) => setState(() => body = value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 6,
