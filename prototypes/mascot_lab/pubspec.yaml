@@ -1,0 +1,21 @@
+name: tsukiko_mascot_lab
+description: Isolated, local-only Tsukiko character study.
+publish_to: none
+version: 0.1.0
+environment:
+  sdk: ^3.12.2
+dependencies:
+  flutter:
+    sdk: flutter
+  blobatar: 0.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: LabSans
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
