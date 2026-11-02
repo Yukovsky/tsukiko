@@ -791,6 +791,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
     jobActive: job?.active ?? false,
     hasJobs: job != null,
     longWait: (job?.segments.isEmpty ?? true) && job?.raw == null,
+    failed: job != null && !job.active && job.error != null,
   );
 
   @override
@@ -1522,8 +1523,9 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
       final segments = _visibleSegments(job);
       if (segments.isEmpty) {
         content = Center(
-          child: EmptyNotice(
-            icon: CupertinoIcons.search,
+          child: MascotPlaceholder(
+            mood: Mood.unsure,
+            height: 96,
             title: l10n.nothingFound,
             subtitle: l10n.subtitleQueryNotFound(_query),
           ),

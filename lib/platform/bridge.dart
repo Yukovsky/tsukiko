@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../core/app_locale.dart';
 import '../core/app_theme.dart';
+import '../core/cat_look.dart';
 import '../core/whisper_server.dart';
 import 'paste_check.dart';
 
@@ -181,6 +182,7 @@ class NativeBridge {
         // несколько, а правит настройки одно, и переключиться должны все сразу.
         refreshLocale();
         refreshTheme();
+        refreshCatLook();
         _reload.add(null);
       case 'tab':
         _tab.add(call.arguments as String);

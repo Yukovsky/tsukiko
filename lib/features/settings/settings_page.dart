@@ -9,6 +9,8 @@ import 'package:macos_ui/macos_ui.dart';
 
 import '../../core/app_locale.dart';
 import '../../core/app_theme.dart';
+import '../../core/cat_look.dart';
+import '../../design/mascot.dart';
 import '../../design/theme_fade.dart';
 import '../../core/library.dart';
 import '../../core/logger.dart';
@@ -47,6 +49,7 @@ void runSettings() {
   );
   refreshLocale();
   refreshTheme();
+  refreshCatLook();
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const SettingsApp());
 }
@@ -115,6 +118,7 @@ class _SettingsBodyState extends State<SettingsBody>
   /// Поле ввода подсказки для совместимости.
   final _promptCtrl = TextEditingController();
   final _wakeWordCtrl = TextEditingController();
+  late final _catLookCtrl = TextEditingController(text: catLook.value);
   final _closeWordCtrl = TextEditingController();
   final _enterWordCtrl = TextEditingController();
   final _modelsScroll = ScrollController();
@@ -175,6 +179,7 @@ class _SettingsBodyState extends State<SettingsBody>
     WidgetsBinding.instance.removeObserver(this);
     _promptCtrl.dispose();
     _wakeWordCtrl.dispose();
+    _catLookCtrl.dispose();
     _closeWordCtrl.dispose();
     _enterWordCtrl.dispose();
     _modelsScroll.dispose();
@@ -1969,6 +1974,24 @@ class _SettingsBodyState extends State<SettingsBody>
       ),
     ),
     Hint(l10n.hintTheme),
+    const SizedBox(height: Gap.item),
+    _Field(
+      l10n.fieldCatLook,
+      Row(
+        children: [
+          Expanded(
+            child: AppTextField(
+              controller: _catLookCtrl,
+              placeholder: defaultCatLook,
+              onChanged: _cubit.setCatLook,
+            ),
+          ),
+          const SizedBox(width: Gap.inner),
+          const Mascot(mood: Mood.idle, height: 72),
+        ],
+      ),
+    ),
+    Hint(l10n.hintCatLook),
     SectionTitle(l10n.sectionInSystem),
     Check(l10n.checkLoginItem, s.loginItem, _cubit.setLoginItem),
     Hint(l10n.hintLoginItem(os.menuBarName), under: true),

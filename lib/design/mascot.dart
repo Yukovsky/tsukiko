@@ -1,231 +1,114 @@
 import 'package:flutter/cupertino.dart';
-import 'package:macos_ui/macos_ui.dart';
 
+import '../core/cat_look.dart';
 import '../l10n/gen/app_localizations.dart';
+import 'cat/cat.dart';
 import 'design.dart';
 
-/// Настроения лунного кота. Каждому соответствует свой анимированный webp
-/// в assets/mascot — кадры вырезаны покадрово из оригинальных рисунков автора
-/// Feyza (https://feyzart.com/).
+/// Настроения лунного кота. Рисует его `cat/cat.dart`: голова собрана
+/// из строки внешности ([catLook]), настроения переходят одно в другое
+/// плавно.
 enum Mood {
   /// Пусто, ждём файлы.
   idle,
 
-  /// Файл в очереди, но распознавание не запущено.
+  /// Файл в очереди, но распознавание не запущено: кот дремлет.
   waiting,
 
-  /// Идёт распознавание — кот прислушивается.
+  /// Идёт распознавание или запись: кот прислушивается.
   listening,
 
   /// Модель долго думает над фрагментом.
   thinking,
 
-  /// Тапнули по коту или задание завершилось.
+  /// Всё получилось.
   happy,
 
   /// Файл тащат в окно.
   surprised,
+
+  /// Распознавание не удалось.
+  sad,
+
+  /// Ничего не нашлось или ничего не услышал.
+  unsure,
 }
 
-extension _Asset on Mood {
-  String get file => switch (this) {
-        Mood.idle || Mood.waiting => 'idle',
-        Mood.listening => 'listen',
-        Mood.thinking => 'think',
-        Mood.happy => 'happy',
-        Mood.surprised => 'surprise',
-      };
-
-  /// Насколько кот «подан вперёд». Возбуждённые состояния крупнее и ярче.
-  double get scale => switch (this) {
-        Mood.surprised => 1.07,
-        Mood.happy => 1.05,
-        Mood.listening => 1.02,
-        _ => 1.0,
-      };
-
-  double get opacity => switch (this) {
-        Mood.idle => 0.62,
-        Mood.waiting => 0.72,
-        Mood.listening || Mood.thinking => 0.9,
-        Mood.happy || Mood.surprised => 1.0,
-      };
-
-  /// Сила свечения под котом.
-  double get glow => switch (this) {
-        Mood.idle => 0.10,
-        Mood.waiting => 0.14,
-        Mood.listening => 0.30,
-        Mood.thinking => 0.22,
-        Mood.happy => 0.34,
-        Mood.surprised => 0.40,
+extension on Mood {
+  CatMood get cat => switch (this) {
+        Mood.idle => CatMood.idle,
+        Mood.waiting => CatMood.sleepy,
+        Mood.listening => CatMood.listening,
+        Mood.thinking => CatMood.thinking,
+        Mood.happy => CatMood.happy,
+        Mood.surprised => CatMood.surprised,
+        Mood.sad => CatMood.sad,
+        Mood.unsure => CatMood.unsure,
       };
 }
 
-/// Лунный кот. Полупрозрачный, реагирует на состояние приложения и на тычок.
+/// Лунный кот приложения. Дышит, моргает, смотрит на курсор; тычок, щелчок
+/// или Enter заставляют подмигнуть.
 ///
-/// Автор оригинального дизайна персонажа и иллюстраций — Feyza (https://feyzart.com/).
-///
-/// Смена настроения — кроссфейд, потому что кадры сняты из разных сцен и
-/// резкая склейка была бы заметна. Поверх статичных кадров идёт лёгкое
-/// покачивание, чтобы кот не выглядел приклеенным.
+/// Тикер кота сам замирает, когда окно не на переднем плане, когда
+/// система просит меньше движения и под выключенным TickerMode.
 class Mascot extends StatefulWidget {
   const Mascot({
     super.key,
     required this.mood,
     this.height = 132,
     this.interactive = true,
+    this.voiceLevel,
   });
 
+  /// Тесты выключают движение у всех котов разом.
+  static bool animate = true;
+
   final Mood mood;
+
+  /// Высота самого кота; поле под свечение добавляется сверху.
   final double height;
 
-  /// Можно ли тыкать в кота. В углу — да, в вуали перетаскивания — нет.
+  /// Можно ли тыкать в кота. В заглушке да, в вуали перетаскивания нет.
   final bool interactive;
+
+  /// Уровень голоса 0…1 во время записи: кот шевелит ртом в такт.
+  final double? voiceLevel;
 
   @override
   State<Mascot> createState() => _MascotState();
 }
 
-class _MascotState extends State<Mascot> with WidgetsBindingObserver {
-  /// Настроение, навязанное тычком. Живёт недолго и уступает место обычному.
-  Mood? _poke;
-  int _pokeToken = 0;
+class _MascotState extends State<Mascot> {
+  CatProfile? _profile;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) => setState(() {});
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  Mood get _mood => _poke ?? widget.mood;
-
-  void _tap() {
-    if (!widget.interactive) return;
-    final token = ++_pokeToken;
-    setState(() => _poke = Mood.happy);
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted && token == _pokeToken) setState(() => _poke = null);
-    });
-  }
+  CatProfile _profileFor(String look) =>
+      _profile?.text == look ? _profile! : (_profile = CatProfile(look));
 
   @override
   Widget build(BuildContext context) {
-    final mood = _mood;
-    final accent = MacosTheme.of(context).primaryColor;
-
-    // Кадры кота — анимированный webp: каждый новый кадр декодируется и
-    // перерисовывает окно, это около 11 % процессора без перерыва. Пока окно
-    // не в фокусе, смотреть на кота некому; Image слушает TickerMode и
-    // замирает на последнем кадре.
-    //
-    // Приглушение стоит вплотную к картинке, а не поверх всего кота, и это
-    // не мелочь раскладки. Раньше TickerMode накрывал и переходы: смена
-    // настроения, начатая при потерянном фокусе, запускала кроссфейд, чей
-    // ticker в ту же секунду оказывался приглушён, — и въезжающий кадр
-    // застывал прозрачным до самого возвращения фокуса. Со стороны это
-    // выглядит так, будто кот пропал совсем: свечение под ним есть, а его
-    // самого нет.
-    //
-    // gaplessPlayback — тот же случай с другой стороны. Смена признака
-    // TickerMode это смена унаследованного виджета, а на неё Image заново
-    // разрешает свой поток кадров. Без gaplessPlayback он на это время
-    // выбрасывает уже показанный кадр и рисует пустоту; с ним — держит
-    // последний, пока не придёт следующий.
-    Widget cat = TickerMode(
-      enabled: WidgetsBinding.instance.lifecycleState ==
-          AppLifecycleState.resumed,
-      child: Image.asset(
-        'assets/mascot/${mood.file}.webp',
-        height: widget.height,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.medium,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => SizedBox(height: widget.height),
+    // Кот рисуется в квадрате: голова занимает его середину, а края
+    // остаются свечению и ушам.
+    final side = widget.height * 1.25;
+    Widget cat = ValueListenableBuilder<String>(
+      valueListenable: catLook,
+      builder: (context, look, _) => LivingCat(
+        profile: _profileFor(look),
+        mood: widget.mood.cat,
+        size: side,
+        animate: Mascot.animate,
+        // На маленьком коте размытое свечение не разглядеть, а платить
+        // за него приходится каждый кадр.
+        glow: widget.height >= 64,
+        voiceLevel: widget.voiceLevel ?? .65,
       ),
     );
-
-    // Ключ должен быть на самом верхнем узле, иначе AnimatedSwitcher не
-    // заметит смену настроения и кроссфейда не будет.
-    cat = KeyedSubtree(key: ValueKey(mood.file), child: cat);
-
+    if (!widget.interactive) cat = IgnorePointer(child: cat);
     return Semantics(
-        label: AppLocalizations.of(context).semanticsMascotLabel,
-        button: widget.interactive,
-        child: MouseRegion(
-          cursor: widget.interactive
-              ? SystemMouseCursors.click
-              : MouseCursor.defer,
-          child: GestureDetector(
-            onTap: _tap,
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedScale(
-              duration: Motion.dur(context, Motion.toss),
-              curve: Motion.curve(context, Motion.tossCurve),
-              scale: mood.scale,
-              child: AnimatedOpacity(
-                duration: Motion.dur(context, Motion.settle),
-                curve: Motion.curve(context, Motion.settleCurve),
-                opacity: mood.opacity,
-                child: SizedBox(
-                  height: widget.height * 1.18,
-                  child: Stack(
-                    alignment: Alignment.bottomCenter,
-                    children: [
-                      // Свечение живёт отдельным слоем: так его можно гасить,
-                      // не трогая прозрачность самого кота.
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: AnimatedContainer(
-                            duration: Motion.dur(context, Motion.settle),
-                            curve: Motion.curve(context, Motion.settleCurve),
-                            decoration: BoxDecoration(
-                              gradient: RadialGradient(
-                                center: const Alignment(0, 0.35),
-                                radius: 0.78,
-                                colors: [
-                                  accent.withValues(alpha: mood.glow),
-                                  accent.withValues(alpha: mood.glow * 0.35),
-                                  accent.withValues(alpha: 0),
-                                ],
-                                stops: const [0, 0.5, 1],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        child: AnimatedSwitcher(
-                          duration: Motion.dur(
-                            context,
-                            const Duration(milliseconds: 300),
-                          ),
-                          switchInCurve: Curves.easeOut,
-                          switchOutCurve: Curves.easeIn,
-                          layoutBuilder: (current, previous) => Stack(
-                            alignment: Alignment.bottomCenter,
-                            children: [...previous, ?current],
-                          ),
-                          child: cat,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ));
+      label: AppLocalizations.of(context).semanticsMascotLabel,
+      excludeSemantics: true,
+      child: cat,
+    );
   }
 }
 
@@ -288,8 +171,10 @@ Mood moodFor({
   required bool jobActive,
   required bool hasJobs,
   required bool longWait,
+  bool failed = false,
 }) {
   if (dragging) return Mood.surprised;
+  if (failed) return Mood.sad;
   if (running && jobActive) return longWait ? Mood.thinking : Mood.listening;
   if (hasJobs) return Mood.waiting;
   return Mood.idle;

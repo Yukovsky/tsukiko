@@ -6,6 +6,7 @@ import 'package:macos_ui/macos_ui.dart';
 import 'package:macos_ui/src/layout/wallpaper_tinting_settings/global_wallpaper_tinting_settings.dart';
 import 'core/app_locale.dart';
 import 'core/app_theme.dart';
+import 'core/cat_look.dart';
 import 'design/theme_fade.dart';
 import 'core/logger.dart';
 import 'core/settings.dart';
@@ -71,6 +72,7 @@ Future<void> main(List<String> args) async {
   );
   refreshLocale();
   refreshTheme();
+  refreshCatLook();
   WidgetsFlutterBinding.ensureInitialized();
   // Заголовок окна рисует система — ей тоже надо сказать, какая тема
   // выбрана. Главный изолят узнаёт о смене из «reload», как и все.

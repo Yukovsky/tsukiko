@@ -44,6 +44,9 @@ dependencies:
   equatable: ^2.1.0
   bloc_concurrency: ^0.3.0
 
+  # Лунный кот (lib/design/cat): геометрия и позы лиц. MIT, версия закреплена.
+  blobatar: 0.1.0
+
   # Ради одного вызова Windows — GetShortPathNameW (см. os_windows.dart).
   # Сам dart:ffi встроен в SDK, но выделять память под строки ему нечем:
   # calloc живёт здесь. Издатель dart.dev — та же команда, что делает Dart,
@@ -89,7 +92,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/mascot/
     - macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png
     # Скилл едет внутри приложения, а не качается из репозитория: так
     # поставленный скилл всегда той же версии, что и программа, которую

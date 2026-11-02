@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/mascot/happy.webp" width="128" height="128" alt="Tsukiko Mascot" />
+<img src="docs/images/mascot.png" width="128" alt="Tsukiko Mascot" />
 
 # Tsukiko
 
