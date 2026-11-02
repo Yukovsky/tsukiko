@@ -53,6 +53,9 @@ class CatRig {
     this.lid = 0,
     this.frown = 0,
     this.attention = 0,
+    this.leftPaw = _floorLeft,
+    this.rightPaw = _floorRight,
+    this.tailUp = 0,
   });
   final double tilt, lift, leftEar, rightEar, arc, wink, blush, curve, open;
 
@@ -61,7 +64,58 @@ class CatRig {
   final double lid, frown;
   final double attention;
 
-  static CatRig forMood(CatMood mood) => switch (mood) {
+  /// The body's gesture: where each front paw is, in head-width units from
+  /// the chin, and how far the tail stands up off the floor. Blended like
+  /// the rest, so paws travel between poses instead of popping.
+  final Offset leftPaw, rightPaw;
+  final double tailUp;
+
+  static const _floorLeft = Offset(-.28, 1.5);
+  static const _floorRight = Offset(.28, 1.5);
+
+  static CatRig forMood(CatMood mood) {
+    final face = _face(mood);
+    final (left, right, tail) = switch (mood) {
+      CatMood.listening => (const Offset(-.3, 1.5), _floorRight, .7),
+      // A paw to the chin.
+      CatMood.thinking ||
+      CatMood.unsure => (_floorLeft, const Offset(.2, -.04), .3),
+      CatMood.happy ||
+      CatMood.love => (const Offset(-.4, -.12), const Offset(.4, -.12), .9),
+      CatMood.shy => (const Offset(-.34, -.08), const Offset(.34, -.08), 0.0),
+      CatMood.scared || CatMood.surprised => (
+        const Offset(-.26, .62),
+        const Offset(.26, .62),
+        1.0,
+      ),
+      CatMood.sad ||
+      CatMood.sick ||
+      CatMood.sleepy => (const Offset(-.18, 1.5), const Offset(.18, 1.5), 0.0),
+      CatMood.mad => (const Offset(-.38, 1.5), const Offset(.38, 1.5), 1.0),
+      // A little wave.
+      CatMood.wink || CatMood.smug => (_floorLeft, const Offset(.72, .02), .6),
+      _ => (_floorLeft, _floorRight, .2),
+    };
+    return CatRig(
+      tilt: face.tilt,
+      lift: face.lift,
+      leftEar: face.leftEar,
+      rightEar: face.rightEar,
+      arc: face.arc,
+      wink: face.wink,
+      blush: face.blush,
+      curve: face.curve,
+      open: face.open,
+      lid: face.lid,
+      frown: face.frown,
+      attention: face.attention,
+      leftPaw: left,
+      rightPaw: right,
+      tailUp: tail,
+    );
+  }
+
+  static CatRig _face(CatMood mood) => switch (mood) {
     CatMood.idle => const CatRig(),
     CatMood.listening => const CatRig(
       tilt: -.05,
@@ -171,6 +225,9 @@ class CatRig {
       lid: v(a.lid, b.lid),
       frown: v(a.frown, b.frown),
       attention: v(a.attention, b.attention),
+      leftPaw: Offset.lerp(a.leftPaw, b.leftPaw, t)!,
+      rightPaw: Offset.lerp(a.rightPaw, b.rightPaw, t)!,
+      tailUp: v(a.tailUp, b.tailUp),
     );
   }
 }
@@ -225,11 +282,12 @@ class LivingCat extends StatefulWidget {
     this.height,
     this.voiceLevel = .65,
     this.glow = true,
+    this.body = false,
     this.onPoke,
   });
   final CatProfile profile;
   final CatMood mood;
-  final bool animate, gaze, glow;
+  final bool animate, gaze, glow, body;
   final double size;
   final double? height;
   final double voiceLevel;
@@ -432,6 +490,7 @@ class _LivingCatState extends State<LivingCat>
                     profile: widget.profile,
                     mood: widget.mood,
                     glow: widget.glow,
+                    body: widget.body,
                     repaint: _repaint,
                     frame: () => CatFrame(
                       pose: _pose,
@@ -540,12 +599,16 @@ class CatPainter extends CustomPainter {
     required this.mood,
     required this.frame,
     this.glow = true,
+    this.body = false,
     super.repaint,
   });
   final CatProfile profile;
   final CatMood mood;
   final CatFrame Function() frame;
   final bool glow;
+
+  /// Draws the torso under the head, the cat a little smaller to fit it.
+  final bool body;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -583,6 +646,15 @@ class CatPainter extends CustomPainter {
     canvas.translate(size.width / 2, size.height / 2);
     canvas.scale(scale);
     canvas.translate(-50, -50);
+    if (body) {
+      // Room for the body under the head, the top edge kept in place.
+      canvas.translate(50, 4);
+      canvas.scale(.7);
+      canvas.translate(-50, -4);
+      _paintBody(canvas, b, r, head, ink, f.time);
+    }
+    // The head moves on its own; the paws come back to the body's frame.
+    canvas.save();
     canvas.translate(50, 74);
     canvas.rotate(r.tilt + f.gaze.dx * .006 - f.pet * .05);
     canvas.translate(0, r.lift);
@@ -651,6 +723,139 @@ class CatPainter extends CustomPainter {
     _paintMouth(canvas, b, ink, r, f.speech);
     _paintWear(canvas, b, ink, blush, right);
     canvas.restore();
+    if (body) _paintPaws(canvas, b, r, head, ink);
+    canvas.restore();
+  }
+
+  (Offset Function(double, double), double) _bodyFrame(blob.Body b) {
+    final u = b.rx;
+    final chin = b.cy + .8 * b.ry;
+    return ((x, y) => Offset(b.cx + x * u, chin + y * u), u);
+  }
+
+  /// The sitting body, after the app's own cat: a soft pear under the
+  /// floating head, haunches marked by one line each, a shadow on the floor
+  /// and a tail that never stops moving.
+  void _paintBody(
+    Canvas c,
+    blob.Body b,
+    CatRig r,
+    Color head,
+    Color ink,
+    double time,
+  ) {
+    final (o, u) = _bodyFrame(b);
+    final rim = Color.lerp(head, ink, .55)!;
+    c.drawOval(
+      Rect.fromCenter(center: o(.1, 1.6), width: 2.6 * u, height: .3 * u),
+      Paint()
+        ..color = ink.withValues(alpha: .35)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, u * .06),
+    );
+
+    // Behind the body: curled round the front on the floor when calm,
+    // standing up beside it when alert; the tip sways all the time.
+    final sway = math.sin(time / 650) * (.1 + r.tailUp * .08);
+    Offset bend(double x0, double y0, double x1, double y1) =>
+        o(x0 + (x1 - x0) * r.tailUp, y0 + (y1 - y0) * r.tailUp);
+    final t0 = o(.55, 1.3), t1 = bend(1.5, 1.66, 1.45, 1.5);
+    final t2 = bend(.45, 1.86, 1.55, .9);
+    final t3 = bend(-.35 + sway, 1.74, 1.3 + sway, .6 + sway * .4);
+    final tail = Path()
+      ..moveTo(t0.dx, t0.dy)
+      ..cubicTo(t1.dx, t1.dy, t2.dx, t2.dy, t3.dx, t3.dy);
+    for (final (color, width) in [(rim, .3 * u + 2.2), (head, .3 * u)]) {
+      c.drawPath(
+        tail,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = width
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    final torso = Path()..moveTo(o(-.24, .12).dx, o(-.24, .12).dy);
+    void cubic(List<double> v) => torso.cubicTo(
+      o(v[0], v[1]).dx,
+      o(v[0], v[1]).dy,
+      o(v[2], v[3]).dx,
+      o(v[2], v[3]).dy,
+      o(v[4], v[5]).dx,
+      o(v[4], v[5]).dy,
+    );
+    cubic([-.34, .5, -.98, .85, -.95, 1.38]);
+    cubic([-.92, 1.62, .92, 1.62, .95, 1.38]);
+    cubic([.98, .85, .34, .5, .24, .12]);
+    torso.quadraticBezierTo(
+      o(0, .08).dx,
+      o(0, .08).dy,
+      o(-.24, .12).dx,
+      o(-.24, .12).dy,
+    );
+    if (glow) {
+      c.drawPath(
+        torso,
+        Paint()
+          ..color = Color.lerp(head, Colors.white, .1)!.withValues(alpha: .3)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+    }
+    c.drawPath(torso, Paint()..color = head);
+    // Haunches: the top of each back leg.
+    for (final s in [-1.0, 1.0]) {
+      final thigh = Rect.fromCenter(
+        center: o(s * .62, 1.26),
+        width: .7 * u,
+        height: .62 * u,
+      );
+      c.drawArc(
+        thigh,
+        s < 0 ? math.pi * 1.05 : math.pi * 1.3,
+        math.pi * .65,
+        false,
+        Paint()
+          ..color = rim
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  /// The front legs, from the shoulders to wherever the pose puts the paws.
+  /// Legs are fur on fur and need no line; only the paws are outlined, as
+  /// in the original drawings.
+  void _paintPaws(Canvas c, blob.Body b, CatRig r, Color head, Color ink) {
+    final (o, u) = _bodyFrame(b);
+    final rim = Color.lerp(head, ink, .55)!;
+    for (final (side, paw) in [(-1.0, r.leftPaw), (1.0, r.rightPaw)]) {
+      final shoulder = o(side * .22, .42);
+      final at = o(paw.dx, paw.dy);
+      c.drawLine(
+        shoulder,
+        at,
+        Paint()
+          ..color = head
+          ..strokeWidth = .26 * u
+          ..strokeCap = StrokeCap.round,
+      );
+      // Bigger once lifted, so a paw at the face still reads as a paw.
+      final up = ((1.5 - paw.dy) / 1.4).clamp(0.0, 1.0);
+      final oval = Rect.fromCenter(
+        center: at,
+        width: (.36 + .1 * up) * u,
+        height: (.24 + .12 * up) * u,
+      );
+      c.drawOval(oval, Paint()..color = head);
+      c.drawOval(
+        oval,
+        Paint()
+          ..color = rim
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1,
+      );
+    }
   }
 
   /// A brush of hair at the ear's tip, splaying into three points. It is
