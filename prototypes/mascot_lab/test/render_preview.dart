@@ -1,83 +1,102 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:blobatar/blobatar.dart' as blob;
+import 'package:blobatar/flutter.dart' as native;
 import 'package:flutter/material.dart';
 import 'package:tsukiko_mascot_lab/cat.dart';
 
-/// Export frames from the production painter, rather than a second animation.
 Future<void> renderMotion(String output) async {
-  final directory = Directory('$output/frames')..createSync(recursive: true);
-  final p = CatProfile(kind: CatKind.moon);
-  final seeds = blob.motionSeedsFor(p.motionSeed);
-  const moods = [
-    CatMood.idle,
-    CatMood.listening,
-    CatMood.thinking,
-    CatMood.happy,
-  ];
-  for (var i = 0; i < 72; i++) {
-    final elapsed = i * 1000 / 15;
+  final dir = Directory('$output/blob-frames')..createSync(recursive: true);
+  const moods = [CatMood.idle, CatMood.thinking, CatMood.happy];
+  for (var index = 0; index < 72; index++) {
+    final time = index * 1000 / 15;
     final recorder = ui.PictureRecorder();
     final c = Canvas(recorder);
-    c.drawColor(const Color(0xff222223), BlendMode.src);
-    void text(String label, double x, double y, double size, Color color) {
-      final painter = TextPainter(
+    c.drawColor(const Color(0xff202024), BlendMode.src);
+    void text(String value, double x, double y, double size, Color color) {
+      final p = TextPainter(
         text: TextSpan(
-          text: label,
+          text: value,
           style: TextStyle(fontFamily: 'LabSans', fontSize: size, color: color),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      painter.paint(c, Offset(x, y));
+      p.paint(c, Offset(x, y));
     }
 
-    text('tsukiko / живая мастерская', 32, 24, 15, const Color(0xffbdb8cd));
-    text('Состояние меняет всего кота', 32, 62, 30, const Color(0xffebe7f1));
-    for (var j = 0; j < moods.length; j++) {
-      final mood = moods[j];
-      final rig = CatRig.forMood(mood);
-      final x = 18.0 + j * 240;
-      final frame = CatFrame(
-        pose: mood.expression.pose,
-        rig: rig,
-        motion: blob.motionAt(seeds, elapsed, 1),
-        time: elapsed,
-        speech: mood == CatMood.listening
-            ? .65 * (.35 + .65 * math.pow(math.sin(elapsed / 130), 2))
-            : 0,
-      );
-      c.save();
-      c.translate(x, 107);
-      CatPainter(
-        profile: p,
-        mood: mood,
-        frame: () => frame,
-      ).paint(c, const Size(230, 276));
-      c.restore();
-      text(mood.label, x + 58, 398, 18, const Color(0xffe2ddea));
-      c.save();
-      c.translate(x + 52, 438);
-      CatPainter(
-        profile: p,
-        mood: mood,
-        view: CatView.face,
-        frame: () => frame,
-      ).paint(c, const Size(124, 113));
-      c.restore();
-    }
+    text('tsukiko / blob cats', 35, 25, 15, const Color(0xffbcb3d3));
     text(
-      'Целый кот и компактная мордочка · общий профиль и эмоции Blobatar',
-      32,
-      575,
+      'Три новых кота на родной геометрии Blobatar',
+      35,
+      63,
+      27,
+      const Color(0xffece7f5),
+    );
+    for (var i = 0; i < CatShape.values.length; i++) {
+      final shape = CatShape.values[i];
+      final p = CatProfile(shape: shape);
+      final x = 32.0 + i * 318;
+      c.save();
+      c.translate(x + 5, 113);
+      CatPainter(
+        profile: p,
+        mood: CatMood.idle,
+        frame: () => CatFrame(
+          pose: blob.idle.pose,
+          motion: blob.motionAt(blob.motionSeedsFor(p.seed), time, 1),
+          time: time,
+        ),
+      ).paint(c, const Size(280, 280));
+      c.restore();
+      text(shape.label, x + 38, 406, 23, const Color(0xffece7f5));
+      c.save();
+      c.translate(x + 24, 450);
+      final renderer = native.AnimatedBlobatarRenderer(
+        name: p.seed,
+        options: p.options,
+      );
+      renderer.paint(
+        c,
+        const Size(54, 54),
+        native.AnimatedBlobatarFrame(
+          motion: blob.motionAt(blob.motionSeedsFor(p.seed), time, 0),
+          pose: blob.idle.pose,
+          headColor: p.head,
+          eyeColor: p.eyeColor,
+        ),
+      );
+      c.restore();
+      text('исходная форма', x + 88, 466, 13, const Color(0xffbcb3d3));
+      for (var j = 0; j < moods.length; j++) {
+        final mood = moods[j];
+        c.save();
+        c.translate(x + j * 100, 542);
+        CatPainter(
+          profile: p,
+          mood: mood,
+          frame: () => CatFrame(
+            pose: mood.expression.pose,
+            rig: CatRig.forMood(mood),
+            motion: blob.motionAt(blob.motionSeedsFor(p.seed), time, 1),
+            time: time,
+          ),
+        ).paint(c, const Size(95, 100));
+        c.restore();
+      }
+    }
+    text('Покой · думает · радуется', 35, 657, 13, const Color(0xffbcb3d3));
+    text(
+      'Один seed и одна палитра. Меняется форма; глаза и эмоции рисует официальный Flutter-порт.',
+      35,
+      697,
       14,
-      const Color(0xffbdb8cd),
+      const Color(0xffbcb3d3),
     );
     final picture = recorder.endRecording();
-    final image = await picture.toImage(996, 610);
+    final image = await picture.toImage(1018, 744);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     File(
-      '${directory.path}/${i.toString().padLeft(3, '0')}.png',
+      '${dir.path}/${index.toString().padLeft(3, '0')}.png',
     ).writeAsBytesSync(bytes!.buffer.asUint8List());
     image.dispose();
     picture.dispose();

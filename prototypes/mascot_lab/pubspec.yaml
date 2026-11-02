@@ -13,8 +13,6 @@ dev_dependencies:
     sdk: flutter
 flutter:
   uses-material-design: true
-  assets:
-    - assets/reference/current-cat.png
   fonts:
     - family: LabSans
       fonts:
