@@ -8,7 +8,6 @@ import 'package:tsukiko/core/vocabulary.dart';
 import 'package:tsukiko/design/design.dart';
 import 'package:tsukiko/features/settings/settings_cubit.dart';
 import 'package:tsukiko/platform/bridge.dart';
-import 'package:tsukiko/platform/os.dart';
 import 'package:tsukiko/features/settings/settings_page.dart';
 import 'package:tsukiko/features/settings/settings_state.dart';
 import 'package:tsukiko/l10n/gen/app_localizations.dart';
@@ -277,12 +276,7 @@ void main() {
       ('Голос', 'ГОЛОСОВАЯ АКТИВАЦИЯ'),
       ('Модели', 'АКТИВНЫЕ МОДЕЛИ'),
       ('Словарь', 'СЛОВАРЬ И ЗАМЕНЫ'),
-      (
-        'Общие',
-        os.platformId == 'windows'
-            ? 'Показывать значок на панели задач'
-            : 'Показывать значок в ${os.appIconAreaName}',
-      ),
+      ('Общие', 'ОФОРМЛЕНИЕ'),
     ]) {
       await tester.tap(find.text(label));
       await tester.pump();

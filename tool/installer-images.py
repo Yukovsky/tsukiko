@@ -47,7 +47,8 @@ from PIL import Image, ImageChops
 ROOT = Path(__file__).resolve().parent.parent
 DESIGN = ROOT / "design"
 ICON = DESIGN / "tsukiko-appicon.svg"
-MASCOT = ROOT / "assets" / "mascot" / "happy.webp"
+# Тот же кот, что на фоне образа macOS: test/design/cat/brand_art_test.dart.
+MASCOT = DESIGN / "dmg-mascot.png"
 
 # Размеры задаёт Inno Setup — ровно те, в которых он поставляет свои
 # собственные картинки мастера. WizardImageFile и WizardSmallImageFile
@@ -115,14 +116,16 @@ def dither(image: Image.Image) -> Image.Image:
 
 def banner(width: int, height: int) -> Image.Image:
     canvas = render(BANNER_SVG.format(w=width, h=height), width, height)
-    # Кот лежит на нижнем краю полосы — так он и нарисован: кадр
-    # маскота обрезан снизу нарочно, кот в нём лежит, а не парит.
-    # Прозрачные поля кадра сначала срезаем, иначе он встал бы боком.
+    # Голова кота стоит подбородком на нижнем краю полосы. Прозрачные
+    # поля кадра сначала срезаем, иначе он встал бы боком.
     cat = Image.open(MASCOT).convert("RGBA")
+    # Голова занимает две трети ширины: шире она закрыла бы подпись внизу.
     cat = cat.crop(cat.getbbox())
-    cat_height = int(cat.height * width / cat.width)
-    cat = cat.resize((width, cat_height), Image.LANCZOS)
-    canvas.alpha_composite(cat, (0, height - cat_height))
+    cat_width = width * 2 // 3
+    cat_height = int(cat.height * cat_width / cat.width)
+    cat = cat.resize((cat_width, cat_height), Image.LANCZOS)
+    canvas.alpha_composite(
+        cat, ((width - cat_width) // 2, height - cat_height - height // 12))
     return canvas.convert("RGB")
 
 

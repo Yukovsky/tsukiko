@@ -22,7 +22,7 @@ from dmg_layout import (CARD_SIZE, CARD_TOP, CONTENT_HEIGHT, CORNER_INSET, ICON_
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "design" / "dmg-background.tiff"
-# Кот с завершённым силуэтом: у исходного happy.webp тело обрезано слева.
+# Лунный кот из приложения: test/design/cat/brand_art_test.dart.
 MASCOT = ROOT / "design" / "dmg-mascot.png"
 
 # Картинка нарочно больше окна образа.

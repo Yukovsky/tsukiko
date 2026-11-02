@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/app_locale.dart';
 import '../../core/app_theme.dart';
+import '../../core/cat_look.dart';
 import '../../core/labels.dart';
 import '../../core/library.dart';
 import '../../core/logger.dart';
@@ -715,6 +716,19 @@ class SettingsCubit extends Cubit<SettingsState> {
     unawaited(_saveApp({localeSetting: v}));
   }
 
+  /// Внешность кота. Своё окно перерисовываем на каждой букве, на диск и
+  /// соседним окнам строка уходит, когда набор затих.
+  Timer? _catLookSave;
+  void setCatLook(String v) {
+    final look = v.trim();
+    catLook.value = look.isEmpty ? defaultCatLook : look;
+    _catLookSave?.cancel();
+    _catLookSave = Timer(
+      const Duration(milliseconds: 400),
+      () => unawaited(_saveApp({catLookSetting: look})),
+    );
+  }
+
   /// Тема окон. Как и язык: своё окно сразу, соседние — по «reload».
   ///
   /// Системе — раньше Flutter: на macOS она вешает на окна затухание, и
@@ -902,6 +916,11 @@ class SettingsCubit extends Cubit<SettingsState> {
   @override
   Future<void> close() {
     _timer?.cancel();
+    // Окно закрыли посреди набора: строка всё равно должна дойти до диска.
+    if (_catLookSave?.isActive ?? false) {
+      _catLookSave!.cancel();
+      unawaited(_saveApp({catLookSetting: catLook.value}));
+    }
     for (final s in _subs) {
       s.cancel();
     }

@@ -9,6 +9,7 @@ import 'package:macos_ui/macos_ui.dart';
 import '../../platform/bridge.dart';
 import '../../platform/os.dart';
 import '../../design/design.dart';
+import '../../design/mascot.dart';
 import '../../core/logger.dart';
 import '../../core/whisper_server.dart' show sweepRecordings;
 import 'dictation_cubit.dart';
@@ -16,6 +17,7 @@ import 'dictation_history.dart';
 import 'dictation_state.dart';
 import '../../core/app_locale.dart';
 import '../../core/app_theme.dart';
+import '../../core/cat_look.dart';
 import '../../design/theme_fade.dart';
 import '../../core/models.dart';
 import '../../core/text.dart';
@@ -37,6 +39,7 @@ Future<void> runPanel() async {
   );
   refreshLocale();
   refreshTheme();
+  refreshCatLook();
   WidgetsFlutterBinding.ensureInitialized();
   sweepRecordings();
   // Модели прежней установки переезжают к нам до того, как кто-нибудь
@@ -169,6 +172,8 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
+          _PanelCat(s),
+          const SizedBox(width: Gap.inner),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,6 +198,57 @@ class _Header extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Кот в заголовке панели: слушает запись и шевелит ртом в такт голосу,
+/// думает над распознаванием, грустит над бедой, дремлет при выключенной
+/// диктовке. Удачная расшифровка радует его на полторы секунды.
+class _PanelCat extends StatefulWidget {
+  const _PanelCat(this.s);
+  final DictationState s;
+
+  @override
+  State<_PanelCat> createState() => _PanelCatState();
+}
+
+class _PanelCatState extends State<_PanelCat> {
+  Timer? _joy;
+
+  @override
+  void didUpdateWidget(_PanelCat old) {
+    super.didUpdateWidget(old);
+    final s = widget.s;
+    if (old.s.phase == Phase.transcribing &&
+        s.phase == Phase.idle &&
+        s.failure == null) {
+      _joy?.cancel();
+      _joy = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) setState(() => _joy = null);
+      });
+    }
+    // Новая запись важнее радости за прошлую.
+    if (s.phase == Phase.recording) _joy?.cancel();
+  }
+
+  @override
+  void dispose() {
+    _joy?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.s;
+    final mood = switch (s.phase) {
+      Phase.recording => Mood.listening,
+      Phase.transcribing => Mood.thinking,
+      Phase.idle when _joy?.isActive ?? false => Mood.happy,
+      Phase.idle when s.failure != null => Mood.sad,
+      Phase.idle when !s.enabled => Mood.waiting,
+      Phase.idle => Mood.idle,
+    };
+    return Mascot(mood: mood, height: 36, voiceLevel: s.level);
   }
 }
 

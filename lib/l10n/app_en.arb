@@ -857,6 +857,8 @@
   "themeLight": "Light",
   "themeDark": "Dark",
   "hintTheme": "How tsukiko windows look. “Same as system” follows the system light or dark mode.",
+  "fieldCatLook": "Cat",
+  "hintCatLook": "A line of text sets the cat’s look: any name gives its own cat, the words “сакура”, “лопухи”, “бантик”, “наушники”, “месяц”, “кисточки”, “малыш” pin a part, #rrggbb sets the fur colour. Empty means the signature cat, tsukiko.",
   "trayAreaName": "the notification area",
   "checkShowTaskbarIcon": "Show the icon on the taskbar",
   "hintTaskbarIcon": "When off, {appName} remains available from the notification area but disappears from the taskbar.",
