@@ -56,6 +56,7 @@ class CatRig {
     this.leftPaw = _floorLeft,
     this.rightPaw = _floorRight,
     this.tailUp = 0,
+    this.fidget = 0,
   });
   final double tilt, lift, leftEar, rightEar, arc, wink, blush, curve, open;
 
@@ -70,31 +71,34 @@ class CatRig {
   final Offset leftPaw, rightPaw;
   final double tailUp;
 
-  static const _floorLeft = Offset(-.28, 1.5);
-  static const _floorRight = Offset(.28, 1.5);
+  /// How freely the cat busies itself while the mood holds: steps, kneads,
+  /// washes a paw. Blended, so an act fades out when the mood turns.
+  final double fidget;
+
+  static const _floorLeft = Offset(-.2, 1.76);
+  static const _floorRight = Offset(.2, 1.76);
 
   static CatRig forMood(CatMood mood) {
     final face = _face(mood);
     final (left, right, tail) = switch (mood) {
-      CatMood.listening => (const Offset(-.3, 1.5), _floorRight, .7),
+      CatMood.listening => (_floorLeft, _floorRight, 1.0),
       // A paw to the chin.
       CatMood.thinking ||
-      CatMood.unsure => (_floorLeft, const Offset(.2, -.04), .3),
+      CatMood.unsure => (_floorLeft, const Offset(.18, -.02), .2),
       CatMood.happy ||
-      CatMood.love => (const Offset(-.4, -.12), const Offset(.4, -.12), .9),
-      CatMood.shy => (const Offset(-.34, -.08), const Offset(.34, -.08), 0.0),
-      CatMood.scared || CatMood.surprised => (
-        const Offset(-.26, .62),
-        const Offset(.26, .62),
-        1.0,
+      CatMood.love => (const Offset(-.44, -.12), const Offset(.44, -.12), .9),
+      CatMood.shy => (const Offset(-.28, -.06), const Offset(.28, -.06), 0.0),
+      CatMood.scared ||
+      CatMood.surprised => (const Offset(-.3, .72), const Offset(.3, .72), 1.0),
+      CatMood.sad || CatMood.sick || CatMood.sleepy => (
+        const Offset(-.17, 1.76),
+        const Offset(.17, 1.76),
+        0.0,
       ),
-      CatMood.sad ||
-      CatMood.sick ||
-      CatMood.sleepy => (const Offset(-.18, 1.5), const Offset(.18, 1.5), 0.0),
-      CatMood.mad => (const Offset(-.38, 1.5), const Offset(.38, 1.5), 1.0),
+      CatMood.mad => (const Offset(-.26, 1.76), const Offset(.26, 1.76), 1.0),
       // A little wave.
-      CatMood.wink || CatMood.smug => (_floorLeft, const Offset(.72, .02), .6),
-      _ => (_floorLeft, _floorRight, .2),
+      CatMood.wink || CatMood.smug => (_floorLeft, const Offset(.82, -.04), .5),
+      _ => (_floorLeft, _floorRight, 0.0),
     };
     return CatRig(
       tilt: face.tilt,
@@ -112,8 +116,38 @@ class CatRig {
       leftPaw: left,
       rightPaw: right,
       tailUp: tail,
+      fidget: switch (mood) {
+        CatMood.idle || CatMood.sleepy || CatMood.smug => 1.0,
+        _ => 0.0,
+      },
     );
   }
+
+  CatRig copyWith({
+    double? tilt,
+    double? lift,
+    double? open,
+    Offset? leftPaw,
+    Offset? rightPaw,
+    double? tailUp,
+  }) => CatRig(
+    tilt: tilt ?? this.tilt,
+    lift: lift ?? this.lift,
+    leftEar: leftEar,
+    rightEar: rightEar,
+    arc: arc,
+    wink: wink,
+    blush: blush,
+    curve: curve,
+    open: open ?? this.open,
+    lid: lid,
+    frown: frown,
+    attention: attention,
+    leftPaw: leftPaw ?? this.leftPaw,
+    rightPaw: rightPaw ?? this.rightPaw,
+    tailUp: tailUp ?? this.tailUp,
+    fidget: fidget,
+  );
 
   static CatRig _face(CatMood mood) => switch (mood) {
     CatMood.idle => const CatRig(),
@@ -212,6 +246,14 @@ class CatRig {
 
   static CatRig lerp(CatRig a, CatRig b, double t) {
     double v(double x, double y) => x + (y - x) * t;
+    // A paw is lifted and set down, never slid: it rises on the way by
+    // as much as half the distance it travels. The left one starts first.
+    Offset paw(Offset from, Offset to, double t) =>
+        Offset.lerp(from, to, t)! -
+        Offset(
+          0,
+          math.sin(math.pi * t) * math.min(.3, (to - from).distance * .5),
+        );
     return CatRig(
       tilt: v(a.tilt, b.tilt),
       lift: v(a.lift, b.lift),
@@ -225,9 +267,10 @@ class CatRig {
       lid: v(a.lid, b.lid),
       frown: v(a.frown, b.frown),
       attention: v(a.attention, b.attention),
-      leftPaw: Offset.lerp(a.leftPaw, b.leftPaw, t)!,
-      rightPaw: Offset.lerp(a.rightPaw, b.rightPaw, t)!,
+      leftPaw: paw(a.leftPaw, b.leftPaw, (t * 1.3).clamp(0, 1)),
+      rightPaw: paw(a.rightPaw, b.rightPaw, (t * 1.3 - .3).clamp(0, 1)),
       tailUp: v(a.tailUp, b.tailUp),
+      fidget: v(a.fidget, b.fidget),
     );
   }
 }
@@ -613,7 +656,7 @@ class CatPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final f = frame();
-    final r = f.rig ?? CatRig.forMood(mood);
+    var r = f.rig ?? CatRig.forMood(mood);
     final baseMotion = f.motion;
     final gaze =
         f.gaze +
@@ -640,6 +683,8 @@ class CatPainter extends CustomPainter {
     final eye = f.eyeColor ?? CatProfile.hex(colors![blob.colorEye]!);
     final (_, _, ink, blush) = profile.colors;
     final b = profile.layout.body;
+    var tail = const <Offset>[];
+    var under = Path();
 
     final scale = math.min(size.width, size.height) / 112;
     canvas.save();
@@ -649,11 +694,15 @@ class CatPainter extends CustomPainter {
     if (body) {
       // Room for the body under the head, the top edge kept in place.
       canvas.translate(50, 4);
-      canvas.scale(.7);
+      canvas.scale(.6);
       canvas.translate(-50, -4);
-      _paintBody(canvas, b, r, head, ink, f.time);
+      final (busy, flick) = _fidget(r, b, f.time);
+      r = busy;
+      tail = _tail(r, f.time, flick);
+      under = _paintBody(canvas, b, r, head, ink, tail);
     }
     // The head moves on its own; the paws come back to the body's frame.
+    final frameAt = canvas.getTransform();
     canvas.save();
     canvas.translate(50, 74);
     canvas.rotate(r.tilt + f.gaze.dx * .006 - f.pet * .05);
@@ -689,6 +738,18 @@ class CatPainter extends CustomPainter {
       );
     }
     canvas.drawPath(shape, Paint()..color = head);
+    if (body) {
+      final headAt = Matrix4.fromFloat64List(canvas.getTransform());
+      under = Path.combine(
+        PathOperation.union,
+        under,
+        shape.transform(
+          (Matrix4.fromFloat64List(
+            frameAt,
+          )..invert()).multiplied(headAt).storage,
+        ),
+      );
+    }
     for (final t in tufts) {
       // Dipped in ink: darkest at the hair's end, fading back down the ear.
       final hair = Color.lerp(head, ink, .86)!;
@@ -723,7 +784,7 @@ class CatPainter extends CustomPainter {
     _paintMouth(canvas, b, ink, r, f.speech);
     _paintWear(canvas, b, ink, blush, right);
     canvas.restore();
-    if (body) _paintPaws(canvas, b, r, head, ink);
+    if (body) _paintPaws(canvas, b, r, head, ink, under);
     canvas.restore();
   }
 
@@ -733,49 +794,179 @@ class CatPainter extends CustomPainter {
     return ((x, y) => Offset(b.cx + x * u, chin + y * u), u);
   }
 
-  /// The sitting body, after the app's own cat: a soft pear under the
-  /// floating head, haunches marked by one line each, a shadow on the floor
-  /// and a tail that never stops moving.
-  void _paintBody(
+  /// Small things a cat does while its mood holds, one at a time, picked by
+  /// the clock and the cat's own seed: shifts from paw to paw, kneads, washes
+  /// a paw, flicks its tail. Each eases out of the held pose and back, so
+  /// nothing pops; the returned number is how hard the tail flicks.
+  (CatRig, double) _fidget(CatRig r, blob.Body b, double time) {
+    final every = profile.twitchEvery * 1.4;
+    final round = (time / every).floor();
+    final at = time - round * every;
+    final act = math.Random(round * 7919 + profile.text.hashCode).nextInt(4);
+    final w = r.fidget;
+    double hold(double length) {
+      final e = math.min(at / 450, (length - at) / 450).clamp(0.0, 1.0);
+      return e * e * (3 - 2 * e);
+    }
+
+    double bump(double from, double length) => at < from || at > from + length
+        ? 0
+        : math.sin(math.pi * (at - from) / length);
+    switch (act) {
+      case 0 when w > 0:
+        // Shifts its weight: one paw up and down, then the other.
+        final left = bump(0, 650) * w, right = bump(650, 650) * w;
+        return (
+          r.copyWith(
+            leftPaw: r.leftPaw - Offset(0, .16 * left),
+            rightPaw: r.rightPaw - Offset(0, .16 * right),
+            tilt: r.tilt + .02 * (right - left),
+          ),
+          0,
+        );
+      case 1 when w > 0:
+        // Kneads, head low and content.
+        final e = hold(2800) * w;
+        final press = math.sin(2 * math.pi * at / 700);
+        return (
+          r.copyWith(
+            leftPaw: r.leftPaw - Offset(0, .13 * math.max(0, press) * e),
+            rightPaw: r.rightPaw - Offset(0, .13 * math.max(0, -press) * e),
+            lift: r.lift + .8 * e,
+          ),
+          0,
+        );
+      case 2 when w > 0:
+        // Washes a paw: brings it to the mouth, lowers the head over it and
+        // licks in short strokes.
+        final e = hold(3600) * w;
+        final lick = math.sin(2 * math.pi * at / 520);
+        final (_, u) = _bodyFrame(b);
+        final mouth =
+            (profile.layout.eyes[0].cy + .13 * u - (b.cy + .8 * b.ry)) / u;
+        final paw = Offset(.16, mouth + .22 + .05 * lick);
+        return (
+          r.copyWith(
+            rightPaw: Offset.lerp(r.rightPaw, paw, e),
+            lift: r.lift + e * (1.6 + .5 * lick),
+            tilt: r.tilt + .06 * e,
+            open: math.max(r.open, .3 * e * math.max(0, lick)),
+          ),
+          0,
+        );
+      case 3:
+        final flick = bump(0, 1300);
+        return (r.copyWith(tailUp: r.tailUp + .2 * flick), flick);
+    }
+    return (r, 0);
+  }
+
+  /// The tail as a chain from the rump, thin at the root and swelling to a
+  /// round paddle at the tip, as in the drawings. On the floor it runs out to
+  /// the side and curls up; raised, it stands in an S beside the body. A wave
+  /// runs down it all the time.
+  List<Offset> _tail(CatRig r, double time, double flick) {
+    const floor = [0.0, 0.0, -.1, -.2, -.3, -.4, -.5, -.6, -.5, -.4];
+    const raised = [-.2, -.2, -.1, .1, .25, .3, .25, .05, -.3, -.5];
+    final up = r.tailUp.clamp(0.0, 1.0);
+    var a = .25 - .85 * up;
+    var p = const Offset(.5, 1.86);
+    final points = [p];
+    for (var i = 0; i < 20; i++) {
+      final j = i ~/ 2;
+      final wave =
+          math.sin(time / 760 - i * .3) * (.07 + .3 * flick) * (i / 19);
+      a += (floor[j] + (raised[j] - floor[j]) * up) / 2 + wave / 2;
+      p += Offset(math.cos(a), math.sin(a)) * .11;
+      points.add(p);
+    }
+    return points;
+  }
+
+  /// Where the elbow goes. Seen from the front a raised forearm is
+  /// foreshortened, so the leg is only a little longer than the reach: almost
+  /// straight on the floor, elbows out once the paw comes up to the face.
+  static Offset _elbow(Offset shoulder, Offset paw, double side) {
+    final d = paw - shoulder;
+    final reach = d.distance;
+    final lift = ((1.82 - paw.dy) / 1.9).clamp(0.0, 1.0);
+    final half = reach / 2 * (1.02 + .3 * lift);
+    var normal = Offset(-d.dy, d.dx) / reach;
+    if (normal.dx * side < 0) normal = -normal;
+    return shoulder +
+        d / 2 +
+        normal * math.sqrt(math.max(0, half * half - reach * reach / 4));
+  }
+
+  /// One filled shape along [p], [width] running from root to tip, both
+  /// ends round.
+  static Path _ribbon(List<Offset> p, double Function(double t) width) {
+    final side = <Offset>[], back = <Offset>[];
+    for (var i = 0; i < p.length; i++) {
+      final d = p[math.min(i + 1, p.length - 1)] - p[math.max(i - 1, 0)];
+      final n =
+          Offset(-d.dy, d.dx) / d.distance * (width(i / (p.length - 1)) / 2);
+      side.add(p[i] + n);
+      back.add(p[i] - n);
+    }
+    var path = Path()..addPolygon([...side, ...back.reversed], true);
+    for (final (at, w) in [(p.first, width(0)), (p.last, width(1))]) {
+      path = Path.combine(
+        PathOperation.union,
+        path,
+        Path()..addOval(Rect.fromCircle(center: at, radius: w / 2)),
+      );
+    }
+    return path;
+  }
+
+  /// A line of ink in the drawings' manner: full in the middle, tapering to
+  /// nothing at both ends, [width] given per point.
+  static void _brush(
+    Canvas c,
+    List<Offset> p,
+    List<double> width,
+    Color color,
+  ) {
+    if (p.length < 3 || width.reduce(math.max) <= .05) return;
+    final side = <Offset>[], back = <Offset>[];
+    for (var i = 0; i < p.length; i++) {
+      final d = p[math.min(i + 1, p.length - 1)] - p[math.max(i - 1, 0)];
+      final n =
+          Offset(-d.dy, d.dx) /
+          d.distance *
+          (width[i] /
+              2 *
+              math.pow(math.sin(math.pi * i / (p.length - 1)).abs(), .5));
+      side.add(p[i] + n);
+      back.add(p[i] - n);
+    }
+    c.drawPath(
+      Path()..addPolygon([...side, ...back.reversed], true),
+      Paint()..color = color,
+    );
+  }
+
+  /// The sitting body, after Feyza's cats: a narrow egg under the wide
+  /// floating head, back feet peeking out at the floor and a tail that
+  /// swells to a paddle. Body, feet and tail are one flat shape with no
+  /// outline.
+  Path _paintBody(
     Canvas c,
     blob.Body b,
     CatRig r,
     Color head,
     Color ink,
-    double time,
+    List<Offset> tail,
   ) {
     final (o, u) = _bodyFrame(b);
-    final rim = Color.lerp(head, ink, .55)!;
     c.drawOval(
-      Rect.fromCenter(center: o(.1, 1.6), width: 2.6 * u, height: .3 * u),
+      Rect.fromCenter(center: o(.1, 2), width: 2.4 * u, height: .26 * u),
       Paint()
         ..color = ink.withValues(alpha: .35)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, u * .06),
     );
-
-    // Behind the body: curled round the front on the floor when calm,
-    // standing up beside it when alert; the tip sways all the time.
-    final sway = math.sin(time / 650) * (.1 + r.tailUp * .08);
-    Offset bend(double x0, double y0, double x1, double y1) =>
-        o(x0 + (x1 - x0) * r.tailUp, y0 + (y1 - y0) * r.tailUp);
-    final t0 = o(.55, 1.3), t1 = bend(1.5, 1.66, 1.45, 1.5);
-    final t2 = bend(.45, 1.86, 1.55, .9);
-    final t3 = bend(-.35 + sway, 1.74, 1.3 + sway, .6 + sway * .4);
-    final tail = Path()
-      ..moveTo(t0.dx, t0.dy)
-      ..cubicTo(t1.dx, t1.dy, t2.dx, t2.dy, t3.dx, t3.dy);
-    for (final (color, width) in [(rim, .3 * u + 2.2), (head, .3 * u)]) {
-      c.drawPath(
-        tail,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = width
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-
-    final torso = Path()..moveTo(o(-.24, .12).dx, o(-.24, .12).dy);
+    final torso = Path()..moveTo(o(-.26, 0).dx, o(-.26, 0).dy);
     void cubic(List<double> v) => torso.cubicTo(
       o(v[0], v[1]).dx,
       o(v[0], v[1]).dy,
@@ -784,77 +975,146 @@ class CatPainter extends CustomPainter {
       o(v[4], v[5]).dx,
       o(v[4], v[5]).dy,
     );
-    cubic([-.34, .5, -.98, .85, -.95, 1.38]);
-    cubic([-.92, 1.62, .92, 1.62, .95, 1.38]);
-    cubic([.98, .85, .34, .5, .24, .12]);
+    // Narrow at the chest, wide at the floor where the folded back legs
+    // pool out on both sides.
+    cubic([-.34, .5, -.6, .9, -.74, 1.45]);
+    cubic([-.84, 1.9, -.4, 1.98, 0, 1.98]);
+    cubic([.4, 1.98, .84, 1.9, .74, 1.45]);
+    cubic([.6, .9, .34, .5, .26, 0]);
     torso.quadraticBezierTo(
-      o(0, .08).dx,
-      o(0, .08).dy,
-      o(-.24, .12).dx,
-      o(-.24, .12).dy,
+      o(0, -.05).dx,
+      o(0, -.05).dy,
+      o(-.26, 0).dx,
+      o(-.26, 0).dy,
     );
+    var shape = Path.combine(
+      PathOperation.union,
+      torso,
+      _ribbon([
+        for (final p in tail) o(p.dx, p.dy),
+      ], (t) => (.18 + .26 * t * t) * u),
+    );
+    for (final s in [-1.0, 1.0]) {
+      shape = Path.combine(
+        PathOperation.union,
+        shape,
+        Path()..addOval(
+          Rect.fromCenter(
+            center: o(s * .64, 1.93),
+            width: .46 * u,
+            height: .24 * u,
+          ),
+        ),
+      );
+    }
     if (glow) {
       c.drawPath(
-        torso,
+        shape,
         Paint()
           ..color = Color.lerp(head, Colors.white, .1)!.withValues(alpha: .3)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
     }
-    c.drawPath(torso, Paint()..color = head);
-    // Haunches: the top of each back leg.
-    for (final s in [-1.0, 1.0]) {
-      final thigh = Rect.fromCenter(
-        center: o(s * .62, 1.26),
-        width: .7 * u,
-        height: .62 * u,
-      );
-      c.drawArc(
-        thigh,
-        s < 0 ? math.pi * 1.05 : math.pi * 1.3,
-        math.pi * .65,
-        false,
-        Paint()
-          ..color = rim
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.1
-          ..strokeCap = StrokeCap.round,
-      );
-    }
+    c.drawPath(shape, Paint()..color = head);
+    return shape;
   }
 
-  /// The front legs, from the shoulders to wherever the pose puts the paws.
-  /// Legs are fur on fur and need no line; only the paws are outlined, as
-  /// in the original drawings.
-  void _paintPaws(Canvas c, blob.Body b, CatRig r, Color head, Color ink) {
+  /// The front legs, painted over the head so a paw can reach the face.
+  /// As in Feyza's drawings a leg is not drawn round: it is a broad lobe of
+  /// the same flat colour, and ink marks only those stretches of its edge
+  /// that lie over the body, the head or the other leg. Where the edge meets
+  /// the background the silhouette itself shows it, and each line tapers out
+  /// where the edge leaves the fill. Where the paws overlap only the front
+  /// one's edge shows, so they meet in one line. On the floor a paw is a
+  /// round hump, the pair reading "∩∩"; folded to the chest, ")(".
+  void _paintPaws(
+    Canvas c,
+    blob.Body b,
+    CatRig r,
+    Color head,
+    Color ink,
+    Path under,
+  ) {
     final (o, u) = _bodyFrame(b);
-    final rim = Color.lerp(head, ink, .55)!;
+    final line = Color.lerp(head, ink, .85)!;
+    Offset at(Offset p) => o(p.dx, p.dy);
+    var rest = under;
     for (final (side, paw) in [(-1.0, r.leftPaw), (1.0, r.rightPaw)]) {
-      final shoulder = o(side * .22, .42);
-      final at = o(paw.dx, paw.dy);
-      c.drawLine(
-        shoulder,
-        at,
-        Paint()
-          ..color = head
-          ..strokeWidth = .26 * u
-          ..strokeCap = StrokeCap.round,
-      );
-      // Bigger once lifted, so a paw at the face still reads as a paw.
-      final up = ((1.5 - paw.dy) / 1.4).clamp(0.0, 1.0);
-      final oval = Rect.fromCenter(
-        center: at,
-        width: (.36 + .1 * up) * u,
-        height: (.24 + .12 * up) * u,
-      );
-      c.drawOval(oval, Paint()..color = head);
-      c.drawOval(
-        oval,
-        Paint()
-          ..color = rim
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.1,
-      );
+      // How far the paw is down on the floor. There the leg shrinks to a
+      // hump sitting on the paw, its top edge inked; lifted, it reaches
+      // from the shoulder and its upper end melts into the chest.
+      final e = ((paw.dy - 1.3) / .4).clamp(0.0, 1.0);
+      final floor = e * e * (3 - 2 * e);
+      // Standing, the legs meet down the middle so they share one line.
+      final shoulder = Offset(side * (.2 - .1 * floor), .78);
+      double half(double t) => .12 + .1 * t * t;
+      final elbow = paw.dy < 1.55
+          ? _elbow(shoulder, paw, side)
+          : Offset.lerp(shoulder, paw, .5)!;
+      final bone = [
+        for (var i = 0; i <= 16; i++)
+          () {
+            final t = i / 16;
+            return shoulder * ((1 - t) * (1 - t)) +
+                elbow * (2 * t * (1 - t)) +
+                paw * (t * t);
+          }(),
+      ];
+      final leg = _ribbon([
+        for (final p in bone) at(p),
+      ], (t) => 2 * half(t) * u);
+      c.drawPath(leg, Paint()..color = head);
+      Offset across(int i) {
+        final d =
+            bone[math.min(i + 1, bone.length - 1)] - bone[math.max(i - 1, 0)];
+        return Offset(-d.dy, d.dx) / d.distance;
+      }
+
+      // The whole edge as a loop: down one side, round the paw, up the
+      // other side and over the shoulder end, each point with its outward
+      // normal and how much ink it may take.
+      Iterable<(Offset, Offset, double)> cap(int i, double from) sync* {
+        for (var k = 1; k < 12; k++) {
+          final a = from - math.pi * k / 12;
+          final n = Offset(math.cos(a), math.sin(a));
+          yield (bone[i] + n * half(i / 16), n, i == 0 ? 0.0 : 1.0);
+        }
+      }
+
+      // On the floor the ink is the hump's top arc, fading down its sides.
+      double weight(int i) => ((i - 3) / 4).clamp(0.0, 1.0);
+      final tip = across(16), root = -across(0);
+      final edge = [
+        for (var i = 0; i <= 16; i++)
+          (bone[i] + across(i) * half(i / 16), across(i), weight(i)),
+        ...cap(16, math.atan2(tip.dy, tip.dx)),
+        for (var i = 16; i >= 0; i--)
+          (bone[i] - across(i) * half(i / 16), -across(i), weight(i)),
+        ...cap(0, math.atan2(root.dy, root.dx)),
+      ];
+      final inked = [
+        for (final (p, n, w) in edge) w > .02 && rest.contains(at(p + n * .04)),
+      ];
+      // Start the walk where the edge is bare, so no line is cut in two.
+      final from = inked.indexOf(false);
+      final run = <Offset>[], width = <double>[];
+      void flush() {
+        if (run.isNotEmpty) _brush(c, run, width, line);
+        run.clear();
+        width.clear();
+      }
+
+      for (var j = 0; j <= edge.length; j++) {
+        final k = (math.max(from, 0) + j) % edge.length;
+        if (inked[k]) {
+          run.add(at(edge[k].$1));
+          width.add(.07 * u * edge[k].$3);
+        } else {
+          flush();
+        }
+      }
+      flush();
+      rest = Path.combine(PathOperation.union, rest, leg);
     }
   }
 

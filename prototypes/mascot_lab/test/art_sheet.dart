@@ -12,6 +12,7 @@ Future<void> sheet(
   int columns = 5,
   double cell = 260,
   double top = 0,
+  bool body = false,
 }) async {
   final rows = (cells.length / columns).ceil();
   final recorder = ui.PictureRecorder();
@@ -26,6 +27,7 @@ Future<void> sheet(
     CatPainter(
       profile: p,
       mood: mood,
+      body: body,
       frame: () => CatFrame(
         pose: mood.expression.pose,
         motion: blob.motionAt(p.seeds, 0, 0),

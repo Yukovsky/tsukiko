@@ -42,7 +42,7 @@ class _MascotLabState extends State<MascotLab> {
   final field = TextEditingController(text: brandName);
   CatMood mood = CatMood.idle;
   bool animate = true;
-  bool body = true;
+  bool body = false;
   int roll = 0;
 
   CatProfile get profile => CatProfile(field.text);
