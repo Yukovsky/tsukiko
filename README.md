@@ -191,6 +191,8 @@ Download pre-compiled binaries from the **[Releases](https://github.com/Yukovsky
 | **macOS** | `tsukiko.dmg` | Universal DMG (Apple Silicon M1–M4 & Intel x86_64), signed with Apple Developer ID. |
 | **Windows** | `tsukiko-setup.exe` | Native installer with automatic Vulkan GPU detection and CPU fallback. |
 
+After that the app updates itself: on launch and via "Check for updates" in the About window it finds a new release, downloads the file for your system, checks its SHA-256 against `SHA256SUMS.txt` and installs it after you press "Restart". The portable `tsukiko-portable.zip` build is not updated this way; it opens the release page instead.
+
 ---
 
 ### First Launch on macOS

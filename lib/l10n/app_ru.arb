@@ -1390,6 +1390,26 @@
   "updateFoundBody": "Скачайте её со страницы выпуска и поставьте поверх нынешней: настройки и модели останутся на месте.",
   "buttonOpenReleasePage": "Открыть страницу",
   "buttonLater": "Потом",
+  "buttonUpdate": "Обновить",
+  "updateDownloading": "Скачиваем обновление… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "updateFailed": "Не удалось скачать обновление, попробуйте позже",
+  "updateReadyTitle": "Версия {version} скачана",
+  "@updateReadyTitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updateReadyBody": "Перезапустить сейчас? Настройки и модели останутся на месте.",
+  "buttonRestartNow": "Перезапустить",
   "sectionApi": "Местное API",
   "checkApiEnabled": "Разрешить программам расшифровывать через tsukiko",
   "hintApiEnabled": "Приложение начинает слушать 127.0.0.1:{port} — только эту машину, не сеть. Скрипт или нейросетевой агент кладёт запись в ту же очередь, что и вы руками, и забирает готовый текст.",

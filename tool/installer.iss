@@ -207,6 +207,9 @@ Type: filesandordirs; Name: "{app}"
 ; флага приложение стартовало от администратора — а в такое окно Проводник
 ; не даёт перетаскивать файлы.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Обновление из приложения ставит без окон (/SILENT) и само уже закрыто:
+; запускаем новую версию сразу, раз кнопки «Запустить» никто не увидит.
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [Code]
 const

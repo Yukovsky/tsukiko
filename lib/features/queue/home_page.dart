@@ -142,6 +142,9 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
     _searchCtrl.addListener(() {
       if (_searchCtrl.text != _query) setState(() => _query = _searchCtrl.text);
     });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _checkUpdates(quiet: true),
+    );
   }
 
   /// Раннер присылает, где курсор (логические точки от левого верхнего угла
@@ -252,12 +255,13 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _checkUpdates() async {
-    _send(StatusReported(l10n.updateChecking));
+  /// [quiet] — проверка на старте: молчит, пока не найдёт новое.
+  Future<void> _checkUpdates({bool quiet = false}) async {
+    if (!quiet) _send(StatusReported(l10n.updateChecking));
     final update = await checkForUpdate(appVersion);
     if (!mounted) return;
     if (update == null) {
-      _send(StatusReported(l10n.updateNone(appVersion)));
+      if (!quiet) _send(StatusReported(l10n.updateNone(appVersion)));
       return;
     }
     _send(StatusReported(l10n.updateFoundTitle(update.version)));
@@ -281,9 +285,13 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           controlSize: ControlSize.large,
           onPressed: () {
             Navigator.pop(dialogContext);
-            openReleasePage(update.url);
+            update.installable
+                ? _installUpdate(update)
+                : openReleasePage(update.url);
           },
-          child: Text(l10n.buttonOpenReleasePage),
+          child: Text(
+            update.installable ? l10n.buttonUpdate : l10n.buttonOpenReleasePage,
+          ),
         ),
         secondaryButton: PushButton(
           controlSize: ControlSize.large,
@@ -293,6 +301,59 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// Скачать, сверить сумму, спросить про перезапуск и поставить.
+  Future<void> _installUpdate(Update update) async {
+    final File file;
+    try {
+      file = await downloadUpdate(
+        update,
+        (percent) => _send(StatusReported(l10n.updateDownloading(percent))),
+      );
+    } catch (e, stack) {
+      Log.warn('Update', 'Download failed: $e', e, stack);
+      _send(StatusReported(l10n.updateFailed));
+      return;
+    }
+    if (!mounted) return;
+    _send(StatusReported(l10n.updateReadyTitle(update.version)));
+    final restart = await showMacosAlertDialog<bool>(
+      context: context,
+      builder: (dialogContext) => MacosAlertDialog(
+        appIcon: const MacosIcon(
+          CupertinoIcons.arrow_clockwise_circle,
+          size: IconSize.hero,
+        ),
+        title: Text(
+          l10n.updateReadyTitle(update.version),
+          style: Type.emptyTitle,
+        ),
+        message: Text(
+          l10n.updateReadyBody,
+          textAlign: TextAlign.center,
+          style: Type.control,
+        ),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(l10n.buttonRestartNow),
+        ),
+        secondaryButton: PushButton(
+          controlSize: ControlSize.large,
+          secondary: true,
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: Text(l10n.buttonLater),
+        ),
+      ),
+    );
+    if (restart != true) return;
+    if (await installUpdate(file)) {
+      await _bloc.bridge.quit();
+    } else {
+      Log.warn('Update', 'Cannot install in place, opening the release page');
+      await openReleasePage(update.url);
+    }
   }
 
   /// Список сочетаний — там, где строки меню нет.
@@ -489,9 +550,7 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           onPressed: () => Navigator.pop(dialogContext),
           child: Text(l10n.buttonClose),
         ),
-        // Своего самообновления нет намеренно — см. lib/core/update.dart.
-        // Приложение только смотрит, не вышло ли новее, и отводит
-        // на страницу выпуска.
+        // Как устроено обновление — см. lib/core/update.dart.
         secondaryButton: PushButton(
           controlSize: ControlSize.large,
           secondary: true,

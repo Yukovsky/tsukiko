@@ -19,6 +19,15 @@ void main() {
     expect(isNewer('1.0.0', '1.0.0+1'), isFalse);
   });
 
+  test('сумма берётся из описи только для своего файла', () {
+    const sums = 'AB12  tsukiko.dmg\n'
+        'cd34 *tsukiko-setup.exe\n';
+    expect(expectedSum(sums, 'tsukiko.dmg'), 'ab12');
+    expect(expectedSum(sums, 'tsukiko-setup.exe'), 'cd34');
+    // Нет в описи — нечем проверить, и ставить такое нельзя.
+    expect(expectedSum(sums, 'tsukiko-portable.zip'), isNull);
+  });
+
   test('без сети и на чужой ответ новостей просто нет', () async {
     // Не исключение и не сообщение: проверка обновлений — не тот повод,
     // чтобы беспокоить человека.
