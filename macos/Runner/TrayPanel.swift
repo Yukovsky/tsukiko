@@ -144,7 +144,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     effect.layer?.masksToBounds = true
     effect.autoresizingMask = [.width, .height]
 
-    let dim = NSView(frame: effect.bounds)
+    let dim = ClickThroughView(frame: effect.bounds)
     dim.wantsLayer = true
     dim.layer?.backgroundColor = NSColor.black.withAlphaComponent(Self.dimAlpha).cgColor
     dim.autoresizingMask = [.width, .height]
@@ -406,4 +406,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     // меню системный фокус прыгает между вспомогательными окнами, из-за чего
     // панель моментально схлопывалась. Закрытием управляют click-мониторы.
   }
+}
+
+
+/// Затемнение под содержимым не должно принимать мышь: иначе щелчки
+/// достаются ему, а не Flutter-кнопкам над ним.
+private final class ClickThroughView: NSView {
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
