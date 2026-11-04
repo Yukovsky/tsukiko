@@ -274,7 +274,57 @@ final class DictationBridge: NSObject {
   /// запускает тот же бинарник, но с флагом --login-item в argv, и по нему
   /// AppDelegate узнаёт о входе в систему, не трогая Apple Event.
   private static let loginAgent = SMAppService.agent(
+    plistName: "app.yuko.tsukiko.login.plist")
+
+  /// Прежний агент. Система хранит запись агента вместе с командой
+  /// разработчика, под которой он был зарегистрирован, и после смены подписи
+  /// launchd убивает приложение при каждом входе (Launch Constraint
+  /// Violation), а перерегистрация под тем же именем запись не обновляет.
+  /// Новое имя заводит свежую запись. Старую снимаем один раз и, если
+  /// автозапуск был включён, включаем новую.
+  private static let legacyLoginAgent = SMAppService.agent(
     plistName: "app.yuko.tsukiko.login-item.plist")
+
+  static func migrateLoginAgent() {
+    DispatchQueue.global(qos: .utility).async {
+      let old = legacyLoginAgent
+      guard old.status != .notFound, old.status != .notRegistered else { return }
+      let wasOn = old.status == .enabled
+      try? old.unregister()
+      if wasOn { try? loginAgent.register() }
+    }
+  }
+
+  /// Выданные права (Универсальный доступ) система привязывает к подписи.
+  /// После смены сертификата запись в списке выглядит включённой, но не
+  /// действует, и сбросить её можно только заново. Если подпись сменилась
+  /// (или мы её ещё не запоминали) и права не работают, сбрасываем запись
+  /// сами: приложение появится в списке заново по кнопке «Запросить».
+  static func resetStaleAccessOnSignerChange() {
+    var team = ""
+    var code: SecCode?
+    if SecCodeCopySelf([], &code) == errSecSuccess, let code {
+      var staticCode: SecStaticCode?
+      if SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode {
+        var info: CFDictionary?
+        if SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+          let dict = info as? [String: Any]
+        {
+          team = dict[kSecCodeInfoTeamIdentifier as String] as? String ?? ""
+        }
+      }
+    }
+    let key = "signerTeam"
+    let defaults = UserDefaults.standard
+    guard !team.isEmpty, defaults.string(forKey: key) != team else { return }
+    defaults.set(team, forKey: key)
+    guard !AXIsProcessTrusted(), let id = Bundle.main.bundleIdentifier else { return }
+    let tccutil = Process()
+    tccutil.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+    tccutil.arguments = ["reset", "Accessibility", id]
+    try? tccutil.run()
+    tccutil.waitUntilExit()
+  }
 
   /// Старая регистрация через SMAppService.mainApp (до перехода на
   /// launch-агента) указывает на путь внутри build/, который сносит

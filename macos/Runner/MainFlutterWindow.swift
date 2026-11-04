@@ -59,8 +59,10 @@ class MainFlutterWindow: NSWindow {
       // сервер живой первой копии.
       guard AppDelegate.running == nil else { return }
       ranOnce = true
+      DictationBridge.resetStaleAccessOnSignerChange()
       DictationBridge.shared.start()
       DictationBridge.retireStaleMainAppRegistration()
+      DictationBridge.migrateLoginAgent()
 
       // Автозапуск нужен ради диктовки, а не ради расшифровщика: при входе
       // в систему поднимаем только строку меню. Окно никуда не делось —
