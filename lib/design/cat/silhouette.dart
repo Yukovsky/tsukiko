@@ -22,10 +22,10 @@ const _sides = {
   // instead of corners: the drawn cats' head.
   CatHead.mochi: [
     Vertex(1.06, -.26),
-    Vertex(1.24, .24, .5),
-    Vertex(1.04, .64, .5),
-    Vertex(.6, .86),
-    Vertex(0, .9),
+    Vertex(1.24, .22, .5),
+    Vertex(1.0, .52, .5),
+    Vertex(.6, .76, .5),
+    Vertex(0, .86, .5),
   ],
   CatHead.bun: [
     Vertex(1.04, -.12),

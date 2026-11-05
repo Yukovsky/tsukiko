@@ -997,19 +997,37 @@ class CatPainter extends CustomPainter {
     if (arcIn > 0) {
       final k = bend > 0 ? 1.0 : -1.0;
       final rx = eye.rx, ry = eye.ry;
+      // A filled crescent, thick in the middle and fine at the ends; glad
+      // eyes arch high, sleeping ones sag only a little.
+      final rise = bend > 0 ? 1.0 : .62;
+      final crescent = Path()
+        ..moveTo(-rx * .82, ry * .16 * k)
+        ..quadraticBezierTo(
+          0,
+          -ry * (1.1 * rise + .2) * k,
+          rx * .82,
+          ry * .16 * k,
+        )
+        ..quadraticBezierTo(
+          0,
+          -ry * (1.1 * rise - .55) * k,
+          -rx * .82,
+          ry * .16 * k,
+        )
+        ..close();
+      final pale = Color.lerp(
+        color,
+        Colors.white,
+        .6,
+      )!.withValues(alpha: arcIn);
+      c.drawPath(crescent, Paint()..color = pale);
       c.drawPath(
-        Path()
-          ..moveTo(-rx * .8, ry * .18 * k)
-          ..quadraticBezierTo(0, -ry * .95 * k, rx * .8, ry * .18 * k),
+        crescent,
         Paint()
-          ..color = Color.lerp(
-            color,
-            Colors.white,
-            .6,
-          )!.withValues(alpha: arcIn)
+          ..color = pale
           ..style = PaintingStyle.stroke
-          ..strokeWidth = ry * .36
-          ..strokeCap = StrokeCap.round,
+          ..strokeWidth = ry * .1
+          ..strokeJoin = StrokeJoin.round,
       );
     }
     final seen = (1 - shut * 2).clamp(0.0, 1.0);
@@ -1017,7 +1035,9 @@ class CatPainter extends CustomPainter {
       c.restore();
       return;
     }
-    c.scale(width, height);
+    // Closing, the lid comes down: the eye flattens instead of fading, so
+    // the white never shows without its iris.
+    c.scale(width, height * math.max(seen, .06));
     c.rotate(_rad(motion.wrap.rotation * side));
     c.scale(
       1 + motion.wrap.magnitudeX + motion.wrap.side * side * damp,
@@ -1040,11 +1060,8 @@ class CatPainter extends CustomPainter {
         ),
       );
     }
-    c.drawPath(
-      path,
-      Paint()..color = (bead ? _beadColor(ink) : color).withValues(alpha: seen),
-    );
-    final open = ((height * motion.blink - .5) / .3).clamp(0.0, 1.0) * seen;
+    c.drawPath(path, Paint()..color = bead ? _beadColor(ink) : color);
+    final open = ((height * motion.blink - .5) / .3).clamp(0.0, 1.0);
     if (open > 0 && kind != CatEyes.pill) {
       c.save();
       c.clipPath(path);

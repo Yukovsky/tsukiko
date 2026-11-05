@@ -209,23 +209,23 @@ class BodyPose {
       w(o.dy, omega, zeta);
     }
 
-    p(head, 7.5);
-    w(headTilt, 7, .75);
+    p(head, 6);
+    w(headTilt, 6, .75);
     for (final o in torso) {
-      p(o, 5);
+      p(o, 4.2);
     }
     for (final o in haunch) {
-      p(o, 5);
+      p(o, 4.2);
     }
     for (final o in legs) {
-      p(o, 8, .8);
+      p(o, 6.5, .8);
     }
     for (final v in [...front, ...over, ...shade]) {
       w(v, 10, 1);
     }
     p(tailRoot, 8);
     for (final v in [tailAngle, tailBend, tailCurl, tailLength]) {
-      w(v, 5, .66);
+      w(v, 4.5, .66);
     }
     w(tailFront, 8, 1);
     w(puff, 9, .7);
@@ -308,19 +308,19 @@ class BodyPose {
     ],
     legs: [
       Offset(-.3, -1.05),
-      Offset(-.3, -.12),
+      Offset(-.3, -.09),
       Offset(.12, -1.05),
-      Offset(.12, -.12),
+      Offset(.12, -.09),
       Offset(-.7, -.2),
       Offset(-.84, -.1),
       Offset(.92, -.2),
       Offset(1.08, -.1),
     ],
     tailRoot: Offset(1.05, -.2),
-    tailAngle: -.5,
-    tailBend: -1.4,
-    tailCurl: -.5,
-    tailLength: 2.05,
+    tailAngle: .15,
+    tailBend: -2.6,
+    tailCurl: -.35,
+    tailLength: 2.4,
     shadow: Offset(.2, 2.9),
   );
 
@@ -355,11 +355,12 @@ class BodyPose {
       Offset(1.36, -.1),
     ],
     front: [1, 1, 0, 1],
-    tailRoot: Offset(1.5, -.5),
-    tailAngle: -3.6,
-    tailBend: .35,
-    tailCurl: 1.6,
-    tailLength: 1.7,
+    over: [1, 1],
+    tailRoot: Offset(1.35, -1.0),
+    tailAngle: -4.0,
+    tailBend: .8,
+    tailCurl: .9,
+    tailLength: 2.0,
     tailFront: 1,
     merge: 0,
     chest: .8,
@@ -386,17 +387,18 @@ class BodyPose {
       Offset(1.08, -.62),
       Offset(.58, .56),
     ],
-    tailAngle: -3.55,
-    tailBend: .3,
-    tailCurl: 1.9,
-    tailLength: 1.65,
+    tailRoot: const Offset(1.42, -.95),
+    tailAngle: -4.0,
+    tailBend: .8,
+    tailCurl: 1.4,
+    tailLength: 2.0,
     chest: .9,
   );
 
   /// Curled up asleep, head resting on a paw, tail wrapped round.
   static const curl = BodyPose(
-    head: Offset(-.62, -1.3),
-    headTilt: -.17,
+    head: Offset(-.74, -1.12),
+    headTilt: -.36,
     torso: [
       Offset(-.45, -1.55),
       Offset(-1.1, -.95),
@@ -424,11 +426,12 @@ class BodyPose {
       Offset(1.4, -.1),
     ],
     front: [1, 0, 0, 0],
-    tailRoot: Offset(1.55, -.5),
-    tailAngle: -3.62,
-    tailBend: .45,
-    tailCurl: 1.3,
-    tailLength: 1.95,
+    over: [1, 0],
+    tailRoot: Offset(1.35, -1.0),
+    tailAngle: -4.08,
+    tailBend: .9,
+    tailCurl: .6,
+    tailLength: 2.2,
     tailFront: 1,
     merge: 0,
     chest: 0,
@@ -437,42 +440,43 @@ class BodyPose {
 
   /// Standing on all four, head turned to us, tail up.
   static const prowl = BodyPose(
-    head: Offset(-1.1, -1.46),
+    head: Offset(-1.1, -1.5),
+    headTilt: -.14,
     torso: [
-      Offset(-.5, -2.0),
-      Offset(-1.05, -1.4),
-      Offset(-.82, -.82),
-      Offset(0, -.74),
-      Offset(.95, -.78),
-      Offset(1.52, -1.08),
-      Offset(1.5, -1.8),
-      Offset(.5, -1.9),
+      Offset(-.55, -1.62),
+      Offset(-1.0, -1.15),
+      Offset(-.85, -.62),
+      Offset(0, -.82),
+      Offset(.95, -.86),
+      Offset(1.55, -1.05),
+      Offset(1.58, -1.58),
+      Offset(.5, -1.48),
     ],
     haunch: [
-      Offset(.9, -1.05),
-      Offset(.34, .38),
-      Offset(1.15, -1.05),
-      Offset(.5, .52),
+      Offset(.9, -1.1),
+      Offset(.34, .36),
+      Offset(1.15, -1.12),
+      Offset(.48, .48),
     ],
     legs: [
-      Offset(-.72, -.92),
-      Offset(-1.4, -.12),
-      Offset(-.4, -.88),
-      Offset(-.86, -.12),
-      Offset(.86, -.86),
-      Offset(.42, -.12),
-      Offset(1.2, -.86),
-      Offset(1.3, -.12),
+      Offset(-.7, -1.0),
+      Offset(-1.36, -.12),
+      Offset(-.4, -.96),
+      Offset(-.84, -.12),
+      Offset(.86, -.98),
+      Offset(.44, -.12),
+      Offset(1.2, -1.0),
+      Offset(1.32, -.12),
     ],
     front: [0, 1, 0, 1],
     shade: [1, 0, 1, 0],
-    tailRoot: Offset(1.4, -1.62),
+    tailRoot: Offset(1.5, -1.42),
     tailAngle: -1.15,
     tailBend: -.3,
     tailCurl: -1.35,
     tailLength: 2.0,
     merge: 0,
-    chest: .7,
+    chest: 0,
     shadow: Offset(.1, 3.5),
   );
 
@@ -510,13 +514,13 @@ class BodyPose {
           .withLeg(
             0,
             const Offset(-.4, -1.05),
-            const Offset(-.3, -1.46),
+            const Offset(-.36, -1.44),
             over: 1,
           )
           .withLeg(
             1,
             const Offset(.2, -1.05),
-            const Offset(.12, -1.46),
+            const Offset(.16, -1.44),
             over: 1,
           )
           .copyWith(
@@ -898,6 +902,7 @@ extension on CatPainter {
       for (final l in limbs) ...l,
       if (merged) _neckFur(p),
       _backFur(p),
+      _furBreaks(trunk),
     ];
     for (final part in parts) {
       canvas.drawPath(part, inks.line(lw * 2));
@@ -976,8 +981,8 @@ extension on CatPainter {
       if (d.distance < .5) continue;
       // The normal points to the leg's right when it hangs down.
       final outer = leg == 0 ? 1.0 : -1.0;
-      _brush(canvas, side(leg, outer, .5), lw * .85, inks.outline);
       if (!close) {
+        _brush(canvas, side(leg, outer, .5), lw * .85, inks.outline);
         _brush(canvas, side(leg, -outer, .3), lw * .85, inks.outline);
       }
     }
@@ -1013,7 +1018,7 @@ extension on CatPainter {
           PathOperation.difference,
           Path()..addRect(const Rect.fromLTRB(-9, -9, 9, 9)),
           Path()
-            ..addOval(Rect.fromCircle(center: tail.spine.first, radius: .55)),
+            ..addOval(Rect.fromCircle(center: tail.spine.first, radius: .3)),
         ),
       );
       _paintTail(canvas, tail, inks, lw);
@@ -1032,8 +1037,9 @@ extension on CatPainter {
         inked: !merged,
       ),
     );
-    // The chest ruff of a sitting cat lies over its chin, as drawn.
-    if (merged && p.chest > .02) _paintRuff(canvas, p, inks);
+    // The ruff lies over the chin, as drawn: a wide bib when sitting, a
+    // small ruff otherwise.
+    if (p.chest > .02) _paintRuff(canvas, p, inks, big: merged);
 
     for (final leg in [0, 1]) {
       if (p.over[leg] > .9) {
@@ -1168,7 +1174,8 @@ extension on CatPainter {
     final width = [
       for (var i = 0; i <= n; i++)
         (bushy
-                ? .36 + .34 * math.sin(math.pi * math.pow(i / n, .7))
+                ? (.26 + .5 * math.sin(math.pi * math.pow(i / n, 1.94))) *
+                      (1 - .55 * math.pow(i / n, 6))
                 : .34 + .24 * math.pow(i / n, 1.3)) *
             puff,
     ];
@@ -1375,10 +1382,10 @@ extension on CatPainter {
     BodyPose p,
   ) {
     final foot = Path()
-      ..addOval(Rect.fromCenter(center: paw, width: .36, height: .3));
+      ..addOval(Rect.fromCenter(center: paw, width: .32, height: .25));
     c.drawPath(foot, inks.line(lw * 2));
     c.drawPath(foot, Paint()..color = _sock(inks) ?? inks.fur);
-    _toes(c, paw, inks, lw, up: true);
+    _toes(c, paw, inks, lw, up: paw.dy < p.legs[leg * 2].dy - .15);
   }
 
   /// A couple of small tufts on the top of the near thigh, so the outline
@@ -1445,51 +1452,101 @@ extension on CatPainter {
     return out;
   }
 
-  /// The sitting cat's chest ruff: a big soft heart of pale fur lying over
-  /// the chin, its lower edge breaking into tufts. No outline: it is fur on
-  /// fur.
-  void _paintRuff(Canvas c, BodyPose p, _Inks inks) {
-    final b = profile.layout.body;
-    final chin = p.head + Offset(0, b.ry * .88 / b.rx * _headScale);
-    final big = profile.look.mark == CatMark.muzzle;
-    final color = Color.lerp(inks.fur, Colors.white, big ? .6 : .17)!;
-    final k = big ? 1.12 : 1.0;
-    final centre = chin + Offset(0, .06 * k);
-    final pts = <Offset>[];
-    const steps = 48;
-    for (var i = 0; i < steps; i++) {
-      final t = i / steps * 2 * math.pi;
-      final st = math.sin(t);
-      var x = 16 * st * st * st;
-      var y =
-          13 * math.cos(t) -
-          5 * math.cos(2 * t) -
-          2 * math.cos(3 * t) -
-          math.cos(4 * t);
-      // Tufts along the lower half: every third point stands out.
-      if (y < 4 && i % 3 == 0) {
-        x *= 1.12;
-        y -= 1.4;
-      }
-      pts.add(centre + Offset(x * .037 * k, -y * .04 * k));
+  /// Little tufts all along the body's outline where it faces up or out,
+  /// a quarter of a head apart, each leaning back along the fur: the
+  /// drawn cats' outline breaks into fur about a third of the way round.
+  Path _furBreaks(Path body) {
+    final out = Path();
+    final metrics = body.computeMetrics().toList();
+    if (metrics.isEmpty) return out;
+    final m = metrics.reduce((a, b) => a.length > b.length ? a : b);
+    const step = .27;
+    var k = 0;
+    for (var d = step / 2; d < m.length; d += step, k++) {
+      final t = m.getTangentForOffset(d)!;
+      final at = t.position, dir = t.vector;
+      var n = Offset(-dir.dy, dir.dx);
+      if (body.contains(at + n * .04)) n = -n;
+      // Fur on the back, flanks and chest, none on the floor or belly.
+      if (n.dy > .35 || at.dy > -.25) continue;
+      // Two in three spots get a tuft, so the breaks feel drawn.
+      if (k % 3 == 2) continue;
+      final size = k.isEven ? 1.0 : .75;
+      final w = .055 * size, len = .075 * size;
+      final lean = dir * (len * .9);
+      final tip = at + n * len + lean;
+      final b0 = at - n * .05 - dir * w, b1 = at - n * .05 + dir * w;
+      out.addPath(
+        Path()
+          ..moveTo(b0.dx, b0.dy)
+          ..quadraticBezierTo(at.dx, at.dy, tip.dx, tip.dy)
+          ..quadraticBezierTo(
+            (at + dir * w).dx,
+            (at + dir * w).dy,
+            b1.dx,
+            b1.dy,
+          )
+          ..close(),
+        Offset.zero,
+      );
     }
-    final path = Path();
-    final m0 = (pts.last + pts.first) / 2;
-    path.moveTo(m0.dx, m0.dy);
-    for (var i = 0; i < pts.length; i++) {
-      final q = pts[i], m = (pts[i] + pts[(i + 1) % pts.length]) / 2;
-      path.quadraticBezierTo(q.dx, q.dy, m.dx, m.dy);
+    return out;
+  }
+
+  /// Pale fur under the chin: a wide bib over a sitting cat's chest, a
+  /// smaller ruff under the chin of one lying or standing. Its lower edge
+  /// breaks into scallops; it pales towards the middle and has no outline,
+  /// being fur on fur.
+  void _paintRuff(Canvas c, BodyPose p, _Inks inks, {required bool big}) {
+    final b = profile.layout.body;
+    final chin = p.head + Offset(0, b.ry * .86 / b.rx * _headScale);
+    final muzzle = profile.look.mark == CatMark.muzzle;
+    final w = big ? 1.42 : .82, h = big ? 1.2 : .42;
+    final top = chin.dy - (big ? .3 : .26);
+    final cx = chin.dx;
+    // Upper half: a smooth arch hidden mostly under the chin; lower half:
+    // five scallops.
+    final path = Path()..moveTo(cx - w / 2, top + h * .35);
+    path.cubicTo(
+      cx - w / 2,
+      top - h * .05,
+      cx + w / 2,
+      top - h * .05,
+      cx + w / 2,
+      top + h * .35,
+    );
+    const scallops = 5;
+    for (var i = 0; i < scallops; i++) {
+      final u0 = i / scallops, u1 = (i + 1) / scallops;
+      // The bib narrows to a soft point in the middle of its lower edge.
+      double x(double u) => cx + w / 2 - w * u;
+      double y(double u) =>
+          top + h * (.35 + .65 * (.62 + .38 * math.sin(math.pi * u)));
+      final mid = (u0 + u1) / 2;
+      path.quadraticBezierTo(x(mid), y(mid) + h * .16, x(u1), y(u1));
     }
     path.close();
     final a = p.chest.clamp(0.0, 1.0);
-    // A soft halo first, so the edge reads as fur rather than a cut-out.
-    c.save();
-    c.translate(centre.dx, centre.dy);
-    c.scale(1.07);
-    c.translate(-centre.dx, -centre.dy);
-    c.drawPath(path, Paint()..color = color.withValues(alpha: a * .4));
-    c.restore();
-    c.drawPath(path, Paint()..color = color.withValues(alpha: a * .9));
+    final centre = Color.lerp(inks.fur, Colors.white, muzzle ? .62 : .25)!;
+    final edge = Color.lerp(inks.fur, Colors.white, muzzle ? .5 : .1)!;
+    c.drawPath(
+      path,
+      Paint()
+        ..shader = ui.Gradient.radial(Offset(cx, top + h * .45), w * .62, [
+          centre.withValues(alpha: a),
+          edge.withValues(alpha: a),
+        ]),
+    );
+    // A few strokes of fur near the lower edge.
+    final fur = Paint()
+      ..color = inks.outline.withValues(alpha: .22 * a)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .03
+      ..strokeCap = StrokeCap.round;
+    for (final (x, y) in const [(-.22, .62), (.0, .74), (.22, .62)]) {
+      final o = Offset(cx + x * w, top + y * h);
+      c.drawLine(o, o + Offset(x * .1, .1 * h), fur);
+    }
   }
 
   /// Patterns that carry on from the face onto the body.
@@ -1515,8 +1572,8 @@ extension on CatPainter {
           _brush(
             c,
             [a - dir * .1, a + dir * (len * .5) + bend, a + dir * len],
-            .2,
-            inks.deep,
+            .17,
+            Color.lerp(inks.fur, inks.ink, .42)!,
           );
         }
       case CatMark.patch:
