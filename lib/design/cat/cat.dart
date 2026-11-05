@@ -768,10 +768,10 @@ class CatPainter extends CustomPainter {
 
   void _ink(Canvas canvas, List<Path> paths, _Inks inks) {
     final b = profile.layout.body;
-    final line = inks.line(b.rx * .08);
+    final line = inks.line(b.rx * .096);
     for (final p in paths) {
       canvas.drawPath(p, line);
-      canvas.drawPath(p.shift(Offset(0, b.rx * .018)), line);
+      canvas.drawPath(p.shift(Offset(b.rx * .012, b.rx * .02)), line);
     }
   }
 
@@ -1063,7 +1063,7 @@ class CatPainter extends CustomPainter {
     // leave a white eye without one.
     final open = shut > 0
         ? 1.0
-        : ((height * motion.blink - .5) / .3).clamp(0.0, 1.0);
+        : ((height * motion.blink - .3) / .25).clamp(0.0, 1.0);
     if (open > 0 && kind != CatEyes.pill) {
       c.save();
       c.clipPath(path);

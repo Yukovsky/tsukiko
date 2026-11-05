@@ -13,7 +13,13 @@ part of 'cat.dart';
 class _Inks {
   _Inks(this.fur, this.eye, this.ink, this.blush);
   final Color fur, eye, ink, blush;
-  late final Color outline = Color.lerp(fur, ink, .72)!;
+
+  /// The line: deep but soft, a muted violet-grey rather than navy, as the
+  /// drawings' ink is.
+  late final Color outline = () {
+    final c = HSLColor.fromColor(Color.lerp(fur, ink, .66)!);
+    return c.withSaturation(c.saturation * .72).toColor();
+  }();
   late final Color shade = Color.lerp(fur, ink, .13)!;
   late final Color light = Color.lerp(fur, Colors.white, .2)!;
   late final Color deep = Color.lerp(fur, ink, .38)!;
@@ -273,36 +279,36 @@ class BodyPose {
     head: Offset(-.1, -2.36),
     torso: [
       Offset(-.68, -1.76),
-      Offset(-.8, -1.1),
-      Offset(-.92, -.45),
-      Offset(-.66, 0),
-      Offset(.86, 0),
-      Offset(1.2, -.5),
-      Offset(.92, -1.22),
+      Offset(-.84, -1.1),
+      Offset(-1.04, -.42),
+      Offset(-.8, 0),
+      Offset(1.0, 0),
+      Offset(1.32, -.55),
+      Offset(.96, -1.22),
       Offset(.5, -1.78),
     ],
     haunch: [
-      Offset(-.62, -.38),
-      Offset(.38, .38),
-      Offset(.74, -.52),
-      Offset(.58, .54),
+      Offset(-.7, -.38),
+      Offset(.42, .4),
+      Offset(.8, -.55),
+      Offset(.65, .6),
     ],
     legs: [
       Offset(-.3, -1.05),
       Offset(-.3, -.09),
       Offset(.12, -1.05),
       Offset(.12, -.09),
-      Offset(-.7, -.2),
-      Offset(-.84, -.1),
-      Offset(.92, -.2),
-      Offset(1.08, -.1),
+      Offset(-.8, -.2),
+      Offset(-.96, -.1),
+      Offset(1.08, -.2),
+      Offset(1.26, -.1),
     ],
     tail: [
       Offset(1.0, -.15),
-      Offset(1.6, -.42),
-      Offset(1.86, -1.05),
-      Offset(1.78, -1.66),
-      Offset(1.45, -1.95),
+      Offset(1.75, -.35),
+      Offset(2.05, -.9),
+      Offset(1.95, -1.4),
+      Offset(1.6, -1.62),
     ],
     shadow: Offset(.2, 2.9),
   );
@@ -384,47 +390,47 @@ class BodyPose {
 
   /// Curled up asleep, head resting on a paw, tail wrapped round.
   static const curl = BodyPose(
-    head: Offset(-.74, -1.12),
+    head: Offset(-.94, -1.12),
     headTilt: -.36,
     torso: [
-      Offset(-.45, -1.55),
-      Offset(-1.1, -.95),
-      Offset(-1.1, -.3),
-      Offset(-.75, 0),
-      Offset(1.2, 0),
-      Offset(1.8, -.48),
-      Offset(1.6, -1.45),
-      Offset(.6, -1.86),
+      Offset(-.65, -1.55),
+      Offset(-1.3, -.95),
+      Offset(-1.3, -.3),
+      Offset(-.95, 0),
+      Offset(1.4, 0),
+      Offset(2, -.48),
+      Offset(1.8, -1.45),
+      Offset(.8, -1.86),
     ],
     haunch: [
-      Offset(1.0, -.5),
+      Offset(1.1, -.5),
       Offset(.3, .3),
-      Offset(1.15, -.62),
+      Offset(1.25, -.62),
       Offset(.62, .6),
     ],
     legs: [
-      Offset(-.62, -.32),
-      Offset(-.66, -.11),
-      Offset(-.2, -.3),
-      Offset(-.15, -.11),
-      Offset(1.0, -.2),
-      Offset(.95, -.1),
-      Offset(1.25, -.26),
-      Offset(1.4, -.1),
+      Offset(-.82, -.32),
+      Offset(-.86, -.11),
+      Offset(-.4, -.3),
+      Offset(-.35, -.11),
+      Offset(1.1, -.2),
+      Offset(1.05, -.1),
+      Offset(1.35, -.26),
+      Offset(1.5, -.1),
     ],
     front: [1, 0, 0, 0],
     over: [1, 0],
     tail: [
-      Offset(1.55, -.32),
-      Offset(1.2, -.16),
-      Offset(.5, -.15),
-      Offset(-.1, -.17),
-      Offset(-.35, -.36),
+      Offset(1.7, -.32),
+      Offset(1.35, -.16),
+      Offset(.3, -.15),
+      Offset(-.3, -.17),
+      Offset(-.55, -.36),
     ],
     tailFront: 1,
     merge: 0,
     chest: 0,
-    shadow: Offset(.45, 3.5),
+    shadow: Offset(.25, 3.5),
   );
 
   /// Standing on all four, head turned to us, tail up.
@@ -432,14 +438,14 @@ class BodyPose {
     head: Offset(-1.1, -1.55),
     headTilt: -.14,
     torso: [
-      Offset(-.55, -1.78),
-      Offset(-1.02, -1.2),
-      Offset(-.85, -.66),
-      Offset(0, -.72),
-      Offset(.95, -.76),
-      Offset(1.58, -1.02),
-      Offset(1.62, -1.62),
-      Offset(.5, -1.72),
+      Offset(-.55, -1.9),
+      Offset(-1.05, -1.25),
+      Offset(-.9, -.6),
+      Offset(0, -.64),
+      Offset(.95, -.68),
+      Offset(1.6, -.98),
+      Offset(1.64, -1.7),
+      Offset(.5, -1.84),
     ],
     haunch: [
       Offset(.9, -1.1),
@@ -513,13 +519,13 @@ class BodyPose {
           .withLeg(
             0,
             const Offset(-.4, -1.05),
-            const Offset(-.28, -1.48),
+            const Offset(-.29, -1.33),
             over: 1,
           )
           .withLeg(
             1,
             const Offset(.2, -1.05),
-            const Offset(.08, -1.48),
+            const Offset(.09, -1.33),
             over: 1,
           )
           .copyWith(
@@ -721,6 +727,19 @@ class BodySpring {
   }
 }
 
+/// Piecewise-linear value at [u] (0…1) through evenly spaced [v].
+double _along(List<double> v, double u) {
+  final x = u.clamp(0.0, 1.0) * (v.length - 1);
+  final k = math.min(x.floor(), v.length - 2);
+  return v[k] + (v[k + 1] - v[k]) * (x - k);
+}
+
+/// Smoothstep on 0…1, clamped.
+double _ease(double x) {
+  final t = x.clamp(0.0, 1.0);
+  return t * t * (3 - 2 * t);
+}
+
 /// A closed loop through [p], as a smooth Catmull-Rom curve.
 Path _loop(List<Offset> p) {
   final n = p.length;
@@ -838,7 +857,7 @@ extension on CatPainter {
     canvas.scale(s * (kitten ? .84 : 1));
 
     final p = _live(pose, t);
-    final lw = .072;
+    final lw = .086;
 
     // Floor shadow: soft, cheap, and it stays on the floor during hops.
     final shadowAt = Offset(p.shadow.dx, .03);
@@ -884,17 +903,20 @@ extension on CatPainter {
     // gets its own outline instead of melting into the body.
     bool raised(int leg) =>
         leg < 2 && p.legs[leg * 2 + 1].dy < p.legs[leg * 2].dy - .15;
-    final limbs = [
+    final limbLegs = [
       for (var leg = 0; leg < 4; leg++)
-        if (p.front[leg] >= .5 && !raised(leg)) _limb(p, leg),
+        if (p.front[leg] >= .5 && !raised(leg)) leg,
     ];
+    final limbs = [for (final leg in limbLegs) _limb(p, leg)];
 
-    final tailInFront = p.tailFront > .5;
+    // A tail goes in front only once it is down: on its way it passes
+    // behind the body.
+    final tailInFront = p.tailFront > .5 && p.tail.every((o) => o.dy > -.75);
     if (!tailInFront) _paintTail(canvas, tail, inks, lw);
     for (var leg = 0; leg < 4; leg++) {
       if (p.front[leg] < .5) _paintLeg(canvas, p, leg, inks, lw);
     }
-    if (tailInFront) _paintTail(canvas, tail, inks, lw);
+    if (tailInFront) _paintTail(canvas, tail, inks, lw, low: true);
 
     final b = profile.layout.body;
     void inHead(void Function() draw) {
@@ -911,16 +933,19 @@ extension on CatPainter {
     // goes down first and all the fill over it, so only the outer edge
     // stays. A sitting cat's head joins in, its chin sunk in chest fur.
     final merged = p.merge > .5;
+    // Lying or standing, only the front legs stand apart as volumes of their
+    // own; the hind legs grow out of the thighs.
     final parts = [
       trunk,
-      for (final l in limbs) ...l,
+      for (final (i, l) in limbs.indexed)
+        if (merged || limbLegs[i] >= 2) ...l,
       if (merged) _neckFur(p),
       _backFur(p),
       _furBreaks(trunk),
     ];
     for (final part in parts) {
       canvas.drawPath(part, inks.line(lw * 2));
-      canvas.drawPath(part.shift(const Offset(0, .02)), inks.line(lw * 2));
+      canvas.drawPath(part.shift(const Offset(.014, .022)), inks.line(lw * 2));
     }
     if (merged) inHead(() => _paintHeadInk(canvas, f, r, motion, inks));
     final fill = Paint()..color = inks.fur;
@@ -928,7 +953,7 @@ extension on CatPainter {
       canvas.drawPath(part, fill);
     }
     final sock = _sock(inks);
-    if (sock != null) {
+    if (sock != null && merged) {
       for (final l in limbs) {
         canvas.drawPath(l[1], Paint()..color = sock);
       }
@@ -936,17 +961,9 @@ extension on CatPainter {
 
     canvas.save();
     canvas.clipPath(trunk);
-    // A soft shadow under the belly, deepening towards the floor.
-    final belly = p.torso.map((o) => o.dy).reduce(math.max);
-    canvas.drawRect(
-      const Rect.fromLTRB(-9, -9, 9, 9),
-      Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(0, belly - .75),
-          Offset(0, belly),
-          [inks.shade.withValues(alpha: 0), inks.shade.withValues(alpha: .9)],
-        ),
-    );
+    // Cel shading as drawn: a flat crescent of shade along the lower right
+    // of the body, the light coming from the upper left.
+    _crescent(canvas, trunk, inks, .2);
     _paintBodyMarks(canvas, p, inks);
     // Thighs go behind the front legs.
     canvas.save();
@@ -982,7 +999,7 @@ extension on CatPainter {
     List<Offset> side(int leg, double k, [double from = -.05]) {
       final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
       final d = paw - root;
-      final n = Offset(-d.dy, d.dx) / d.distance * .205;
+      final n = Offset(-d.dy, d.dx) / d.distance * .235;
       return [
         for (var i = 0; i <= 8; i++)
           root + d * (from + (.93 - from) * i / 8) + n * k,
@@ -1014,9 +1031,21 @@ extension on CatPainter {
       );
     }
     canvas.restore();
-    for (var leg = 0; leg < 4; leg++) {
-      if (p.front[leg] >= .5 && !raised(leg)) {
-        _toes(canvas, p.legs[leg * 2 + 1], inks, lw);
+    // Not sitting, each leg in front is a volume of its own over the body,
+    // with its own outline and shade, as the drawings overlap them.
+    if (!merged) {
+      for (final leg in [0, 1]) {
+        if (p.front[leg] >= .5 && !raised(leg)) {
+          _paintLeg(canvas, p, leg, inks, lw);
+        }
+      }
+    } else {
+      // Toes only on the front paws: a row of ticks along the floor reads
+      // as a comb.
+      for (var leg = 0; leg < 2; leg++) {
+        if (p.front[leg] >= .5 && !raised(leg)) {
+          _toes(canvas, p.legs[leg * 2 + 1], inks, lw);
+        }
       }
     }
     for (var leg = 0; leg < 2; leg++) {
@@ -1035,10 +1064,9 @@ extension on CatPainter {
             ..addOval(Rect.fromCircle(center: tail.spine.first, radius: .3)),
         ),
       );
-      _paintTail(canvas, tail, inks, lw);
+      _paintTail(canvas, tail, inks, lw, low: true);
       canvas.restore();
     }
-    _paintCharm(canvas, p, tail, inks, lw);
 
     // The head, placed by its centre and rolled about it.
     inHead(
@@ -1054,6 +1082,8 @@ extension on CatPainter {
     // The ruff lies over the chin, as drawn: a wide bib when sitting, a
     // small ruff otherwise.
     if (p.chest > .02) _paintRuff(canvas, p, inks, big: merged);
+    // What it wears goes over the fur.
+    _paintCharm(canvas, p, tail, inks, lw);
 
     for (final leg in [0, 1]) {
       if (p.over[leg] > .9) {
@@ -1164,8 +1194,8 @@ extension on CatPainter {
       for (var i = 0; i <= n; i++)
         (bushy
                 ? (.26 + .5 * math.sin(math.pi * math.pow(i / n, 1.94))) *
-                      (1 - .55 * math.pow(i / n, 6))
-                : .34 + .16 * math.sin(math.pi * .5 * math.pow(i / n, .9))) *
+                      (1 - .78 * _ease(((i / n) - .55) / .45))
+                : _along(const [.3, .5, .64, .62, .46], i / n)) *
             puff,
     ];
     // The pose's five points, the last one turned further in for a tail
@@ -1262,11 +1292,22 @@ extension on CatPainter {
     return _TailShape(spine, width, path);
   }
 
-  void _paintTail(Canvas c, _TailShape tail, _Inks inks, double lw) {
+  void _paintTail(
+    Canvas c,
+    _TailShape tail,
+    _Inks inks,
+    double lw, {
+    bool low = false,
+  }) {
     final look = profile.look;
     c.drawPath(tail.path, inks.line(lw * 2));
-    c.drawPath(tail.path.shift(const Offset(0, .02)), inks.line(lw * 2));
-    c.drawPath(tail.path, Paint()..color = inks.fur);
+    c.drawPath(tail.path.shift(const Offset(.014, .022)), inks.line(lw * 2));
+    // A tail laid on the floor in front is a shade darker, so it reads as
+    // the tail and not a leg.
+    c.drawPath(
+      tail.path,
+      Paint()..color = low ? Color.lerp(inks.fur, inks.ink, .12)! : inks.fur,
+    );
     c.save();
     c.clipPath(tail.path);
     // The underside of the tail in shadow, as in the drawings.
@@ -1276,9 +1317,7 @@ extension on CatPainter {
       final d = s[math.min(i + 1, s.length - 1)] - s[math.max(i - 1, 0)];
       under.add(s[i] + Offset(d.dy, -d.dx) / d.distance * tail.width[i] * .42);
     }
-    if (look.tail != CatTail.bushy) {
-      _brush(c, under, .2, Color.lerp(inks.fur, inks.ink, .2)!);
-    }
+    _crescent(c, tail.path, inks, .2);
     final n = tail.spine.length - 1;
     Color? tip;
     var from = 0.0;
@@ -1311,7 +1350,7 @@ extension on CatPainter {
       final d = sp[k + 1] - sp[k];
       final along = d / d.distance;
       final nn = Offset(-along.dy, along.dx) * tail.width[k];
-      for (final f in const [-.42, -.14, .14, .42]) {
+      for (final f in const [-.3, .05, .38]) {
         final at = sp[k] + nn * f;
         final w = nn * .12;
         c.drawPath(
@@ -1345,32 +1384,48 @@ extension on CatPainter {
     final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
     final hind = leg >= 2;
     return [
-      _capsule(root, hind ? .24 : .21, paw - const Offset(0, .04), .19),
-      Path()..addOval(Rect.fromCenter(center: paw, width: .46, height: .28)),
+      _capsule(root, hind ? .27 : .24, paw - const Offset(0, .04), .22),
+      Path()..addOval(Rect.fromCenter(center: paw, width: .52, height: .3)),
     ];
   }
 
   void _paintLeg(Canvas c, BodyPose p, int leg, _Inks inks, double lw) {
     final paw = p.legs[leg * 2 + 1];
     final [shape, foot] = _limb(p, leg);
+    final unit = Path.combine(PathOperation.union, shape, foot);
     final fur = Color.lerp(inks.fur, inks.ink, .22 * p.shade[leg])!;
-    for (final path in [shape, foot]) {
-      c.drawPath(path, inks.line(lw * 2));
-      c.drawPath(path.shift(const Offset(0, .02)), inks.line(lw * 2));
-    }
-    c.drawPath(shape, Paint()..color = fur);
+    c.drawPath(unit, inks.line(lw * 2));
+    c.drawPath(unit.shift(const Offset(.014, .022)), inks.line(lw * 2));
+    c.drawPath(unit, Paint()..color = fur);
     final sock = _sock(inks);
-    c.drawPath(foot, Paint()..color = sock ?? fur);
     if (sock != null) {
       c.save();
-      c.clipPath(shape);
+      c.clipPath(unit);
       c.drawOval(
-        Rect.fromCenter(center: paw, width: .44, height: .36),
+        Rect.fromCenter(center: paw, width: .5, height: .4),
         Paint()..color = sock,
       );
       c.restore();
     }
-    _toes(c, paw, inks, lw);
+    c.save();
+    c.clipPath(unit);
+    _crescent(c, unit, inks, .22);
+    c.restore();
+    if (leg < 2) _toes(c, paw, inks, lw);
+  }
+
+  /// A flat crescent of shade along the lower right of [shape]: the part
+  /// the light from the upper left does not reach. Callers clip to it.
+  void _crescent(Canvas c, Path shape, _Inks inks, double depth) {
+    c.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        shape,
+        shape.shift(const Offset(-.15, -.13)),
+      ),
+      Paint()
+        ..color = Color.lerp(inks.fur, inks.ink, depth)!.withValues(alpha: .6),
+    );
   }
 
   /// A raised front leg: inked on its own over the chest, the paw end
@@ -1418,11 +1473,17 @@ extension on CatPainter {
     int leg,
     BodyPose p,
   ) {
+    final up = paw.dy < p.legs[leg * 2].dy - .15;
+    // A raised paw tips a little inward, the way paws held up do.
+    final tilt = up ? (leg == 0 ? .26 : -.26) : 0.0;
+    c.save();
+    c.translate(paw.dx, paw.dy);
+    c.rotate(tilt);
+    c.translate(-paw.dx, -paw.dy);
     final foot = Path()
-      ..addOval(Rect.fromCenter(center: paw, width: .27, height: .21));
+      ..addOval(Rect.fromCenter(center: paw, width: .3, height: .24));
     c.drawPath(foot, inks.line(lw * 2));
     c.drawPath(foot, Paint()..color = _sock(inks) ?? inks.fur);
-    final up = paw.dy < p.legs[leg * 2].dy - .15;
     if (up) {
       // Three short ticks on the top edge: the toes of a raised paw.
       final toe = inks.line(lw * .7);
@@ -1432,6 +1493,7 @@ extension on CatPainter {
     } else {
       _toes(c, paw, inks, lw);
     }
+    c.restore();
   }
 
   /// A couple of small tufts on the top of the near thigh, so the outline
@@ -1506,7 +1568,7 @@ extension on CatPainter {
     final metrics = body.computeMetrics().toList();
     if (metrics.isEmpty) return out;
     final m = metrics.reduce((a, b) => a.length > b.length ? a : b);
-    const step = .45;
+    const step = .62;
     var k = 0;
     for (var d = step / 2; d < m.length; d += step, k++) {
       final t = m.getTangentForOffset(d)!;
@@ -1545,7 +1607,7 @@ extension on CatPainter {
     final b = profile.layout.body;
     final chin = p.head + Offset(0, b.ry * .86 / b.rx * _headScale);
     final muzzle = profile.look.mark == CatMark.muzzle;
-    final w = big ? 1.42 : .82, h = big ? 1.2 : .42;
+    final w = big ? 1.36 : .82, h = big ? .95 : .42;
     final top = chin.dy - (big ? .3 : .26);
     final cx = chin.dx;
     // Upper half: a smooth arch hidden mostly under the chin; lower half:
@@ -1611,6 +1673,19 @@ extension on CatPainter {
     for (final (x, y) in const [(-.18, .66), (.18, .66)]) {
       final o = Offset(cx + x * w, top + y * h);
       c.drawLine(o, o + Offset(x * .1, .1 * h), fur);
+    }
+    // Inked hairs along the lower edge, where the bib meets the fur.
+    final hair = Paint()
+      ..color = inks.outline.withValues(alpha: .5 * a)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .045
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 6; i++) {
+      final u = (i + .5) / 6;
+      final x = cx + w / 2 - w * u;
+      final y = top + h * (.35 + .65 * (.62 + .38 * math.sin(math.pi * u)));
+      final o = Offset(x, y + h * .06);
+      c.drawLine(o - Offset((u - .5) * .06, .08), o, hair);
     }
   }
 
@@ -1679,7 +1754,7 @@ extension on CatPainter {
   ) {
     final look = profile.look;
     final b = profile.layout.body;
-    final chin = p.head + Offset(0, (b.ry * .8) / b.rx);
+    final chin = p.head + Offset(0, b.ry * .9 / b.rx * _headScale + .1);
     switch (look.charm) {
       case CatCharm.none:
         return;

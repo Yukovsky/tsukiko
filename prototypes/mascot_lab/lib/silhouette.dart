@@ -60,11 +60,11 @@ const _sides = {
 const _ears = {
   // A high round crown with the ears on its shoulders, as in the drawings.
   CatEars.moon: [
-    Vertex(.24, -.68),
-    Vertex(.46, -.98),
-    Vertex(.84, -1.33, .46),
-    Vertex(1.08, -.88),
-    Vertex(1.06, -.4),
+    Vertex(.2, -.68),
+    Vertex(.44, -.96),
+    Vertex(.84, -1.26, .46),
+    Vertex(1.11, -.84),
+    Vertex(1.07, -.4),
   ],
   CatEars.tiny: [
     Vertex(.3, -.58),
@@ -89,11 +89,11 @@ const _ears = {
   // The moon ear's soft leaf, a little lower; the brush grows out of its
   // tip (see the painter).
   CatEars.tuft: [
-    Vertex(.24, -.68),
-    Vertex(.46, -.96),
-    Vertex(.82, -1.3, .46),
-    Vertex(1.07, -.86),
-    Vertex(1.05, -.42),
+    Vertex(.2, -.68),
+    Vertex(.44, -.94),
+    Vertex(.82, -1.23, .46),
+    Vertex(1.1, -.82),
+    Vertex(1.06, -.42),
   ],
   CatEars.bear: [
     Vertex(.34, -.58),
