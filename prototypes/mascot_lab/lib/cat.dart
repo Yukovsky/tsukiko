@@ -832,7 +832,9 @@ class CatPainter extends CustomPainter {
     canvas.clipPath(outline);
     canvas.translate(b.cx, b.cy);
     canvas.scale(b.rx / 1.1);
-    canvas.drawPicture(_tone);
+    canvas.drawPicture(
+      _tone(face: true, soft: HSLColor.fromColor(head).saturation < .18),
+    );
     canvas.drawPicture(_grain);
     canvas.restore();
     // A few strokes of fur at the cheeks.

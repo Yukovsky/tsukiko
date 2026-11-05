@@ -797,31 +797,47 @@ void _furFlicks(
 }
 
 /// Soft painted tone: large blurred patches a few percent lighter or darker,
-/// recorded once. Laid over a fill it gives the gentle unevenness of paint
-/// that a flat vector fill lacks.
-final ui.Picture _tone = () {
-  final r = ui.PictureRecorder();
-  final c = Canvas(r);
-  final rnd = math.Random(11);
-  for (var i = 0; i < 46; i++) {
-    final at = Offset(
-      rnd.nextDouble() * 6.4 - 3.2,
-      rnd.nextDouble() * 5.4 - 4.8,
-    );
-    final radius = .3 + rnd.nextDouble() * .45;
-    final color = i.isEven ? const Color(0x12ffffff) : const Color(0x0e1c1730);
-    c.drawCircle(
-      at,
-      radius,
-      Paint()
-        ..shader = ui.Gradient.radial(at, radius, [
-          color,
-          color.withValues(alpha: 0),
-        ]),
-    );
-  }
-  return r.endRecording();
-}();
+/// recorded once per kind. Lighter ones gather where the light falls (up
+/// and left), darker ones towards the shade (down and right), so they read
+/// as painting rather than smudges. [face] keeps darker patches out of the
+/// middle of the face and halves the strength; [soft] scales it down for
+/// grey coats, where tone reads as dust.
+final _tones = <(bool, bool), ui.Picture>{};
+ui.Picture _tone({bool face = false, bool soft = false}) =>
+    _tones.putIfAbsent((face, soft), () {
+      final r = ui.PictureRecorder();
+      final c = Canvas(r);
+      final rnd = math.Random(11);
+      final k = (face ? .6 : 1.0) * (soft ? .7 : 1.0);
+      // Face patches live in head units around the head's centre; body
+      // patches in floor units round the middle of a sitting cat.
+      final centre = face ? Offset.zero : const Offset(.3, -1.6);
+      for (var i = 0; i < 46; i++) {
+        final at =
+            centre +
+            Offset(rnd.nextDouble() * 4.4 - 2.2, rnd.nextDouble() * 4.0 - 2.0);
+        final radius = .3 + rnd.nextDouble() * .45;
+        final rel = at - centre;
+        final lit = rel.dx + rel.dy < 0;
+        if (face && !lit && rel.distance < .7) continue;
+        final color = lit
+            ? Color.fromRGBO(255, 255, 255, .07 * k)
+            : Color.fromRGBO(28, 23, 48, .055 * k);
+        c.drawCircle(
+          at,
+          radius,
+          Paint()
+            ..shader = ui.Gradient.radial(at, radius, [
+              color,
+              color.withValues(alpha: 0),
+            ]),
+        );
+      }
+      return r.endRecording();
+    });
+
+/// Grey coats take less tone and grain: on them it reads as dust.
+bool _grey(_Inks inks) => HSLColor.fromColor(inks.fur).saturation < .18;
 
 /// Smoothstep on 0…1, clamped.
 double _ease(double x) {
@@ -1054,7 +1070,7 @@ extension on CatPainter {
     // of the body, the light coming from the upper left.
     _crescent(canvas, trunk, inks, .2);
     _rim(canvas, trunk, inks);
-    canvas.drawPicture(_tone);
+    canvas.drawPicture(_tone(soft: _grey(inks)));
     canvas.drawPicture(_grain);
     _furFlicks(canvas, trunk, inks.fur, inks.ink, step: .2, length: .09);
     // Two or three tapered strokes of fur clustered at the front of the
