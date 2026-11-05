@@ -54,11 +54,12 @@ const _sides = {
 /// Right ear from the valley to the head side. Each is a leaf: the two
 /// shoulders keep both edges convex near the tip, as in the original drawing.
 const _ears = {
+  // A high round crown with the ears on its shoulders, as in the drawings.
   CatEars.moon: [
-    Vertex(.26, -.58),
-    Vertex(.46, -1.0),
-    Vertex(.72, -1.6, .46),
-    Vertex(1.02, -1.02),
+    Vertex(.32, -.8),
+    Vertex(.5, -1.12),
+    Vertex(.76, -1.5, .46),
+    Vertex(1.02, -1.04),
     Vertex(1.0, -.46),
   ],
   CatEars.tiny: [
@@ -84,10 +85,10 @@ const _ears = {
   // The moon ear's soft leaf, a little lower; the brush grows out of its
   // tip (see the painter).
   CatEars.tuft: [
-    Vertex(.26, -.58),
-    Vertex(.46, -.93),
-    Vertex(.72, -1.45, .46),
-    Vertex(1.04, -.95),
+    Vertex(.32, -.8),
+    Vertex(.5, -1.08),
+    Vertex(.76, -1.44, .46),
+    Vertex(1.03, -1.0),
     Vertex(1.0, -.48),
   ],
   CatEars.bear: [
@@ -110,11 +111,11 @@ class CatSilhouette extends blob.Shape {
   /// The drawn cats have broad, low ears: the tall leaf of the first sketch
   /// is pressed down towards the crown, the short kinds a little less.
   static const _earScale = {
-    CatEars.moon: .72,
+    CatEars.moon: 1.0,
     CatEars.tiny: .9,
     CatEars.wide: .74,
     CatEars.fold: 1.0,
-    CatEars.tuft: .72,
+    CatEars.tuft: 1.0,
     CatEars.bear: .92,
   };
   late final double _earLength =
@@ -210,8 +211,10 @@ class CatSilhouette extends blob.Shape {
   /// radians. Rebuilt per frame while the ears move; it is only ~24 points.
   blob.BlobPath trace(blob.Body b, {double left = 0, double right = 0}) {
     final chin = _sides[look.head]!.last;
+    // The crown rises with ears set high on it, never above their roots.
+    final crown = math.min(_crown, _ears[look.ears]!.first.y);
     final loop = [
-      const Vertex(0, _crown),
+      Vertex(0, crown),
       ..._side(right),
       chin,
       for (final v in _side(left).reversed) Vertex(-v.x, v.y, v.soft),

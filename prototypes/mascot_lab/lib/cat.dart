@@ -229,7 +229,7 @@ class CatProfile {
       for (var i = 0; i < 240; i++)
         metric.getTangentForOffset(metric.length * i / 240)!,
     ];
-    for (final (at, size) in const [(.3, 1.0), (.5, .8)]) {
+    for (final (at, size) in const [(.2, .85), (.38, 1.1), (.56, .85)]) {
       final y = b.cy + at * b.ry;
       final hit = samples
           .where((t) => t.position.dx > b.cx)
@@ -243,7 +243,7 @@ class CatProfile {
         // Outward and a little down, the way cheek fur lies.
         final out0 = Offset(math.cos(.55), math.sin(.55));
         final along = Offset(-out0.dy, out0.dx);
-        final w = b.rx * .11 * size, len = b.rx * .13 * size;
+        final w = b.rx * .11 * size, len = b.rx * .15 * size;
         final base0 = p - out0 * (w * .9) - along * w;
         final base1 = p - out0 * (w * .9) + along * w;
         final tip = p + out0 * len + along * (len * .35);

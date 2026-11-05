@@ -105,7 +105,8 @@ class BodyPose {
   /// Per leg: 1 in front of the body, 0 behind it.
   final List<double> front;
 
-  /// Per front paw: 1 when it is raised over the face.
+  /// Per front paw: 1 when it is raised over the face. It goes over only
+  /// once nearly there, so a paw on its way never crosses the eyes.
   final List<double> over;
 
   /// Per leg: 1 for the far side, a shade darker.
@@ -285,190 +286,192 @@ class BodyPose {
 
   /// Sitting upright, paws together, tail curling up behind.
   static const sit = BodyPose(
-    head: Offset(0, -2.36),
+    head: Offset(-.1, -2.36),
     torso: [
-      Offset(-.58, -1.76),
-      Offset(-.7, -1.1),
-      Offset(-.86, -.45),
-      Offset(-.58, 0),
-      Offset(.6, 0),
-      Offset(.92, -.45),
-      Offset(.78, -1.1),
-      Offset(.6, -1.76),
+      Offset(-.68, -1.76),
+      Offset(-.8, -1.1),
+      Offset(-.92, -.45),
+      Offset(-.66, 0),
+      Offset(.86, 0),
+      Offset(1.2, -.5),
+      Offset(.92, -1.22),
+      Offset(.5, -1.78),
     ],
     haunch: [
-      Offset(-.56, -.4),
-      Offset(.4, .4),
-      Offset(.6, -.46),
-      Offset(.48, .48),
+      Offset(-.62, -.38),
+      Offset(.38, .38),
+      Offset(.74, -.52),
+      Offset(.58, .54),
     ],
     legs: [
-      Offset(-.2, -1.05),
-      Offset(-.2, -.12),
-      Offset(.2, -1.05),
-      Offset(.2, -.12),
-      Offset(-.6, -.2),
-      Offset(-.74, -.1),
-      Offset(.66, -.2),
-      Offset(.82, -.1),
+      Offset(-.3, -1.05),
+      Offset(-.3, -.12),
+      Offset(.12, -1.05),
+      Offset(.12, -.12),
+      Offset(-.7, -.2),
+      Offset(-.84, -.1),
+      Offset(.92, -.2),
+      Offset(1.08, -.1),
     ],
-    tailRoot: Offset(.6, -.18),
-    tailAngle: -.3,
-    tailBend: -1.6,
-    tailCurl: -1.5,
-    tailLength: 2.4,
+    tailRoot: Offset(1.1, -.15),
+    tailAngle: .05,
+    tailBend: -2.0,
+    tailCurl: -.6,
+    tailLength: 2.5,
+    shadow: Offset(.2, 2.9),
   );
 
   /// Lying hunched, chin on the paws, tail along the floor in front.
   static const hunch = BodyPose(
-    head: Offset(-.5, -1.08),
+    head: Offset(-.8, -1.06),
     headTilt: .04,
     torso: [
-      Offset(-.3, -1.52),
-      Offset(-.8, -.95),
-      Offset(-.82, -.3),
-      Offset(-.45, 0),
-      Offset(1.0, 0),
-      Offset(1.5, -.38),
-      Offset(1.3, -1.25),
-      Offset(.5, -1.62),
+      Offset(-.55, -1.55),
+      Offset(-1.05, -.95),
+      Offset(-1.06, -.3),
+      Offset(-.7, 0),
+      Offset(1.2, 0),
+      Offset(1.76, -.42),
+      Offset(1.56, -1.36),
+      Offset(.55, -1.76),
     ],
     haunch: [
-      Offset(.95, -.45),
+      Offset(1.0, -.5),
       Offset(.3, .3),
-      Offset(1.02, -.52),
-      Offset(.5, .5),
+      Offset(1.16, -.58),
+      Offset(.6, .56),
     ],
     legs: [
-      Offset(-.85, -.32),
-      Offset(-.9, -.11),
-      Offset(-.22, -.32),
-      Offset(-.18, -.11),
-      Offset(.8, -.2),
-      Offset(.75, -.1),
-      Offset(1.05, -.26),
-      Offset(1.2, -.1),
+      Offset(-1.12, -.32),
+      Offset(-1.18, -.11),
+      Offset(-.5, -.32),
+      Offset(-.45, -.11),
+      Offset(1.0, -.2),
+      Offset(.95, -.1),
+      Offset(1.26, -.26),
+      Offset(1.46, -.1),
     ],
     front: [1, 1, 0, 1],
-    tailRoot: Offset(1.3, -.62),
+    tailRoot: Offset(1.6, -.62),
     tailAngle: -3.83,
     tailBend: .55,
     tailCurl: 1.5,
-    tailLength: 1.55,
+    tailLength: 1.75,
     tailFront: 1,
     merge: 0,
     chest: .15,
-    shadow: Offset(.35, 3.0),
+    shadow: Offset(.4, 3.5),
   );
 
   /// Lying as a loaf, head up and alert.
   static final loaf = hunch.copyWith(
-    head: const Offset(-.42, -1.3),
+    head: const Offset(-.72, -1.3),
     headTilt: 0,
     torso: const [
-      Offset(-.25, -1.75),
-      Offset(-.76, -1.05),
-      Offset(-.8, -.35),
-      Offset(-.45, 0),
-      Offset(.95, 0),
-      Offset(1.42, -.42),
-      Offset(1.25, -1.38),
-      Offset(.45, -1.8),
+      Offset(-.5, -1.82),
+      Offset(-1.0, -1.1),
+      Offset(-1.05, -.35),
+      Offset(-.7, 0),
+      Offset(1.15, 0),
+      Offset(1.7, -.45),
+      Offset(1.5, -1.48),
+      Offset(.55, -1.92),
     ],
     haunch: const [
-      Offset(.9, -.5),
+      Offset(.95, -.55),
       Offset(.3, .3),
-      Offset(.95, -.56),
-      Offset(.52, .52),
+      Offset(1.1, -.62),
+      Offset(.6, .58),
     ],
+    tailRoot: const Offset(1.55, -.62),
     tailAngle: -3.78,
     tailBend: .45,
     tailCurl: 1.9,
-    tailLength: 1.45,
+    tailLength: 1.65,
     chest: .7,
   );
 
   /// Curled up asleep, head resting on a paw, tail wrapped round.
   static const curl = BodyPose(
-    head: Offset(-.58, -.98),
+    head: Offset(-.88, -.98),
     headTilt: -.14,
     torso: [
-      Offset(-.2, -1.5),
-      Offset(-.85, -.9),
-      Offset(-.85, -.3),
-      Offset(-.5, 0),
-      Offset(1.0, 0),
-      Offset(1.5, -.45),
-      Offset(1.3, -1.35),
-      Offset(.5, -1.7),
+      Offset(-.45, -1.55),
+      Offset(-1.1, -.95),
+      Offset(-1.1, -.3),
+      Offset(-.75, 0),
+      Offset(1.2, 0),
+      Offset(1.8, -.48),
+      Offset(1.6, -1.45),
+      Offset(.6, -1.86),
     ],
     haunch: [
-      Offset(.9, -.5),
+      Offset(1.0, -.5),
       Offset(.3, .3),
-      Offset(.98, -.6),
-      Offset(.55, .55),
+      Offset(1.15, -.62),
+      Offset(.62, .6),
     ],
     legs: [
-      Offset(-.55, -.3),
-      Offset(-.6, -.11),
-      Offset(-.15, -.3),
-      Offset(-.1, -.11),
-      Offset(.8, -.2),
-      Offset(.75, -.1),
-      Offset(1.05, -.26),
-      Offset(1.15, -.1),
+      Offset(-.85, -.3),
+      Offset(-.92, -.11),
+      Offset(-.4, -.3),
+      Offset(-.35, -.11),
+      Offset(1.0, -.2),
+      Offset(.95, -.1),
+      Offset(1.25, -.26),
+      Offset(1.4, -.1),
     ],
     front: [1, 0, 0, 0],
-    tailRoot: Offset(1.35, -.62),
+    tailRoot: Offset(1.62, -.62),
     tailAngle: -3.88,
     tailBend: .65,
     tailCurl: 1.3,
-    tailLength: 1.75,
+    tailLength: 1.95,
     tailFront: 1,
     merge: 0,
     chest: 0,
-    shadow: Offset(.35, 3.0),
+    shadow: Offset(.45, 3.5),
   );
 
   /// Standing on all four, head turned to us, tail up.
   static const prowl = BodyPose(
-    head: Offset(-.98, -1.62),
+    head: Offset(-1.0, -1.72),
     torso: [
-      Offset(-.5, -1.95),
-      Offset(-1.0, -1.3),
-      Offset(-.75, -.72),
-      Offset(0, -.62),
-      Offset(.85, -.66),
-      Offset(1.35, -1.0),
-      Offset(1.35, -1.65),
-      Offset(.45, -1.88),
+      Offset(-.5, -2.02),
+      Offset(-1.05, -1.35),
+      Offset(-.8, -.66),
+      Offset(0, -.52),
+      Offset(.95, -.56),
+      Offset(1.5, -.95),
+      Offset(1.5, -1.72),
+      Offset(.5, -1.98),
     ],
     haunch: [
-      Offset(.75, -1.1),
-      Offset(.32, .36),
-      Offset(1.0, -1.1),
-      Offset(.44, .48),
+      Offset(.9, -1.05),
+      Offset(.34, .38),
+      Offset(1.15, -1.05),
+      Offset(.5, .52),
     ],
     legs: [
-      Offset(-.75, -1.05),
-      Offset(-1.3, -.12),
-      Offset(-.45, -1.0),
-      Offset(-.72, -.12),
-      Offset(.7, -.95),
-      Offset(.42, -.12),
-      Offset(1.05, -.95),
-      Offset(1.0, -.12),
+      Offset(-.78, -.92),
+      Offset(-1.26, -.12),
+      Offset(-.46, -.88),
+      Offset(-.7, -.12),
+      Offset(.86, -.86),
+      Offset(.56, -.12),
+      Offset(1.2, -.86),
+      Offset(1.16, -.12),
     ],
     front: [0, 1, 0, 1],
     shade: [1, 0, 1, 0],
-    tailRoot: Offset(1.25, -1.55),
-    tailAngle: -1.0,
+    tailRoot: Offset(1.4, -1.62),
+    tailAngle: -1.15,
     tailBend: -.3,
-    tailCurl: -1.7,
-    tailLength: 1.9,
+    tailCurl: -1.35,
+    tailLength: 2.0,
     merge: 0,
     chest: .7,
-    shadow: Offset(.05, 3.3),
+    shadow: Offset(.1, 3.5),
   );
 
   /// Each mood's own pose: one of the drawn poses with its paws, tail and
@@ -476,7 +479,7 @@ class BodyPose {
   static BodyPose forMood(CatMood mood) => switch (mood) {
     CatMood.idle => sit.copyWith(moves: {Move.fidget: 1}),
     CatMood.listening => sit.copyWith(
-      head: const Offset(0, -2.5),
+      head: const Offset(-.1, -2.5),
       tailAngle: -.45,
       tailBend: -1.3,
       tailCurl: -1.1,
@@ -487,13 +490,13 @@ class BodyPose {
       sit
           .withLeg(
             1,
-            const Offset(.3, -1.15),
-            const Offset(.46, -1.62),
+            const Offset(.2, -1.15),
+            const Offset(.36, -1.62),
             over: 1,
           )
           .copyWith(emotes: {Emote.dots: 1}, moves: {Move.tap: 1}),
     CatMood.happy => sit.copyWith(
-      head: const Offset(0, -2.52),
+      head: const Offset(-.1, -2.52),
       tailAngle: -.5,
       tailBend: -1.9,
       tailCurl: -.9,
@@ -504,11 +507,11 @@ class BodyPose {
       sit
           .withLeg(
             0,
-            const Offset(-.3, -1.05),
-            const Offset(-.13, -1.5),
+            const Offset(-.4, -1.05),
+            const Offset(-.23, -1.5),
             over: 1,
           )
-          .withLeg(1, const Offset(.3, -1.05), const Offset(.13, -1.5), over: 1)
+          .withLeg(1, const Offset(.2, -1.05), const Offset(.03, -1.5), over: 1)
           .copyWith(
             tailAngle: -.4,
             tailBend: -1.4,
@@ -521,20 +524,20 @@ class BodyPose {
       sit
           .withLeg(
             1,
-            const Offset(.3, -1.32),
-            const Offset(.98, -2.05),
+            const Offset(.2, -1.32),
+            const Offset(.88, -2.05),
             over: 1,
           )
           .copyWith(
-            head: const Offset(-.04, -2.46),
+            head: const Offset(-.14, -2.46),
             tailAngle: -.5,
             tailBend: -1.8,
             moves: {Move.wave: 1, Move.wag: .4},
           ),
     // Tail wrapped round the front paws.
     CatMood.smug => sit.copyWith(
-      head: const Offset(0, -2.46),
-      tailRoot: const Offset(.5, -.18),
+      head: const Offset(-.1, -2.46),
+      tailRoot: const Offset(.95, -.2),
       tailAngle: -3.28,
       tailBend: .15,
       tailCurl: 1.2,
@@ -547,14 +550,14 @@ class BodyPose {
       sit
           .withLeg(
             0,
-            const Offset(-.3, -1.3),
-            const Offset(-.86, -1.74),
+            const Offset(-.4, -1.3),
+            const Offset(-.96, -1.74),
             over: 1,
           )
-          .withLeg(1, const Offset(.3, -1.3), const Offset(.86, -1.74), over: 1)
+          .withLeg(1, const Offset(.2, -1.3), const Offset(.76, -1.74), over: 1)
           .copyWith(
-            head: const Offset(0, -2.34),
-            tailRoot: const Offset(.5, -.18),
+            head: const Offset(-.1, -2.34),
+            tailRoot: const Offset(.95, -.2),
             tailAngle: -3.28,
             tailBend: .2,
             tailCurl: 1.0,
@@ -564,13 +567,13 @@ class BodyPose {
           ),
     // Pressed low, tail tucked, shivering.
     CatMood.scared => sit.copyWith(
-      head: const Offset(0, -2.08),
+      head: const Offset(-.1, -2.08),
       torso: [for (final p in sit.torso) Offset(p.dx * 1.12, p.dy * .8)],
       legs: [
         for (final (i, p) in sit.legs.indexed)
           i.isEven ? Offset(p.dx * 1.1, p.dy * .76) : p,
       ],
-      tailRoot: const Offset(.5, -.16),
+      tailRoot: const Offset(.95, -.18),
       tailAngle: -3.23,
       tailBend: .2,
       tailCurl: .7,
@@ -583,7 +586,7 @@ class BodyPose {
     CatMood.sad => hunch,
     // Flat on the floor, shivering a little.
     CatMood.sick => curl.copyWith(
-      head: const Offset(-.6, -1.02),
+      head: const Offset(-.88, -1.04),
       headTilt: .08,
       front: const [1, 1, 0, 0],
       emotes: {Emote.sweat: .8},
@@ -594,25 +597,21 @@ class BodyPose {
       emotes: {Emote.question: 1},
       moves: {Move.sway: .5},
     ),
-    CatMood.surprised => prowl.copyWith(
-      puff: .4,
-      tailCurl: -.9,
-      emotes: {Emote.dashes: 1},
-    ),
+    CatMood.surprised => prowl.copyWith(emotes: {Emote.dashes: 1}),
     // Back up in an arch, tail straight up and bristling.
     CatMood.mad => prowl.copyWith(
-      head: const Offset(-1.0, -1.45),
+      head: const Offset(-1.02, -1.5),
       torso: const [
-        Offset(-.5, -1.78),
-        Offset(-1.0, -1.2),
-        Offset(-.72, -.64),
-        Offset(0, -.74),
-        Offset(.85, -.68),
-        Offset(1.3, -1.0),
-        Offset(1.25, -1.82),
-        Offset(.35, -2.32),
+        Offset(-.5, -1.85),
+        Offset(-1.05, -1.25),
+        Offset(-.78, -.62),
+        Offset(0, -.64),
+        Offset(.95, -.58),
+        Offset(1.48, -.95),
+        Offset(1.42, -1.85),
+        Offset(.4, -2.4),
       ],
-      tailRoot: const Offset(1.2, -1.7),
+      tailRoot: const Offset(1.35, -1.75),
       tailAngle: -1.45,
       tailBend: .1,
       tailCurl: -.5,
@@ -937,7 +936,7 @@ extension on CatPainter {
     List<Offset> side(int leg, double k) {
       final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
       final d = paw - root;
-      final n = Offset(-d.dy, d.dx) / d.distance * .185;
+      final n = Offset(-d.dy, d.dx) / d.distance * .205;
       return [
         for (var i = 0; i <= 8; i++) root + d * (-.05 + .98 * i / 8) + n * k,
       ];
@@ -996,7 +995,7 @@ extension on CatPainter {
     inHead(() => _paintHead(canvas, f, r, motion, inks, inked: !merged));
 
     for (final leg in [0, 1]) {
-      if (p.over[leg] > .5) {
+      if (p.over[leg] > .9) {
         _paintPaw(canvas, p.legs[leg * 2 + 1], inks, lw, leg, p);
       }
     }
@@ -1152,14 +1151,13 @@ extension on CatPainter {
     } else {
       _through(path, left);
     }
-    final end = spine.last;
     final radius = width.last / 2;
+    // Round cap over the tip: from the left side, round the front, to the
+    // right side, which on a y-down canvas runs anticlockwise.
     path.arcToPoint(
       right.last,
       radius: Radius.circular(radius),
-      clockwise: (right.last - end).direction > (left.last - end).direction
-          ? true
-          : false,
+      clockwise: false,
     );
     if (fur) {
       for (final o in right.reversed.skip(1)) {
@@ -1187,7 +1185,7 @@ extension on CatPainter {
       final d = s[math.min(i + 1, s.length - 1)] - s[math.max(i - 1, 0)];
       under.add(s[i] + Offset(d.dy, -d.dx) / d.distance * tail.width[i] * .42);
     }
-    _brush(c, under, .24, Color.lerp(inks.fur, inks.ink, .2)!);
+    _brush(c, under, .2, Color.lerp(inks.fur, inks.ink, .16)!);
     final n = tail.spine.length - 1;
     Color? tip;
     var from = 0.0;
@@ -1200,8 +1198,8 @@ extension on CatPainter {
           : Color.lerp(inks.fur, Colors.white, .75)!;
       from = .74;
     } else if (look.tail == CatTail.bushy) {
-      tip = Color.lerp(inks.fur, inks.ink, .26)!;
-      from = .62;
+      tip = Color.lerp(inks.fur, inks.ink, .24)!;
+      from = .7;
     }
     if (tip != null) {
       final k = (n * from).round();
@@ -1238,8 +1236,8 @@ extension on CatPainter {
     final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
     final hind = leg >= 2;
     return [
-      _capsule(root, hind ? .22 : .19, paw - const Offset(0, .04), .17),
-      Path()..addOval(Rect.fromCenter(center: paw, width: .44, height: .27)),
+      _capsule(root, hind ? .24 : .21, paw - const Offset(0, .04), .19),
+      Path()..addOval(Rect.fromCenter(center: paw, width: .46, height: .28)),
     ];
   }
 
@@ -1283,7 +1281,7 @@ extension on CatPainter {
     c.drawPath(arm, inks.line(lw * 2));
     c.restore();
     c.drawPath(arm, Paint()..color = inks.fur);
-    if (p.over[leg] <= .5) _paintPaw(c, paw, inks, lw, leg, p);
+    if (p.over[leg] <= .9) _paintPaw(c, paw, inks, lw, leg, p);
   }
 
   /// White socks for a cat with a pale muzzle, dark points for a masked one.
@@ -1354,7 +1352,7 @@ extension on CatPainter {
     final big = profile.look.mark == CatMark.muzzle;
     final color = big
         ? Color.lerp(inks.fur, Colors.white, .6)!
-        : Color.lerp(inks.fur, Colors.white, .14)!;
+        : Color.lerp(inks.fur, Colors.white, .16)!;
     final k = big ? 1.12 : 1.0;
     Offset o(double x, double y) => chin + Offset(x * k, y * k);
     // A heart of pale fur under the chin, its edges broken into tufts.
