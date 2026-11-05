@@ -11,6 +11,8 @@ import 'package:flutter/services.dart';
 import 'genome.dart';
 import 'silhouette.dart';
 
+part 'figure.dart';
+
 enum CatMood {
   idle('Покой', 'Просто рядом', blob.idle),
   listening(
@@ -213,6 +215,61 @@ class CatProfile {
   Color get accent => Color.lerp(head, Colors.white, .55)!;
   late final double twitchEvery = traits.numIn('cat.ear.twitch', 5200, 9400);
 
+  /// Two tufts on each cheek where the head is widest, leaning down like
+  /// brushed fur; drawn as one shape with the head.
+  late final Path cheekFur = _cheekFur();
+
+  Path _cheekFur() {
+    final out = Path();
+    if (look.head == CatHead.fluff) return out;
+    final b = layout.body;
+    final metric = toPath(silhouette.trace(b)).computeMetrics().first;
+    // The right cheek: the outermost stretch of the outline below the eyes.
+    final samples = [
+      for (var i = 0; i < 240; i++)
+        metric.getTangentForOffset(metric.length * i / 240)!,
+    ];
+    for (final (at, size) in const [(.3, 1.0), (.5, .8)]) {
+      final y = b.cy + at * b.ry;
+      final hit = samples
+          .where((t) => t.position.dx > b.cx)
+          .reduce(
+            (a, c) =>
+                (c.position.dy - y).abs() < (a.position.dy - y).abs() ? c : a,
+          );
+      for (final side in [1.0, -1.0]) {
+        Offset m(Offset p) => Offset(b.cx + (p.dx - b.cx) * side, p.dy);
+        final p = hit.position;
+        // Outward and a little down, the way cheek fur lies.
+        final out0 = Offset(math.cos(.55), math.sin(.55));
+        final along = Offset(-out0.dy, out0.dx);
+        final w = b.rx * .11 * size, len = b.rx * .13 * size;
+        final base0 = p - out0 * (w * .9) - along * w;
+        final base1 = p - out0 * (w * .9) + along * w;
+        final tip = p + out0 * len + along * (len * .35);
+        out.addPath(
+          Path()
+            ..moveTo(m(base0).dx, m(base0).dy)
+            ..quadraticBezierTo(
+              m(p - along * (w * .2)).dx,
+              m(p - along * (w * .2)).dy,
+              m(tip).dx,
+              m(tip).dy,
+            )
+            ..quadraticBezierTo(
+              m(p + along * (w * .9)).dx,
+              m(p + along * (w * .9)).dy,
+              m(base1).dx,
+              m(base1).dy,
+            )
+            ..close(),
+          Offset.zero,
+        );
+      }
+    }
+    return out;
+  }
+
   /// A mood warms the fur a little; the eyes keep the cat's own colour.
   blob.Palette colorsFor(blob.Expression expression) {
     final base = {blob.colorHead: _hex(head), blob.colorEye: _hex(eyeColor)};
@@ -244,11 +301,15 @@ class LivingCat extends StatefulWidget {
     this.height,
     this.voiceLevel = .65,
     this.glow = true,
+    this.body = false,
     this.onPoke,
   });
   final CatProfile profile;
   final CatMood mood;
   final bool animate, gaze, glow;
+
+  /// The whole cat on the floor instead of the head alone.
+  final bool body;
   final double size;
   final double? height;
   final double voiceLevel;
@@ -278,6 +339,7 @@ class _LivingCatState extends State<LivingCat>
   bool _hovered = false, _focused = false, _reduced = false;
   Timer? _pokeTimer;
   String? _reaction;
+  late final BodySpring _body = BodySpring(BodyPose.forMood(widget.mood));
 
   double get _progress =>
       blob.easeInOut(((_time - _morphStart) / 420).clamp(0, 1));
@@ -336,6 +398,7 @@ class _LivingCatState extends State<LivingCat>
     }
     if (!active && _ticker.isActive) _ticker.stop();
     if (!active) {
+      _body.snap();
       _from = _to;
       _rigFrom = _rigTo;
       _fromHead = _toHead;
@@ -355,6 +418,7 @@ class _LivingCatState extends State<LivingCat>
     final approach = 1 - math.exp(-dt / 90);
     _look = Offset.lerp(_look, desired, approach)!;
     _tracking += ((widget.gaze && _hovered ? 1 : 0) - _tracking) * approach;
+    if (widget.body) _body.step(dt);
     _repaint.value++;
   }
 
@@ -368,10 +432,12 @@ class _LivingCatState extends State<LivingCat>
     _toEye = CatProfile.hex(palette[blob.colorEye]!);
     _rigFrom = _rig;
     _rigTo = CatRig.forMood(widget.mood);
+    _body.aim(BodyPose.forMood(widget.mood));
     _from = _pose;
     _to = target;
     _morphStart = _time;
     if (!_ticker.isActive) {
+      _body.snap();
       _from = _to;
       _rigFrom = _rigTo;
       _fromHead = _toHead;
@@ -397,6 +463,7 @@ class _LivingCatState extends State<LivingCat>
     widget.onPoke?.call();
     _pokeTimer?.cancel();
     _petStart = _time;
+    _body.poke();
     setState(() => _reaction = 'Подмигнул');
     _morph(blob.wink.pose, blob.wink);
     _pokeTimer = Timer(const Duration(milliseconds: 1200), () {
@@ -460,6 +527,7 @@ class _LivingCatState extends State<LivingCat>
                     glow: widget.glow,
                     repaint: _repaint,
                     frame: () => CatFrame(
+                      body: widget.body ? _body.pose : null,
                       pose: _pose,
                       headColor: _head,
                       eyeColor: _eye,
@@ -506,10 +574,12 @@ class StillCat extends StatelessWidget {
     required this.profile,
     required this.size,
     this.mood = CatMood.idle,
+    this.body = false,
   });
   final CatProfile profile;
   final CatMood mood;
   final double size;
+  final bool body;
 
   @override
   Widget build(BuildContext context) => RepaintBoundary(
@@ -520,6 +590,7 @@ class StillCat extends StatelessWidget {
         mood: mood,
         glow: false,
         frame: () => CatFrame(
+          body: body ? BodyPose.forMood(mood) : null,
           pose: mood.expression.pose,
           motion: blob.motionAt(profile.seeds, 0, 0),
         ),
@@ -546,7 +617,11 @@ class CatFrame {
     this.speech = 0,
     this.headColor,
     this.eyeColor,
+    this.body,
   });
+
+  /// The whole cat on the floor; null paints the head alone.
+  final BodyPose? body;
   final blob.Pose pose;
   final blob.MotionFrame motion;
   final Offset gaze;
@@ -601,15 +676,30 @@ class CatPainter extends CustomPainter {
         : null;
     final head = f.headColor ?? CatProfile.hex(colors![blob.colorHead]!);
     final eye = f.eyeColor ?? CatProfile.hex(colors![blob.colorEye]!);
-    final (_, _, ink, blush) = profile.colors;
-    final b = profile.layout.body;
+    final ink = profile.colors.$3, blush = profile.colors.$4;
+    final paints = _Inks(head, eye, ink, blush);
+    if (f.body case final body?) {
+      _paintFigure(canvas, size, f, body, r, motion, paints);
+      return;
+    }
 
     final scale = math.min(size.width, size.height) / 112;
     canvas.save();
     canvas.translate(size.width / 2, size.height / 2);
     canvas.scale(scale);
     canvas.translate(-50, -50);
-    canvas.save();
+    _paintHead(canvas, f, r, motion, paints, glow: glow);
+    canvas.restore();
+  }
+
+  /// Moves the canvas into the head's own 100-unit box as this frame holds
+  /// it (roll, lift, breath, bob) and returns the two ear angles.
+  (double, double) _enterHead(
+    Canvas canvas,
+    CatFrame f,
+    CatRig r,
+    blob.MotionFrame motion,
+  ) {
     canvas.translate(50, 74);
     canvas.rotate(r.tilt + f.gaze.dx * .006 - f.pet * .05);
     canvas.translate(0, r.lift);
@@ -619,22 +709,73 @@ class CatPainter extends CustomPainter {
     canvas.scale(motion.breathe.$1, motion.breathe.$2);
     canvas.translate(-50, -50);
     canvas.translate(0, f.pose.bdy + motion.bob);
-
     final twitchAt = (f.time % profile.twitchEvery) / 340;
     final twitch = twitchAt < 1 ? math.sin(math.pi * twitchAt) * .16 : 0.0;
-    final left = r.leftEar - f.speech * .06 + f.pet * .3;
-    final right = r.rightEar - f.speech * .06 + f.pet * .12 + twitch;
+    return (
+      r.leftEar - f.speech * .06 + f.pet * .3,
+      r.rightEar - f.speech * .06 + f.pet * .12 + twitch,
+    );
+  }
+
+  /// The head's outline alone, its full shape with ear brushes, and the
+  /// brushes themselves.
+  (Path, Path, List<_Tuft>) _headShape(double left, double right, double t) {
+    final b = profile.layout.body;
     final outline = toPath(
       profile.silhouette.trace(b, left: left, right: right),
     );
-
     final tufts = profile.look.ears == CatEars.tuft
-        ? [_tuft(b, left, f.time, left: true), _tuft(b, right, f.time)]
+        ? [_tuft(b, left, t, left: true), _tuft(b, right, t)]
         : const <_Tuft>[];
     var shape = outline;
-    for (final t in tufts) {
-      shape = Path.combine(PathOperation.union, shape, t.path);
+    for (final tuft in tufts) {
+      shape = Path.combine(PathOperation.union, shape, tuft.path);
     }
+    return (outline, shape, tufts);
+  }
+
+  /// Only the head's ink, for a body that shares one outline with it.
+  void _paintHeadInk(
+    Canvas canvas,
+    CatFrame f,
+    CatRig r,
+    blob.MotionFrame motion,
+    _Inks inks,
+  ) {
+    canvas.save();
+    final (left, right) = _enterHead(canvas, f, r, motion);
+    final (_, shape, _) = _headShape(left, right, f.time);
+    _ink(canvas, [shape, profile.cheekFur], inks);
+    canvas.restore();
+  }
+
+  void _ink(Canvas canvas, List<Path> paths, _Inks inks) {
+    final b = profile.layout.body;
+    final line = inks.line(b.rx * .08);
+    for (final p in paths) {
+      canvas.drawPath(p, line);
+      canvas.drawPath(p.shift(Offset(0, b.rx * .018)), line);
+    }
+  }
+
+  /// The head in its own 100-unit box, where Blobatar laid it out: outline,
+  /// ears, fur, face and whatever it wears. The caller places the box.
+  /// Without [inked] the outline is left to the caller.
+  void _paintHead(
+    Canvas canvas,
+    CatFrame f,
+    CatRig r,
+    blob.MotionFrame motion,
+    _Inks inks, {
+    bool glow = false,
+    bool inked = true,
+  }) {
+    final head = inks.fur, eye = inks.eye, ink = inks.ink, blush = inks.blush;
+    final b = profile.layout.body;
+    canvas.save();
+    final (left, right) = _enterHead(canvas, f, r, motion);
+    final (outline, shape, tufts) = _headShape(left, right, f.time);
+    final fur = profile.cheekFur;
     if (glow) {
       canvas.drawPath(
         shape,
@@ -643,10 +784,15 @@ class CatPainter extends CustomPainter {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
     }
-    canvas.drawPath(shape, Paint()..color = head);
+    // Ink first, fill over it: only the outer half of the line survives, and
+    // the cheek fur joins the head without a seam.
+    if (inked) _ink(canvas, [shape, fur], inks);
+    final fill = Paint()..color = head;
+    canvas.drawPath(shape, fill);
+    canvas.drawPath(fur, fill);
     for (final t in tufts) {
       // Dipped in ink: darkest at the hair's end, fading back down the ear.
-      final hair = Color.lerp(head, ink, .86)!;
+      final hair = Color.lerp(head, ink, .8)!;
       canvas.save();
       canvas.clipPath(shape);
       canvas.drawCircle(
@@ -657,7 +803,7 @@ class CatPainter extends CustomPainter {
             t.from,
             t.to,
             [hair.withValues(alpha: 0), hair, hair],
-            [0, .4, 1],
+            [0, .45, 1],
           ),
       );
       canvas.restore();
@@ -677,7 +823,6 @@ class CatPainter extends CustomPainter {
     canvas.restore();
     _paintMouth(canvas, b, ink, r, f.speech);
     _paintWear(canvas, b, ink, blush, right);
-    canvas.restore();
     canvas.restore();
   }
 
@@ -718,7 +863,8 @@ class CatPainter extends CustomPainter {
     final sway = math.sin(time / 620 + (left ? 1.3 : 0)) * .06;
     Offset hair(double x, double y) {
       final a = sway * (-y / .3).clamp(0.0, 1.0);
-      final px = s * x * w, py = y * w;
+      // Short brushes: the drawn cats keep the hair close to the ear.
+      final px = s * x * w * .85, py = y * w * .5;
       return body(
         Offset(
           px * math.cos(a) - py * math.sin(a),
@@ -844,6 +990,16 @@ class CatPainter extends CustomPainter {
       );
     }
     c.drawPath(path, Paint()..color = bead ? _beadColor(ink) : color);
+    if (!small) {
+      // The drawn eyes are inked round like the rest of the cat.
+      c.drawPath(
+        path,
+        Paint()
+          ..color = Color.lerp(ink, color, .12)!
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = eye.rx * .14,
+      );
+    }
     final open = ((height * motion.blink - .5) / .3).clamp(0.0, 1.0);
     if (open > 0 && kind != CatEyes.pill) {
       c.save();
@@ -889,18 +1045,30 @@ class CatPainter extends CustomPainter {
       // dark one ringed by the eye's pale colour; bare, the shine was lost
       // on the pale fill.
       final dark = profile.traits('cat.eye.dark') < .5;
+      // Iris and pupil, as in the drawings: a wide soft ring in the eye's
+      // own hue and a deep centre under the shine.
       c.drawCircle(
-        Offset(0, ry * (dark ? .08 : .1)),
-        rx * (dark ? .6 : .66),
+        Offset(0, ry * .08),
+        rx * (dark ? .64 : .66),
         Paint()
           ..color = Color.lerp(
             fill,
             ink,
-            dark ? .88 : .55,
+            dark ? .6 : .36,
           )!.withValues(alpha: alpha),
       );
-      c.drawCircle(Offset(-rx * .3, -ry * .34), rx * .22, shine);
-      c.drawCircle(Offset(rx * .3, ry * .3), rx * .1, shine);
+      c.drawCircle(
+        Offset(0, ry * .12),
+        rx * (dark ? .42 : .38),
+        Paint()
+          ..color = Color.lerp(
+            fill,
+            ink,
+            dark ? .92 : .74,
+          )!.withValues(alpha: alpha),
+      );
+      c.drawCircle(Offset(-rx * .28, -ry * .3), rx * .26, shine);
+      c.drawCircle(Offset(rx * .32, ry * .32), rx * .11, shine);
       return;
     }
     if (hasDark || look.darkEyes) {

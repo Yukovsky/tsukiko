@@ -1,0 +1,1714 @@
+part of 'cat.dart';
+
+// The whole cat, after the drawn sheets (tsukiko, lumi, yuko): a big head on
+// a small soft body, everything inked with one dark line whose lower edge is
+// a touch heavier, fur that breaks the line into little tufts, a paler chest
+// and a darker far side. Nothing here is a picture: every part is a few
+// numbers in [BodyPose], and moods only move those numbers.
+//
+// Units are head widths: 1 is half the head's width (Blobatar's `rx`), the
+// origin is the floor under the cat, y grows downward.
+
+/// Colours of one frame, derived from the coat.
+class _Inks {
+  _Inks(this.fur, this.eye, this.ink, this.blush);
+  final Color fur, eye, ink, blush;
+  late final Color outline = Color.lerp(fur, ink, .72)!;
+  late final Color shade = Color.lerp(fur, ink, .13)!;
+  late final Color light = Color.lerp(fur, Colors.white, .2)!;
+  late final Color deep = Color.lerp(fur, ink, .38)!;
+
+  /// A line of the outline colour. Painted under the fill, so half of it
+  /// shows.
+  Paint line(double width) => Paint()
+    ..color = outline
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = width
+    ..strokeJoin = StrokeJoin.round
+    ..strokeCap = StrokeCap.round;
+}
+
+/// Movements a mood keeps going on top of its pose. Each is an amplitude in
+/// the pose, so it fades in and out with the pose instead of switching.
+enum Move {
+  /// Quick happy tail.
+  wag,
+
+  /// A paw tapping the chin.
+  tap,
+
+  /// A paw waving hello.
+  wave,
+
+  /// Little hops on the spot.
+  bounce,
+
+  /// Fine shivers.
+  tremble,
+
+  /// Rocking side to side.
+  sway,
+
+  /// An angry tail whipping.
+  lash,
+
+  /// Small business while nothing happens: steps, kneads, flicks.
+  fidget,
+}
+
+/// Little drawn signs around the head.
+enum Emote { dashes, hearts, zzz, question, dots, sweat, anger }
+
+/// Everything that places the body, as plain numbers. Two poses blend
+/// point by point, so a sitting cat can lie down or stand up through every
+/// shape in between.
+class BodyPose {
+  const BodyPose({
+    required this.head,
+    this.headTilt = 0,
+    required this.torso,
+    required this.haunch,
+    required this.legs,
+    this.front = const [1, 1, 1, 1],
+    this.over = const [0, 0],
+    this.shade = const [0, 0, 0, 0],
+    required this.tailRoot,
+    required this.tailAngle,
+    this.tailBend = 0,
+    this.tailCurl = 0,
+    this.tailLength = 2,
+    this.tailFront = 0,
+    this.puff = 0,
+    this.chest = 1,
+    this.merge = 1,
+    this.shadow = const Offset(.1, 2.5),
+    this.emote = const [0, 0, 0, 0, 0, 0, 0],
+    this.move = const [0, 0, 0, 0, 0, 0, 0, 0],
+    this.squash = 0,
+  });
+
+  /// Centre of the head (Blobatar's body centre) and its roll in radians.
+  final Offset head;
+  final double headTilt;
+
+  /// Eight points of a closed smooth loop, clockwise from the neck's left:
+  /// left shoulder, left side, left hip, floor left, floor right, right hip,
+  /// right side, right shoulder.
+  final List<Offset> torso;
+
+  /// Centre and radii of the left and the right thigh.
+  final List<Offset> haunch;
+
+  /// Root and paw of the front left, front right, back left, back right leg.
+  final List<Offset> legs;
+
+  /// Per leg: 1 in front of the body, 0 behind it.
+  final List<double> front;
+
+  /// Per front paw: 1 when it is raised over the face.
+  final List<double> over;
+
+  /// Per leg: 1 for the far side, a shade darker.
+  final List<double> shade;
+
+  /// The tail leaves [tailRoot] at [tailAngle], turns by [tailBend] along
+  /// its length and by [tailCurl] more near the tip.
+  final Offset tailRoot;
+  final double tailAngle, tailBend, tailCurl, tailLength;
+
+  /// 1 when the tail lies in front of the body, wrapped round the paws.
+  final double tailFront;
+
+  /// Fur standing up on the tail.
+  final double puff;
+
+  /// How much of the pale chest shows.
+  final double chest;
+
+  /// 1 when head and body share one outline (sitting, the chin sunk into the
+  /// chest fur); 0 when the head is drawn in front of the body.
+  final double merge;
+
+  /// Centre x and width of the floor shadow.
+  final Offset shadow;
+
+  /// Amplitudes per [Emote] and per [Move].
+  final List<double> emote, move;
+
+  /// Squash and stretch: positive is squashed. Rests at 0; a change of
+  /// pose kicks it.
+  final double squash;
+
+  double operator [](Move m) => move[m.index];
+  double emoteOf(Emote e) => emote[e.index];
+
+  BodyPose copyWith({
+    Offset? head,
+    double? headTilt,
+    List<Offset>? torso,
+    List<Offset>? haunch,
+    List<Offset>? legs,
+    List<double>? front,
+    List<double>? over,
+    List<double>? shade,
+    Offset? tailRoot,
+    double? tailAngle,
+    double? tailBend,
+    double? tailCurl,
+    double? tailLength,
+    double? tailFront,
+    double? puff,
+    double? chest,
+    double? merge,
+    Offset? shadow,
+    Map<Emote, double> emotes = const {},
+    Map<Move, double> moves = const {},
+  }) => BodyPose(
+    head: head ?? this.head,
+    headTilt: headTilt ?? this.headTilt,
+    torso: torso ?? this.torso,
+    haunch: haunch ?? this.haunch,
+    legs: legs ?? this.legs,
+    front: front ?? this.front,
+    over: over ?? this.over,
+    shade: shade ?? this.shade,
+    tailRoot: tailRoot ?? this.tailRoot,
+    tailAngle: tailAngle ?? this.tailAngle,
+    tailBend: tailBend ?? this.tailBend,
+    tailCurl: tailCurl ?? this.tailCurl,
+    tailLength: tailLength ?? this.tailLength,
+    tailFront: tailFront ?? this.tailFront,
+    puff: puff ?? this.puff,
+    chest: chest ?? this.chest,
+    merge: merge ?? this.merge,
+    shadow: shadow ?? this.shadow,
+    emote: [
+      for (final e in Emote.values) emotes[e] ?? emote[e.index],
+    ],
+    move: [for (final m in Move.values) moves[m] ?? move[m.index]],
+    squash: squash,
+  );
+
+  /// The same pose with one leg moved.
+  BodyPose withLeg(int leg, Offset root, Offset paw, {double? over}) {
+    final next = [...legs];
+    next[leg * 2] = root;
+    next[leg * 2 + 1] = paw;
+    final o = [...this.over];
+    if (over != null && leg < 2) o[leg] = over;
+    return copyWith(legs: next, over: o);
+  }
+
+  // Flattened: the spring works on one list of numbers. [_springs] holds
+  // how fast each number follows, so the head leads, the body follows
+  // and the tail trails behind.
+  void _write(void Function(double value, double omega, double zeta) w) {
+    void p(Offset o, double omega, [double zeta = .8]) {
+      w(o.dx, omega, zeta);
+      w(o.dy, omega, zeta);
+    }
+
+    p(head, 11);
+    w(headTilt, 9, .7);
+    for (final o in torso) {
+      p(o, 7.5);
+    }
+    for (final o in haunch) {
+      p(o, 7.5);
+    }
+    for (final o in legs) {
+      p(o, 12, .78);
+    }
+    for (final v in [...front, ...over, ...shade]) {
+      w(v, 10, 1);
+    }
+    p(tailRoot, 8);
+    for (final v in [tailAngle, tailBend, tailCurl, tailLength]) {
+      w(v, 6.5, .62);
+    }
+    w(tailFront, 8, 1);
+    w(puff, 9, .7);
+    w(chest, 8, 1);
+    w(merge, 9, 1);
+    p(shadow, 7.5, 1);
+    for (final v in [...emote, ...move]) {
+      w(v, 6, 1);
+    }
+    w(squash, 15, .32);
+  }
+
+  List<double> flat() {
+    final out = <double>[];
+    _write((v, _, _) => out.add(v));
+    return out;
+  }
+
+  static final List<(double, double)> _springs = () {
+    final out = <(double, double)>[];
+    sit._write((_, omega, zeta) => out.add((omega, zeta)));
+    return out;
+  }();
+
+  factory BodyPose.unflat(List<double> v) {
+    var i = 0;
+    double n() => v[i++];
+    Offset o() => Offset(n(), n());
+    List<Offset> os(int count) => [for (var k = 0; k < count; k++) o()];
+    List<double> ns(int count) => [for (var k = 0; k < count; k++) n()];
+    return BodyPose(
+      head: o(),
+      headTilt: n(),
+      torso: os(8),
+      haunch: os(4),
+      legs: os(8),
+      front: ns(4),
+      over: ns(2),
+      shade: ns(4),
+      tailRoot: o(),
+      tailAngle: n(),
+      tailBend: n(),
+      tailCurl: n(),
+      tailLength: n(),
+      tailFront: n(),
+      puff: n(),
+      chest: n(),
+      merge: n(),
+      shadow: o(),
+      emote: ns(Emote.values.length),
+      move: ns(Move.values.length),
+      squash: n(),
+    );
+  }
+
+  // The six drawn poses. Everything else is one of these with a paw, the
+  // tail or the head moved.
+
+  /// Sitting upright, paws together, tail curling up behind.
+  static const sit = BodyPose(
+    head: Offset(0, -2.36),
+    torso: [
+      Offset(-.58, -1.76),
+      Offset(-.7, -1.1),
+      Offset(-.86, -.45),
+      Offset(-.58, 0),
+      Offset(.6, 0),
+      Offset(.92, -.45),
+      Offset(.78, -1.1),
+      Offset(.6, -1.76),
+    ],
+    haunch: [
+      Offset(-.56, -.4),
+      Offset(.4, .4),
+      Offset(.6, -.46),
+      Offset(.48, .48),
+    ],
+    legs: [
+      Offset(-.2, -1.05),
+      Offset(-.2, -.12),
+      Offset(.2, -1.05),
+      Offset(.2, -.12),
+      Offset(-.6, -.2),
+      Offset(-.74, -.1),
+      Offset(.66, -.2),
+      Offset(.82, -.1),
+    ],
+    tailRoot: Offset(.6, -.18),
+    tailAngle: -.3,
+    tailBend: -1.6,
+    tailCurl: -1.5,
+    tailLength: 2.4,
+  );
+
+  /// Lying hunched, chin on the paws, tail along the floor in front.
+  static const hunch = BodyPose(
+    head: Offset(-.5, -1.08),
+    headTilt: .04,
+    torso: [
+      Offset(-.3, -1.52),
+      Offset(-.8, -.95),
+      Offset(-.82, -.3),
+      Offset(-.45, 0),
+      Offset(1.0, 0),
+      Offset(1.5, -.38),
+      Offset(1.3, -1.25),
+      Offset(.5, -1.62),
+    ],
+    haunch: [
+      Offset(.95, -.45),
+      Offset(.3, .3),
+      Offset(1.02, -.52),
+      Offset(.5, .5),
+    ],
+    legs: [
+      Offset(-.85, -.32),
+      Offset(-.9, -.11),
+      Offset(-.22, -.32),
+      Offset(-.18, -.11),
+      Offset(.8, -.2),
+      Offset(.75, -.1),
+      Offset(1.05, -.26),
+      Offset(1.2, -.1),
+    ],
+    front: [1, 1, 0, 1],
+    tailRoot: Offset(1.3, -.62),
+    tailAngle: 2.45,
+    tailBend: .55,
+    tailCurl: 1.5,
+    tailLength: 1.55,
+    tailFront: 1,
+    merge: 0,
+    chest: .15,
+    shadow: Offset(.35, 3.0),
+  );
+
+  /// Lying as a loaf, head up and alert.
+  static final loaf = hunch.copyWith(
+    head: const Offset(-.42, -1.3),
+    headTilt: 0,
+    torso: const [
+      Offset(-.25, -1.75),
+      Offset(-.76, -1.05),
+      Offset(-.8, -.35),
+      Offset(-.45, 0),
+      Offset(.95, 0),
+      Offset(1.42, -.42),
+      Offset(1.25, -1.38),
+      Offset(.45, -1.8),
+    ],
+    haunch: const [
+      Offset(.9, -.5),
+      Offset(.3, .3),
+      Offset(.95, -.56),
+      Offset(.52, .52),
+    ],
+    tailAngle: 2.5,
+    tailBend: .45,
+    tailCurl: 1.9,
+    tailLength: 1.45,
+    chest: .7,
+  );
+
+  /// Curled up asleep, head resting on a paw, tail wrapped round.
+  static const curl = BodyPose(
+    head: Offset(-.58, -.98),
+    headTilt: -.14,
+    torso: [
+      Offset(-.2, -1.5),
+      Offset(-.85, -.9),
+      Offset(-.85, -.3),
+      Offset(-.5, 0),
+      Offset(1.0, 0),
+      Offset(1.5, -.45),
+      Offset(1.3, -1.35),
+      Offset(.5, -1.7),
+    ],
+    haunch: [
+      Offset(.9, -.5),
+      Offset(.3, .3),
+      Offset(.98, -.6),
+      Offset(.55, .55),
+    ],
+    legs: [
+      Offset(-.55, -.3),
+      Offset(-.6, -.11),
+      Offset(-.15, -.3),
+      Offset(-.1, -.11),
+      Offset(.8, -.2),
+      Offset(.75, -.1),
+      Offset(1.05, -.26),
+      Offset(1.15, -.1),
+    ],
+    front: [1, 0, 0, 0],
+    tailRoot: Offset(1.35, -.62),
+    tailAngle: 2.4,
+    tailBend: .65,
+    tailCurl: 1.3,
+    tailLength: 1.75,
+    tailFront: 1,
+    merge: 0,
+    chest: 0,
+    shadow: Offset(.35, 3.0),
+  );
+
+  /// Standing on all four, head turned to us, tail up.
+  static const prowl = BodyPose(
+    head: Offset(-.98, -1.62),
+    torso: [
+      Offset(-.5, -1.95),
+      Offset(-1.0, -1.3),
+      Offset(-.75, -.72),
+      Offset(0, -.62),
+      Offset(.85, -.66),
+      Offset(1.35, -1.0),
+      Offset(1.35, -1.65),
+      Offset(.45, -1.88),
+    ],
+    haunch: [
+      Offset(.75, -1.1),
+      Offset(.32, .36),
+      Offset(1.0, -1.1),
+      Offset(.44, .48),
+    ],
+    legs: [
+      Offset(-.75, -1.05),
+      Offset(-1.3, -.12),
+      Offset(-.45, -1.0),
+      Offset(-.72, -.12),
+      Offset(.7, -.95),
+      Offset(.42, -.12),
+      Offset(1.05, -.95),
+      Offset(1.0, -.12),
+    ],
+    front: [0, 1, 0, 1],
+    shade: [1, 0, 1, 0],
+    tailRoot: Offset(1.25, -1.55),
+    tailAngle: -1.0,
+    tailBend: -.3,
+    tailCurl: -1.7,
+    tailLength: 1.9,
+    merge: 0,
+    chest: .7,
+    shadow: Offset(.05, 3.3),
+  );
+
+  /// Each mood's own pose: one of the drawn poses with its paws, tail and
+  /// head placed for the feeling, and the movements it keeps going.
+  static BodyPose forMood(CatMood mood) => switch (mood) {
+    CatMood.idle => sit.copyWith(moves: {Move.fidget: 1}),
+    CatMood.listening => sit.copyWith(
+      head: const Offset(0, -2.5),
+      tailAngle: -.45,
+      tailBend: -1.3,
+      tailCurl: -1.1,
+      moves: {Move.wag: .15},
+    ),
+    // A paw to the chin.
+    CatMood.thinking => sit
+        .withLeg(1, const Offset(.3, -1.15), const Offset(.46, -1.62), over: 1)
+        .copyWith(emotes: {Emote.dots: 1}, moves: {Move.tap: 1}),
+    CatMood.happy => sit.copyWith(
+      head: const Offset(0, -2.52),
+      tailAngle: -.5,
+      tailBend: -1.9,
+      tailCurl: -.9,
+      emotes: {Emote.dashes: 1},
+      moves: {Move.wag: .8, Move.bounce: .6},
+    ),
+    CatMood.love => sit
+        .withLeg(0, const Offset(-.3, -1.05), const Offset(-.13, -1.5), over: 1)
+        .withLeg(1, const Offset(.3, -1.05), const Offset(.13, -1.5), over: 1)
+        .copyWith(
+          tailAngle: -.4,
+          tailBend: -1.4,
+          tailCurl: -2.2,
+          emotes: {Emote.hearts: 1},
+          moves: {Move.sway: .7, Move.wag: .3},
+        ),
+    // Waves a paw by the face.
+    CatMood.wink => sit
+        .withLeg(1, const Offset(.3, -1.32), const Offset(.98, -2.05), over: 1)
+        .copyWith(
+          head: const Offset(-.04, -2.46),
+          tailAngle: -.5,
+          tailBend: -1.8,
+          moves: {Move.wave: 1, Move.wag: .4},
+        ),
+    // Tail wrapped round the front paws.
+    CatMood.smug => sit.copyWith(
+      head: const Offset(0, -2.46),
+      tailRoot: const Offset(.5, -.18),
+      tailAngle: 3.0,
+      tailBend: .15,
+      tailCurl: 1.2,
+      tailLength: 1.8,
+      tailFront: 1,
+      moves: {Move.wag: .12},
+    ),
+    // Paws over the cheeks.
+    CatMood.shy => sit
+        .withLeg(0, const Offset(-.3, -1.3), const Offset(-.86, -1.74), over: 1)
+        .withLeg(1, const Offset(.3, -1.3), const Offset(.86, -1.74), over: 1)
+        .copyWith(
+          head: const Offset(0, -2.34),
+          tailRoot: const Offset(.5, -.18),
+          tailAngle: 3.0,
+          tailBend: .2,
+          tailCurl: 1.0,
+          tailLength: 1.7,
+          tailFront: 1,
+          moves: {Move.sway: .4},
+        ),
+    // Pressed low, tail tucked, shivering.
+    CatMood.scared => sit.copyWith(
+      head: const Offset(0, -2.08),
+      torso: [for (final p in sit.torso) Offset(p.dx * 1.12, p.dy * .8)],
+      legs: [
+        for (final (i, p) in sit.legs.indexed)
+          i.isEven ? Offset(p.dx * 1.1, p.dy * .76) : p,
+      ],
+      tailRoot: const Offset(.5, -.16),
+      tailAngle: 3.05,
+      tailBend: .2,
+      tailCurl: .7,
+      tailLength: 1.5,
+      tailFront: 1,
+      puff: .2,
+      emotes: {Emote.sweat: 1},
+      moves: {Move.tremble: 1},
+    ),
+    CatMood.sad => hunch,
+    // Flat on the floor, shivering a little.
+    CatMood.sick => curl.copyWith(
+      head: const Offset(-.6, -1.02),
+      headTilt: .08,
+      front: const [1, 1, 0, 0],
+      emotes: {Emote.sweat: .8},
+      moves: {Move.tremble: .35},
+    ),
+    CatMood.sleepy => curl.copyWith(emotes: {Emote.zzz: 1}),
+    CatMood.unsure => loaf.copyWith(
+      emotes: {Emote.question: 1},
+      moves: {Move.sway: .5},
+    ),
+    CatMood.surprised => prowl.copyWith(
+      puff: .4,
+      tailCurl: -.9,
+      emotes: {Emote.dashes: 1},
+    ),
+    // Back up in an arch, tail straight up and bristling.
+    CatMood.mad => prowl.copyWith(
+      head: const Offset(-1.0, -1.45),
+      torso: const [
+        Offset(-.5, -1.78),
+        Offset(-1.0, -1.2),
+        Offset(-.72, -.64),
+        Offset(0, -.74),
+        Offset(.85, -.68),
+        Offset(1.3, -1.0),
+        Offset(1.25, -1.82),
+        Offset(.35, -2.32),
+      ],
+      tailRoot: const Offset(1.2, -1.7),
+      tailAngle: -1.45,
+      tailBend: .1,
+      tailCurl: -.5,
+      puff: 1,
+      emotes: {Emote.anger: 1},
+      moves: {Move.lash: 1},
+    ),
+  };
+}
+
+/// The body pose in motion: every number chases the mood's pose on its own
+/// spring. Heads arrive first and tails last, a change of pose squashes
+/// the body for a beat, and paws on the move lift off the floor.
+class BodySpring {
+  BodySpring(BodyPose pose)
+    : _x = pose.flat(),
+      _v = List.filled(pose.flat().length, 0),
+      _target = pose.flat();
+
+  final List<double> _x, _v;
+  List<double> _target;
+  static const _paws = [1, 3, 5, 7];
+  late final int _legsAt = () {
+    // Index of the first leg number in the flat list.
+    var i = 0;
+    i += 2 + 1 + 16 + 8;
+    return i;
+  }();
+
+  /// Turns towards [pose]; a real change of pose kicks the squash.
+  void aim(BodyPose pose, {double kick = 1}) {
+    final next = pose.flat();
+    var moved = 0.0;
+    for (var i = 0; i < next.length; i++) {
+      moved += (next[i] - _target[i]).abs();
+    }
+    _target = next;
+    if (moved > .5) _v[_v.length - 1] += 2.4 * kick;
+  }
+
+  /// A poke: a quick squash and bounce back.
+  void poke() => _v[_v.length - 1] += 3.2;
+
+  void snap() {
+    for (var i = 0; i < _x.length; i++) {
+      _x[i] = _target[i];
+      _v[i] = 0;
+    }
+  }
+
+  void step(double ms) {
+    var left = ms / 1000;
+    const h = 1 / 240;
+    final springs = BodyPose._springs;
+    while (left > 0) {
+      final dt = math.min(h, left);
+      left -= dt;
+      for (var i = 0; i < _x.length; i++) {
+        final (w, z) = springs[i];
+        final a = -2 * z * w * _v[i] - w * w * (_x[i] - _target[i]);
+        _v[i] += a * dt;
+        _x[i] += _v[i] * dt;
+      }
+    }
+  }
+
+  BodyPose get pose {
+    final x = [..._x];
+    // A paw on the move rises by how fast it goes, so it steps instead of
+    // sliding.
+    for (final p in _paws) {
+      final i = _legsAt + p * 2;
+      final speed = math.sqrt(_v[i] * _v[i] + _v[i + 1] * _v[i + 1]);
+      x[i + 1] -= math.min(.32, speed * .09);
+    }
+    return BodyPose.unflat(x);
+  }
+}
+
+double _smooth(double e0, double e1, double x) {
+  final t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+  return t * t * (3 - 2 * t);
+}
+
+/// A closed loop through [p], as a smooth Catmull-Rom curve.
+Path _loop(List<Offset> p) {
+  final n = p.length;
+  final path = Path()..moveTo(p[0].dx, p[0].dy);
+  for (var i = 0; i < n; i++) {
+    final p0 = p[(i - 1 + n) % n], p1 = p[i];
+    final p2 = p[(i + 1) % n], p3 = p[(i + 2) % n];
+    final c1 = p1 + (p2 - p0) / 6, c2 = p2 - (p3 - p1) / 6;
+    path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+  }
+  return path..close();
+}
+
+/// A limb: two round ends joined by their common tangents.
+Path _capsule(Offset a, double ra, Offset b, double rb) {
+  final d = b - a;
+  final len = d.distance;
+  if (len < 1e-3) {
+    return Path()
+      ..addOval(Rect.fromCircle(center: a, radius: math.max(ra, rb)));
+  }
+  final ang = math.atan2(d.dy, d.dx);
+  final n = Offset(-d.dy, d.dx) / len;
+  return Path()
+    ..moveTo(a.dx + n.dx * ra, a.dy + n.dy * ra)
+    ..lineTo(b.dx + n.dx * rb, b.dy + n.dy * rb)
+    ..arcTo(Rect.fromCircle(center: b, radius: rb), ang + math.pi / 2, -math.pi, false)
+    ..lineTo(a.dx - n.dx * ra, a.dy - n.dy * ra)
+    ..arcTo(Rect.fromCircle(center: a, radius: ra), ang - math.pi / 2, -math.pi, false)
+    ..close();
+}
+
+/// Smooth open line through [p] by midpoints.
+void _through(Path path, List<Offset> p, {bool start = true}) {
+  if (start) {
+    path.moveTo(p[0].dx, p[0].dy);
+  } else {
+    path.lineTo(p[0].dx, p[0].dy);
+  }
+  for (var i = 1; i < p.length - 1; i++) {
+    final m = (p[i] + p[i + 1]) / 2;
+    path.quadraticBezierTo(p[i].dx, p[i].dy, m.dx, m.dy);
+  }
+  path.lineTo(p.last.dx, p.last.dy);
+}
+
+/// A line of ink in the drawings' manner: full in the middle, tapering to
+/// nothing at both ends.
+void _brush(Canvas c, List<Offset> p, double width, Color color) {
+  if (p.length < 3) return;
+  final side = <Offset>[], back = <Offset>[];
+  for (var i = 0; i < p.length; i++) {
+    final d = p[math.min(i + 1, p.length - 1)] - p[math.max(i - 1, 0)];
+    if (d.distance < 1e-6) return;
+    final k = math.pow(math.sin(math.pi * i / (p.length - 1)).abs(), .35);
+    final n = Offset(-d.dy, d.dx) / d.distance * (width / 2 * k);
+    side.add(p[i] + n);
+    back.add(p[i] - n);
+  }
+  final path = Path();
+  _through(path, side);
+  _through(path, back.reversed.toList(), start: false);
+  c.drawPath(path..close(), Paint()..color = color);
+}
+
+/// Points of an ellipse arc, angles in radians.
+List<Offset> _arc(Offset c, Offset r, double from, double to, [int n = 12]) => [
+  for (var i = 0; i <= n; i++)
+    c +
+        Offset(
+          math.cos(from + (to - from) * i / n) * r.dx,
+          math.sin(from + (to - from) * i / n) * r.dy,
+        ),
+];
+
+/// One frame of the tail: its spine and how wide it is along it.
+class _TailShape {
+  _TailShape(this.spine, this.width, this.path);
+  final List<Offset> spine;
+  final List<double> width;
+  final Path path;
+}
+
+extension on CatPainter {
+  /// The whole cat on the floor of [size]: body behind, head and face from
+  /// [_paintHead] on top, raised paws over the face, signs around it.
+  void _paintFigure(
+    Canvas canvas,
+    Size size,
+    CatFrame f,
+    BodyPose pose,
+    CatRig r,
+    blob.MotionFrame motion,
+    _Inks inks,
+  ) {
+    final look = profile.look;
+    final t = f.time;
+    final kitten = look.size == CatSize.kitten;
+    final s = math.min(size.width / 5.4, size.height / 4.6);
+    canvas.save();
+    canvas.translate(size.width / 2, size.height / 2 + s * 1.95);
+    canvas.scale(s * (kitten ? .84 : 1));
+
+    final p = _live(pose, t);
+    final lw = .072;
+
+    // Floor shadow: soft, cheap, and it stays on the floor during hops.
+    final shadowAt = Offset(p.shadow.dx, .03);
+    canvas.drawOval(
+      Rect.fromCenter(center: shadowAt, width: p.shadow.dy, height: .26),
+      Paint()
+        ..shader = ui.Gradient.radial(
+          shadowAt,
+          p.shadow.dy / 2,
+          [
+            inks.ink.withValues(alpha: .2),
+            inks.ink.withValues(alpha: 0),
+          ],
+          [.5, 1],
+          TileMode.clamp,
+          Matrix4.diagonal3Values(1, .26 / p.shadow.dy, 1).storage,
+        ),
+    );
+
+    // Hops, sway and shivers move the whole cat about its feet.
+    final hop = _hop(p, t);
+    final squash = (p.squash + hop.$2).clamp(-.25, .25);
+    canvas.translate(
+      math.sin(t / 22) * .022 * p[Move.tremble],
+      -hop.$1,
+    );
+    canvas.rotate(math.sin(t / 820) * .045 * p[Move.sway]);
+    canvas.scale(1 + squash * .5, 1 - squash);
+
+    final tail = _tailShape(p, t);
+    final torso = _loop(_breathing(p.torso, t, p));
+    final thighs = Path()
+      ..addOval(Rect.fromCenter(
+        center: p.haunch[0],
+        width: p.haunch[1].dx * 2,
+        height: p.haunch[1].dy * 2,
+      ))
+      ..addOval(Rect.fromCenter(
+        center: p.haunch[2],
+        width: p.haunch[3].dx * 2,
+        height: p.haunch[3].dy * 2,
+      ));
+    final trunk = Path.combine(PathOperation.union, torso, thighs);
+    // A paw raised above its shoulder is an arm in front of the chest: it
+    // gets its own outline instead of melting into the body.
+    bool raised(int leg) =>
+        leg < 2 && p.legs[leg * 2 + 1].dy < p.legs[leg * 2].dy - .15;
+    final limbs = [
+      for (var leg = 0; leg < 4; leg++)
+        if (p.front[leg] >= .5 && !raised(leg)) _limb(p, leg),
+    ];
+
+    final tailInFront = p.tailFront > .5;
+    if (!tailInFront) _paintTail(canvas, tail, inks, lw);
+    for (var leg = 0; leg < 4; leg++) {
+      if (p.front[leg] < .5) _paintLeg(canvas, p, leg, inks, lw);
+    }
+    if (tailInFront) _paintTail(canvas, tail, inks, lw);
+
+    final b = profile.layout.body;
+    void inHead(void Function() draw) {
+      canvas.save();
+      canvas.translate(p.head.dx, p.head.dy);
+      canvas.rotate(p.headTilt);
+      canvas.scale(1 / b.rx);
+      canvas.translate(-b.cx, -b.cy);
+      draw();
+      canvas.restore();
+    }
+
+    // Body, thighs and the legs in front share one outline: all the ink
+    // goes down first and all the fill over it, so only the outer edge
+    // stays. A sitting cat's head joins in, its chin sunk in chest fur.
+    final merged = p.merge > .5;
+    final parts = [
+      trunk,
+      for (final l in limbs) ...l,
+      if (merged) _neckFur(p),
+    ];
+    for (final part in parts) {
+      canvas.drawPath(part, inks.line(lw * 2));
+      canvas.drawPath(part.shift(const Offset(0, .02)), inks.line(lw * 2));
+    }
+    if (merged) inHead(() => _paintHeadInk(canvas, f, r, motion, inks));
+    final fill = Paint()..color = inks.fur;
+    for (final part in parts) {
+      canvas.drawPath(part, fill);
+    }
+    final sock = _sock(inks);
+    if (sock != null) {
+      for (final l in limbs) {
+        canvas.drawPath(l[1], Paint()..color = sock);
+      }
+    }
+
+    canvas.save();
+    canvas.clipPath(trunk);
+    _paintBodyMarks(canvas, p, inks);
+    // Thighs go behind the front legs.
+    canvas.save();
+    var legs = Path();
+    for (final l in limbs) {
+      legs = Path.combine(PathOperation.union, legs, l[0]);
+    }
+    canvas.clipPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(const Rect.fromLTRB(-9, -9, 9, 9)),
+        legs,
+      ),
+    );
+    // Thigh lines: the front edge of each haunch where it rounds into the
+    // body.
+    for (final side in [0, 1]) {
+      final c = p.haunch[side * 2], rr = p.haunch[side * 2 + 1];
+      if (rr.dx < .33) continue;
+      final right = c.dx > p.head.dx;
+      final arc = right
+          ? _arc(c, rr * .98, math.pi * 1.6, math.pi * .95)
+          : _arc(c, rr * .98, -math.pi * .6, math.pi * .05);
+      _brush(canvas, arc, lw * 1.2, inks.outline);
+    }
+    canvas.restore();
+    if (p.chest > .02) _paintChest(canvas, p, inks);
+    // Where the front legs lie on the body only their sides are drawn:
+    // the outer side of each, and one line where they meet.
+    final pair = p.front[0] >= .5 && p.front[1] >= .5;
+    final close = pair && (p.legs[1] - p.legs[3]).distance < .55;
+    List<Offset> side(int leg, double k) {
+      final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
+      final d = paw - root;
+      final n = Offset(-d.dy, d.dx) / d.distance * .185;
+      return [
+        for (var i = 0; i <= 8; i++) root + d * (-.05 + .98 * i / 8) + n * k,
+      ];
+    }
+    for (var leg = 0; leg < 2; leg++) {
+      if (p.front[leg] < .5 || raised(leg)) continue;
+      final d = p.legs[leg * 2 + 1] - p.legs[leg * 2];
+      if (d.distance < .5) continue;
+      // The normal points to the leg's right when it hangs down.
+      final outer = leg == 0 ? 1.0 : -1.0;
+      _brush(canvas, side(leg, outer), lw * .9, inks.outline);
+      if (!close) _brush(canvas, side(leg, -outer), lw * .9, inks.outline);
+    }
+    if (close &&
+        !raised(0) &&
+        !raised(1) &&
+        (p.legs[1] - p.legs[0]).distance > .5 &&
+        (p.legs[3] - p.legs[2]).distance > .5) {
+      final a = side(0, -1), b = side(1, 1);
+      _brush(canvas, [
+        for (var i = 0; i < a.length; i++) (a[i] + b[i]) / 2,
+      ], lw * .95, inks.outline);
+    }
+    canvas.restore();
+    for (var leg = 0; leg < 4; leg++) {
+      if (p.front[leg] >= .5 && !raised(leg)) {
+        _toes(canvas, p.legs[leg * 2 + 1], inks, lw);
+      }
+    }
+    for (var leg = 0; leg < 2; leg++) {
+      if (raised(leg)) _paintArm(canvas, p, leg, inks, lw);
+    }
+
+    if (tailInFront) {
+      // The tail wraps over the paws: drawn again on top, away from its
+      // root so it still grows out of the body.
+      canvas.save();
+      canvas.clipPath(
+        Path.combine(
+          PathOperation.difference,
+          Path()..addRect(const Rect.fromLTRB(-9, -9, 9, 9)),
+          Path()..addOval(
+            Rect.fromCircle(center: tail.spine.first, radius: .55),
+          ),
+        ),
+      );
+      _paintTail(canvas, tail, inks, lw);
+      canvas.restore();
+    }
+    _paintCharm(canvas, p, tail, inks, lw);
+
+    // The head, placed by its centre and rolled about it.
+    inHead(() => _paintHead(canvas, f, r, motion, inks, inked: !merged));
+
+    for (final leg in [0, 1]) {
+      if (p.over[leg] > .5) {
+        _paintPaw(canvas, p.legs[leg * 2 + 1], inks, lw, leg, p);
+      }
+    }
+    _paintEmotes(canvas, p, t, inks, lw);
+    canvas.restore();
+  }
+
+  /// The pose with this moment's movements added.
+  BodyPose _live(BodyPose p, double t) {
+    final legs = [...p.legs];
+    // Tapping the chin.
+    final tap = p[Move.tap];
+    if (tap > 0) {
+      legs[3] += Offset(0, -math.pow(math.sin(t / 150).abs(), 2) * .07 * tap);
+    }
+    // Waving: the paw swings round the wrist.
+    final wave = p[Move.wave];
+    if (wave > 0) {
+      final a = math.sin(t / 170);
+      legs[3] += Offset(a * .16, -a.abs() * .05) * wave;
+    }
+    // Idle business, one act at a time on the cat's own clock.
+    var tailFlick = 0.0, lift = 0.0;
+    final idle = p[Move.fidget];
+    if (idle > 0) {
+      final every = profile.twitchEvery * 1.3;
+      final round = (t / every).floor();
+      final at = t - round * every;
+      final act = math.Random(round * 7919 + profile.text.hashCode).nextInt(4);
+      double bump(double from, double len) => at < from || at > from + len
+          ? 0
+          : math.sin(math.pi * (at - from) / len);
+      switch (act) {
+        case 0:
+          // Shifts its weight from paw to paw.
+          legs[1] += Offset(0, -.15 * bump(0, 600) * idle);
+          legs[3] += Offset(0, -.15 * bump(600, 600) * idle);
+        case 1:
+          // Kneads.
+          final e = bump(0, 2600);
+          final press = math.sin(2 * math.pi * at / 650);
+          legs[1] += Offset(0, -.12 * math.max(0, press) * e * idle);
+          legs[3] += Offset(0, -.12 * math.max(0, -press) * e * idle);
+          lift = .04 * e * idle;
+        case 2:
+          tailFlick = bump(0, 1300) * idle;
+        default:
+          // Stretches its neck to look about.
+          lift = -.1 * bump(0, 1800) * idle;
+      }
+    }
+    return BodyPose(
+      head: p.head + Offset(0, lift),
+      headTilt: p.headTilt,
+      torso: p.torso,
+      haunch: p.haunch,
+      legs: legs,
+      front: p.front,
+      over: p.over,
+      shade: p.shade,
+      tailRoot: p.tailRoot,
+      tailAngle: p.tailAngle - tailFlick * .5,
+      tailBend: p.tailBend,
+      tailCurl: p.tailCurl,
+      tailLength: p.tailLength,
+      tailFront: p.tailFront,
+      puff: p.puff,
+      chest: p.chest,
+      merge: p.merge,
+      shadow: p.shadow,
+      emote: p.emote,
+      move: p.move,
+      squash: p.squash,
+    );
+  }
+
+  /// Height of the current hop and its squash: up, a stretch in the air and
+  /// a squash on landing.
+  (double, double) _hop(BodyPose p, double t) {
+    final k = p[Move.bounce];
+    if (k <= 0) return (0, 0);
+    final phase = (t % 1150) / 1150;
+    if (phase < .36) {
+      final up = math.sin(math.pi * phase / .36);
+      return (up * .26 * k, -up * .08 * k);
+    }
+    if (phase < .5) {
+      return (0, math.sin(math.pi * (phase - .36) / .14) * .09 * k);
+    }
+    return (0, 0);
+  }
+
+  /// The torso rises a little with each breath; asleep it breathes deeper.
+  List<Offset> _breathing(List<Offset> torso, double t, BodyPose p) {
+    final deep = 1 + 1.6 * p.emoteOf(Emote.zzz);
+    final k = math.sin(t / (650 * deep)) * .018 * deep;
+    return [
+      for (final o in torso) Offset(o.dx * (1 - k * .3), o.dy * (1 + k)),
+    ];
+  }
+
+  _TailShape _tailShape(BodyPose p, double t) {
+    final kind = profile.look.tail;
+    const n = 18;
+    final curl = p.tailCurl * (kind == CatTail.curl ? 1.45 : 1);
+    final seg = p.tailLength / n;
+    final wag = p[Move.wag], lash = p[Move.lash];
+    final spine = [p.tailRoot];
+    var at = p.tailRoot;
+    for (var i = 1; i <= n; i++) {
+      final u = i / n;
+      // A wave runs down the tail; wagging and lashing add faster ones.
+      final wave =
+          (math.sin(t / 900 - i * .32) * .1 +
+              math.sin(t / 95 - i * .45) * .22 * wag +
+              math.sin(t / 150 - i * .3) * .4 * lash) *
+          u;
+      final a =
+          p.tailAngle + p.tailBend * u + curl * _smooth(.5, 1, u) + wave;
+      at += Offset(math.cos(a), math.sin(a)) * seg;
+      spine.add(at);
+    }
+    // The tail lies on the floor, never through it.
+    final floor = -.15 * (1 + .45 * p.puff);
+    for (var i = 0; i < spine.length; i++) {
+      if (spine[i].dy > floor) spine[i] = Offset(spine[i].dx, floor);
+    }
+    final bushy = kind == CatTail.bushy;
+    final puff = 1 + .45 * p.puff;
+    final width = [
+      for (var i = 0; i <= n; i++)
+        (bushy
+                ? .36 + .3 * math.sin(math.pi * math.pow(i / n, .75))
+                : .3 + .16 * math.sin(math.pi * .5 * i / n)) *
+            puff,
+    ];
+    final fur = bushy || p.puff > .25;
+    final left = <Offset>[], right = <Offset>[];
+    for (var i = 0; i <= n; i++) {
+      final d = spine[math.min(i + 1, n)] - spine[math.max(i - 1, 0)];
+      final nn = Offset(-d.dy, d.dx) / d.distance;
+      final along = d / d.distance;
+      // Fur: every other point stands out and leans towards the tip.
+      final tuft = fur && i > 2 && i < n - 1 && i.isOdd;
+      final k = tuft ? 1.22 + .1 * p.puff : 1.0;
+      final lean = tuft ? along * (width[i] * .25) : Offset.zero;
+      left.add(spine[i] + nn * (width[i] / 2 * k) + lean);
+      right.add(spine[i] - nn * (width[i] / 2 * k) + lean);
+    }
+    final path = Path();
+    if (fur) {
+      path.moveTo(left[0].dx, left[0].dy);
+      for (final o in left.skip(1)) {
+        path.lineTo(o.dx, o.dy);
+      }
+    } else {
+      _through(path, left);
+    }
+    final end = spine.last;
+    final radius = width.last / 2;
+    path.arcToPoint(
+      right.last,
+      radius: Radius.circular(radius),
+      clockwise: (right.last - end).direction > (left.last - end).direction
+          ? true
+          : false,
+    );
+    if (fur) {
+      for (final o in right.reversed.skip(1)) {
+        path.lineTo(o.dx, o.dy);
+      }
+    } else {
+      _through(path, right.reversed.toList(), start: false);
+    }
+    path.close();
+    // Fur corners are softened by drawing the outline with round joins.
+    return _TailShape(spine, width, path);
+  }
+
+  void _paintTail(Canvas c, _TailShape tail, _Inks inks, double lw) {
+    final look = profile.look;
+    c.drawPath(tail.path, inks.line(lw * 2));
+    c.drawPath(tail.path.shift(const Offset(0, .02)), inks.line(lw * 2));
+    c.drawPath(tail.path, Paint()..color = inks.fur);
+    c.save();
+    c.clipPath(tail.path);
+    // The underside of the tail in shadow, as in the drawings.
+    final under = <Offset>[];
+    for (var i = 0; i < tail.spine.length; i++) {
+      final s = tail.spine;
+      final d = s[math.min(i + 1, s.length - 1)] - s[math.max(i - 1, 0)];
+      under.add(s[i] + Offset(d.dy, -d.dx) / d.distance * tail.width[i] * .42);
+    }
+    _brush(c, under, .24, Color.lerp(inks.fur, inks.ink, .2)!);
+    final n = tail.spine.length - 1;
+    Color? tip;
+    var from = 0.0;
+    if (look.mark == CatMark.mask) {
+      tip = inks.deep;
+      from = .45;
+    } else if (look.tail == CatTail.tipped) {
+      tip = inks.fur.computeLuminance() > .45
+          ? inks.deep
+          : Color.lerp(inks.fur, Colors.white, .75)!;
+      from = .74;
+    } else if (look.tail == CatTail.bushy) {
+      tip = Color.lerp(inks.fur, inks.ink, .26)!;
+      from = .62;
+    }
+    if (tip != null) {
+      final k = (n * from).round();
+      final pts = tail.spine.sublist(k);
+      final path = Path();
+      _through(path, pts);
+      c.drawPath(
+        path,
+        Paint()
+          ..color = tip
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+    if (look.mark == CatMark.stripes) {
+      // Rings, darker towards the tip.
+      final ring = Paint()
+        ..color = inks.deep
+        ..strokeWidth = .11
+        ..strokeCap = StrokeCap.round;
+      for (final u in const [.32, .5, .68, .86]) {
+        final i = (n * u).round();
+        final d = tail.spine[math.min(i + 1, n)] - tail.spine[i - 1];
+        final nn = Offset(-d.dy, d.dx) / d.distance * tail.width[i];
+        c.drawLine(tail.spine[i] - nn, tail.spine[i] + nn, ring);
+      }
+    }
+    c.restore();
+  }
+
+  /// A leg and its paw, as two paths.
+  List<Path> _limb(BodyPose p, int leg) {
+    final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
+    final hind = leg >= 2;
+    return [
+      _capsule(root, hind ? .22 : .19, paw - const Offset(0, .04), .17),
+      Path()..addOval(Rect.fromCenter(center: paw, width: .44, height: .27)),
+    ];
+  }
+
+  void _paintLeg(Canvas c, BodyPose p, int leg, _Inks inks, double lw) {
+    final paw = p.legs[leg * 2 + 1];
+    final [shape, foot] = _limb(p, leg);
+    final fur = Color.lerp(inks.fur, inks.ink, .13 * p.shade[leg])!;
+    for (final path in [shape, foot]) {
+      c.drawPath(path, inks.line(lw * 2));
+      c.drawPath(path.shift(const Offset(0, .02)), inks.line(lw * 2));
+    }
+    c.drawPath(shape, Paint()..color = fur);
+    final sock = _sock(inks);
+    c.drawPath(foot, Paint()..color = sock ?? fur);
+    if (sock != null) {
+      c.save();
+      c.clipPath(shape);
+      c.drawOval(
+        Rect.fromCenter(center: paw, width: .44, height: .36),
+        Paint()..color = sock,
+      );
+      c.restore();
+    }
+    _toes(c, paw, inks, lw);
+  }
+
+  /// A raised front leg: inked on its own over the chest, the paw end
+  /// turned up.
+  void _paintArm(Canvas c, BodyPose p, int leg, _Inks inks, double lw) {
+    final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
+    final arm = _capsule(root, .18, paw, .16);
+    // No ink at the shoulder: the arm grows out of the chest.
+    c.save();
+    c.clipPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(const Rect.fromLTRB(-9, -9, 9, 9)),
+        Path()..addOval(Rect.fromCircle(center: root, radius: .3)),
+      ),
+    );
+    c.drawPath(arm, inks.line(lw * 2));
+    c.restore();
+    c.drawPath(arm, Paint()..color = inks.fur);
+    if (p.over[leg] <= .5) _paintPaw(c, paw, inks, lw, leg, p);
+  }
+
+  /// White socks for a cat with a pale muzzle, dark points for a masked one.
+  Color? _sock(_Inks inks) => switch (profile.look.mark) {
+    CatMark.muzzle => Color.lerp(inks.fur, Colors.white, .6),
+    CatMark.mask => inks.deep,
+    _ => null,
+  };
+
+  void _toes(Canvas c, Offset paw, _Inks inks, double lw, {bool up = false}) {
+    final toe = inks.line(lw * .8);
+    final k = up ? -1.0 : 1.0;
+    for (final x in const [-.07, .07]) {
+      c.drawLine(
+        paw + Offset(x, .03 * k),
+        paw + Offset(x * 1.1, .11 * k),
+        toe,
+      );
+    }
+  }
+
+  /// A paw raised over the face: only the paw, so the arm stays tucked
+  /// behind the cheek.
+  void _paintPaw(
+    Canvas c,
+    Offset paw,
+    _Inks inks,
+    double lw,
+    int leg,
+    BodyPose p,
+  ) {
+    final foot = Path()
+      ..addOval(Rect.fromCenter(center: paw, width: .36, height: .3));
+    c.drawPath(foot, inks.line(lw * 2));
+    c.drawPath(foot, Paint()..color = _sock(inks) ?? inks.fur);
+    _toes(c, paw, inks, lw, up: true);
+  }
+
+  /// Tufts where the chest fur sticks out past the shoulders, leaning
+  /// down: the cheek fur carried on below the head.
+  Path _neckFur(BodyPose p) {
+    final out = Path();
+    for (final (side, a, b) in [(-1.0, 0, 1), (1.0, 7, 6)]) {
+      for (final (k, size) in const [(.22, 1.0), (.5, .8)]) {
+        final at = Offset.lerp(p.torso[a], p.torso[b], k)!;
+        final w = .1 * size, len = .15 * size;
+        final dir = Offset(side * math.cos(.7), math.sin(.7));
+        final along = Offset(-dir.dy, dir.dx);
+        final tip = at + dir * len + along * (len * .3 * side);
+        final b0 = at - dir * .08 - along * w, b1 = at - dir * .08 + along * w;
+        out.addPath(
+          Path()
+            ..moveTo(b0.dx, b0.dy)
+            ..quadraticBezierTo(at.dx, at.dy, tip.dx, tip.dy)
+            ..quadraticBezierTo(
+              (at + along * w * .8).dx,
+              (at + along * w * .8).dy,
+              b1.dx,
+              b1.dy,
+            )
+            ..close(),
+          Offset.zero,
+        );
+      }
+    }
+    return out;
+  }
+
+  void _paintChest(Canvas c, BodyPose p, _Inks inks) {
+    final b = profile.layout.body;
+    final chin = p.head + Offset(0, (b.ry * .62) / b.rx);
+    final big = profile.look.mark == CatMark.muzzle;
+    final color = big
+        ? Color.lerp(inks.fur, Colors.white, .6)!
+        : Color.lerp(inks.fur, Colors.white, .14)!;
+    final k = big ? 1.12 : 1.0;
+    Offset o(double x, double y) => chin + Offset(x * k, y * k);
+    // A heart of pale fur under the chin, its edges broken into tufts.
+    final pts = [
+      o(-.34, -.2),
+      o(-.48, .1),
+      o(-.42, .3),
+      o(-.47, .4),
+      o(-.3, .52),
+      o(-.14, .62),
+      o(0, .76),
+      o(.14, .62),
+      o(.3, .52),
+      o(.47, .4),
+      o(.42, .3),
+      o(.48, .1),
+      o(.34, -.2),
+    ];
+    final path = Path();
+    _through(path, [...pts, pts.first]);
+    path.close();
+    c.drawPath(
+      path,
+      Paint()..color = color.withValues(alpha: p.chest.clamp(0.0, 1.0)),
+    );
+    // A few strokes of fur on the bib.
+    final fur = Paint()
+      ..color = inks.outline.withValues(alpha: .28 * p.chest.clamp(0.0, 1.0))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .035
+      ..strokeCap = StrokeCap.round;
+    for (final (x, y) in const [(-.24, .26), (-.06, .4), (.16, .34)]) {
+      c.drawLine(o(x, y), o(x * 1.1, y + .14), fur);
+    }
+  }
+
+  /// Patterns that carry on from the face onto the body.
+  void _paintBodyMarks(Canvas c, BodyPose p, _Inks inks) {
+    final look = profile.look;
+    final back = [p.torso[5], p.torso[6], p.torso[7]];
+    final mid = p.torso.reduce((a, b) => a + b) / 8;
+    switch (look.mark) {
+      case CatMark.stripes:
+        // Stripes dipped in from the back, shorter towards the tail.
+        for (final (k, len) in const [
+          (.15, .5),
+          (.45, .58),
+          (.75, .5),
+          (1.1, .42),
+          (1.45, .34),
+        ]) {
+          final a = k < 1
+              ? Offset.lerp(back[2], back[1], k)!
+              : Offset.lerp(back[1], back[0], k - 1)!;
+          final dir = (mid - a) / (mid - a).distance;
+          final bend = Offset(-dir.dy, dir.dx) * .06;
+          _brush(c, [
+            a - dir * .1,
+            a + dir * (len * .5) + bend,
+            a + dir * len,
+          ], .13, inks.deep);
+        }
+      case CatMark.patch:
+        final side = profile.traits('cat.mark.side') < .5 ? 0 : 1;
+        final at = Offset.lerp(back[1], mid, .3)! + Offset(side * .1 - .1, 0);
+        c.drawOval(
+          Rect.fromCenter(center: at, width: 1.1, height: .8),
+          Paint()..color = inks.deep,
+        );
+      case CatMark.stars:
+        final at = p.haunch[2];
+        for (final (dx, dy, r) in const [(.05, -.1, .1), (-.18, .12, .06)]) {
+          final o = at + Offset(dx, dy);
+          final k = r * .25;
+          c.drawPath(
+            Path()
+              ..moveTo(o.dx, o.dy - r)
+              ..quadraticBezierTo(o.dx + k, o.dy - k, o.dx + r, o.dy)
+              ..quadraticBezierTo(o.dx + k, o.dy + k, o.dx, o.dy + r)
+              ..quadraticBezierTo(o.dx - k, o.dy + k, o.dx - r, o.dy)
+              ..quadraticBezierTo(o.dx - k, o.dy - k, o.dx, o.dy - r)
+              ..close(),
+            Paint()..color = const Color(0xfffbeec4),
+          );
+        }
+      default:
+        break;
+    }
+  }
+
+  /// What the cat wears on its body: one thing at most.
+  void _paintCharm(
+    Canvas c,
+    BodyPose p,
+    _TailShape tail,
+    _Inks inks,
+    double lw,
+  ) {
+    final look = profile.look;
+    final b = profile.layout.body;
+    final chin = p.head + Offset(0, (b.ry * .8) / b.rx);
+    switch (look.charm) {
+      case CatCharm.none:
+        return;
+      case CatCharm.collar:
+        final band = Path()
+          ..moveTo(chin.dx - .5, chin.dy - .16)
+          ..quadraticBezierTo(
+            chin.dx,
+            chin.dy + .22,
+            chin.dx + .5,
+            chin.dy - .16,
+          );
+        c.drawPath(band, inks.line(.2 + lw * 2));
+        c.drawPath(
+          band,
+          Paint()
+            ..color = inks.blush
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = .14
+            ..strokeCap = StrokeCap.round,
+        );
+        final bell = chin + const Offset(0, .16);
+        c.drawCircle(bell, .12 + lw, Paint()..color = inks.outline);
+        c.drawCircle(bell, .12, Paint()..color = const Color(0xfff6cf5a));
+        c.drawCircle(
+          bell + const Offset(-.04, -.04),
+          .035,
+          Paint()..color = const Color(0xfffff6d8),
+        );
+        c.drawLine(
+          bell + const Offset(0, .03),
+          bell + const Offset(0, .1),
+          inks.line(lw * .7),
+        );
+      case CatCharm.scarf:
+        final cloth = Color.lerp(inks.blush, inks.fur, .25)!;
+        final band = Path()
+          ..moveTo(chin.dx - .58, chin.dy - .16)
+          ..quadraticBezierTo(
+            chin.dx,
+            chin.dy + .3,
+            chin.dx + .58,
+            chin.dy - .16,
+          );
+        final end = Path()
+          ..moveTo(chin.dx + .18, chin.dy + .02)
+          ..quadraticBezierTo(
+            chin.dx + .4,
+            chin.dy + .3,
+            chin.dx + .34,
+            chin.dy + .62,
+          )
+          ..lineTo(chin.dx + .56, chin.dy + .58)
+          ..quadraticBezierTo(
+            chin.dx + .56,
+            chin.dy + .22,
+            chin.dx + .4,
+            chin.dy - .02,
+          )
+          ..close();
+        c.drawPath(end, inks.line(lw * 2));
+        c.drawPath(band, inks.line(.26 + lw * 2));
+        c.drawPath(end, Paint()..color = cloth);
+        c.drawPath(
+          band,
+          Paint()
+            ..color = cloth
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = .26
+            ..strokeCap = StrokeCap.round,
+        );
+        // A couple of stripes across the hanging end.
+        final stripe = Paint()
+          ..color = Color.lerp(cloth, Colors.white, .55)!
+          ..strokeWidth = .05;
+        c.save();
+        c.clipPath(end);
+        for (final y in const [.32, .46]) {
+          c.drawLine(
+            Offset(chin.dx + .2, chin.dy + y),
+            Offset(chin.dx + .7, chin.dy + y - .06),
+            stripe,
+          );
+        }
+        c.restore();
+      case CatCharm.ribbon:
+        final i = (tail.spine.length * .52).round();
+        final at = tail.spine[i];
+        final d = tail.spine[i + 1] - tail.spine[i - 1];
+        c.save();
+        c.translate(at.dx, at.dy);
+        c.rotate(math.atan2(d.dy, d.dx) + math.pi / 2);
+        final bow = Path();
+        for (final sdir in [-1.0, 1.0]) {
+          bow
+            ..moveTo(0, 0)
+            ..quadraticBezierTo(sdir * .14, -.22, sdir * .3, -.12)
+            ..quadraticBezierTo(sdir * .36, 0, sdir * .3, .12)
+            ..quadraticBezierTo(sdir * .14, .22, 0, 0);
+        }
+        c.drawPath(bow, inks.line(lw * 1.6));
+        c.drawPath(bow, Paint()..color = inks.blush);
+        c.drawCircle(Offset.zero, .08 + lw * .6, Paint()..color = inks.outline);
+        c.drawCircle(
+          Offset.zero,
+          .08,
+          Paint()..color = Color.lerp(inks.blush, Colors.white, .4)!,
+        );
+        c.restore();
+    }
+  }
+
+  /// The little drawn signs: lines of excitement, hearts, sleep, a question,
+  /// thinking dots, a sweat drop, a cross vein. Each one pops in with its
+  /// amplitude and moves on its own clock.
+  void _paintEmotes(Canvas c, BodyPose p, double t, _Inks inks, double lw) {
+    // Above the head on the side away from the body.
+    final side = p.head.dx < -.3 ? -1.0 : 1.0;
+    final at = p.head + Offset(side * 1.15, -1.0);
+    final ink = inks.outline;
+
+    final dashes = p.emoteOf(Emote.dashes);
+    if (dashes > .02) {
+      final pulse = .85 + .15 * math.sin(t / 160);
+      final paint = inks.line(.07 * dashes)
+        ..color = ink.withValues(alpha: dashes.clamp(0.0, 1.0));
+      for (final a in const [-1.15, -.6, -.05]) {
+        final dir = Offset(math.cos(a) * side, math.sin(a));
+        c.drawLine(
+          at + dir * (.2 * pulse),
+          at + dir * (.2 + .2 * pulse * dashes),
+          paint,
+        );
+      }
+    }
+
+    final hearts = p.emoteOf(Emote.hearts);
+    if (hearts > .02) {
+      for (var k = 0; k < 2; k++) {
+        final phase = ((t / 2600) + k * .5) % 1;
+        final o =
+            at +
+            Offset(
+              side * (math.sin(phase * 6 + k) * .12 + k * .25),
+              -phase * .9 + .2,
+            );
+        final a = math.sin(math.pi * phase) * hearts;
+        _heart(c, o, .13 + .05 * k, inks, a);
+      }
+    }
+
+    final zzz = p.emoteOf(Emote.zzz);
+    if (zzz > .02) {
+      for (var k = 0; k < 3; k++) {
+        final phase = ((t / 3200) + k / 3) % 1;
+        final size = .1 + .1 * phase;
+        final o = p.head + Offset(.55 + phase * .7, -1.25 - phase * .8);
+        final a = math.sin(math.pi * phase) * zzz;
+        final z = Path()
+          ..moveTo(o.dx - size, o.dy - size)
+          ..lineTo(o.dx + size, o.dy - size)
+          ..lineTo(o.dx - size, o.dy + size)
+          ..lineTo(o.dx + size, o.dy + size);
+        c.drawPath(
+          z,
+          inks.line(.055)..color = ink.withValues(alpha: a.clamp(0.0, 1.0)),
+        );
+      }
+    }
+
+    final question = p.emoteOf(Emote.question);
+    if (question > .02) {
+      final o = at + Offset(0, math.sin(t / 420) * .06);
+      final paint = inks.line(.085)
+        ..color = ink.withValues(alpha: question.clamp(0.0, 1.0));
+      final q = Path()
+        ..moveTo(o.dx - .14, o.dy - .2)
+        ..quadraticBezierTo(o.dx - .12, o.dy - .38, o.dx + .02, o.dy - .38)
+        ..quadraticBezierTo(o.dx + .18, o.dy - .36, o.dx + .16, o.dy - .2)
+        ..quadraticBezierTo(o.dx + .14, o.dy - .08, o.dx + .02, o.dy - .02)
+        ..lineTo(o.dx + .02, o.dy + .06);
+      c.drawPath(q, paint);
+      c.drawCircle(
+        o + const Offset(.02, .2),
+        .055,
+        Paint()..color = ink.withValues(alpha: question.clamp(0.0, 1.0)),
+      );
+    }
+
+    final dots = p.emoteOf(Emote.dots);
+    if (dots > .02) {
+      final step = (t / 380).floor() % 4;
+      for (var k = 0; k < 3; k++) {
+        if (k >= step) break;
+        c.drawCircle(
+          at + Offset(side * (k * .17 - .05), .12 - k * .06),
+          .05,
+          Paint()..color = ink.withValues(alpha: dots.clamp(0.0, 1.0)),
+        );
+      }
+    }
+
+    final sweat = p.emoteOf(Emote.sweat);
+    if (sweat > .02) {
+      final phase = (t / 1800) % 1;
+      final o = p.head + Offset(-side * .95, -.75 + phase * .25);
+      final a = (math.sin(math.pi * phase) * 1.4).clamp(0.0, 1.0) * sweat;
+      final drop = Path()
+        ..moveTo(o.dx, o.dy - .2)
+        ..quadraticBezierTo(o.dx + .12, o.dy - .02, o.dx + .1, o.dy + .06)
+        ..arcToPoint(
+          Offset(o.dx - .1, o.dy + .06),
+          radius: const Radius.circular(.1),
+        )
+        ..quadraticBezierTo(o.dx - .12, o.dy - .02, o.dx, o.dy - .2)
+        ..close();
+      c.drawPath(drop, inks.line(lw * 1.4)..color = ink.withValues(alpha: a));
+      c.drawPath(
+        drop,
+        Paint()..color = const Color(0xffbfe4fb).withValues(alpha: a),
+      );
+    }
+
+    final anger = p.emoteOf(Emote.anger);
+    if (anger > .02) {
+      final pulse = 1 + .12 * math.sin(t / 120);
+      final o = at;
+      final paint = Paint()
+        ..color = const Color(0xffe8506e).withValues(alpha: anger.clamp(0, 1))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = .07
+        ..strokeCap = StrokeCap.round;
+      for (var k = 0; k < 4; k++) {
+        final a = k * math.pi / 2 + math.pi / 4;
+        final dir = Offset(math.cos(a), math.sin(a));
+        final normal = Offset(-dir.dy, dir.dx);
+        final mid = o + dir * (.14 * pulse);
+        c.drawPath(
+          Path()
+            ..moveTo(mid.dx + normal.dx * .09, mid.dy + normal.dy * .09)
+            ..quadraticBezierTo(
+              o.dx + dir.dx * .05,
+              o.dy + dir.dy * .05,
+              mid.dx - normal.dx * .09,
+              mid.dy - normal.dy * .09,
+            ),
+          paint,
+        );
+      }
+    }
+  }
+
+  void _heart(Canvas c, Offset o, double r, _Inks inks, double alpha) {
+    if (alpha <= .01) return;
+    final h = Path()
+      ..moveTo(o.dx, o.dy + r)
+      ..cubicTo(
+        o.dx - r * 1.6,
+        o.dy - r * .2,
+        o.dx - r * .7,
+        o.dy - r * 1.3,
+        o.dx,
+        o.dy - r * .45,
+      )
+      ..cubicTo(
+        o.dx + r * .7,
+        o.dy - r * 1.3,
+        o.dx + r * 1.6,
+        o.dy - r * .2,
+        o.dx,
+        o.dy + r,
+      )
+      ..close();
+    c.drawPath(
+      h,
+      inks.line(.07)..color = inks.outline.withValues(alpha: alpha),
+    );
+    c.drawPath(h, Paint()..color = inks.blush.withValues(alpha: alpha));
+  }
+}

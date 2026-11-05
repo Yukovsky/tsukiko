@@ -55,10 +55,10 @@ const _sides = {
 /// shoulders keep both edges convex near the tip, as in the original drawing.
 const _ears = {
   CatEars.moon: [
-    Vertex(.14, -.56),
-    Vertex(.42, -1.0),
-    Vertex(.72, -1.62, .46),
-    Vertex(1.04, -1.02),
+    Vertex(.26, -.58),
+    Vertex(.46, -1.0),
+    Vertex(.72, -1.6, .46),
+    Vertex(1.02, -1.02),
     Vertex(1.0, -.46),
   ],
   CatEars.tiny: [
@@ -84,8 +84,8 @@ const _ears = {
   // The moon ear's soft leaf, a little lower; the brush grows out of its
   // tip (see the painter).
   CatEars.tuft: [
-    Vertex(.14, -.56),
-    Vertex(.42, -.93),
+    Vertex(.26, -.58),
+    Vertex(.46, -.93),
     Vertex(.72, -1.45, .46),
     Vertex(1.04, -.95),
     Vertex(1.0, -.48),
@@ -107,7 +107,18 @@ class CatSilhouette extends blob.Shape {
   final CatLook look;
   final blob.Traits traits;
 
-  late final double _earLength = traits.numIn('cat.ear.long', .92, 1.04);
+  /// The drawn cats have broad, low ears: the tall leaf of the first sketch
+  /// is pressed down towards the crown, the short kinds a little less.
+  static const _earScale = {
+    CatEars.moon: .72,
+    CatEars.tiny: .9,
+    CatEars.wide: .74,
+    CatEars.fold: 1.0,
+    CatEars.tuft: .72,
+    CatEars.bear: .92,
+  };
+  late final double _earLength =
+      traits.numIn('cat.ear.long', .92, 1.04) * _earScale[look.ears]!;
   late final double _cheek = traits.numIn('cat.cheek', .95, 1.05);
 
   @override
