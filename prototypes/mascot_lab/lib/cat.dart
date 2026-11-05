@@ -832,21 +832,8 @@ class CatPainter extends CustomPainter {
     canvas.clipPath(outline);
     canvas.translate(b.cx, b.cy);
     canvas.scale(b.rx / 1.1);
+    canvas.drawPicture(_tone);
     canvas.drawPicture(_grain);
-    canvas.restore();
-    // Brushed fur along the inside of the head's outline, in the head's
-    // own units.
-    canvas.save();
-    canvas.clipPath(outline);
-    _furFlicks(
-      canvas,
-      outline,
-      head,
-      ink,
-      step: b.rx * .1,
-      length: b.rx * .1,
-      width: b.rx * .022,
-    );
     canvas.restore();
     // A few strokes of fur at the cheeks.
     final strand = Paint()

@@ -764,35 +764,27 @@ void _furFlicks(
   if (metrics.isEmpty) return;
   final m = metrics.reduce((a, b) => a.length > b.length ? a : b);
   final dark = Paint()
-    ..color = Color.lerp(fur, ink, .3)!.withValues(alpha: .28)
-    ..style = PaintingStyle.stroke
-    ..strokeCap = StrokeCap.round;
-  final light = Paint()
-    ..color = Color.lerp(fur, Colors.white, .2)!.withValues(alpha: .35)
+    ..color = Color.lerp(fur, ink, .3)!.withValues(alpha: .14)
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
   var k = 0;
-  for (var d = step * .5; d < m.length; d += step, k++) {
+  // Sparse and unevenly spaced: a few hairs, not hatching.
+  for (var d = step * .5; d < m.length; k++) {
+    d += step * (.6 + .8 * (((k * 4271) % 11) / 11));
     final t = m.getTangentForOffset(d)!;
     final dir = t.vector;
     var inward = Offset(-dir.dy, dir.dx);
     if (!shape.contains(t.position + inward * (length * .5))) inward = -inward;
     final facing = -(inward.dx + inward.dy);
-    // Edges facing the light (up-left) get pale flicks, edges in shade
-    // dark ones; edges in between are left alone.
-    final Paint paint;
-    if (facing > .45) {
-      paint = dark;
-    } else if (facing < -.45) {
-      paint = light;
-    } else {
-      continue;
-    }
+    // Only edges in shade (facing down or right) get hairs.
+    if (facing < .45 || d >= m.length) continue;
+    final paint = dark;
     // A little irregular, as hand strokes are.
     final r = ((k * 7919) % 13) / 13;
-    final len = length * (.65 + .6 * r);
+    final len = length * (.55 + .45 * r);
     final from = t.position + inward * (width * .6);
-    final to = from + inward * len + dir * (len * (.35 + .3 * r));
+    // Well off the edge's normal, so neighbours never line up.
+    final to = from + inward * len + dir * (len * (.55 + .5 * r));
     final mid = (from + to) / 2 + Offset(-inward.dy, inward.dx) * (len * .12);
     paint.strokeWidth = width * (.8 + .4 * r);
     c.drawPath(
@@ -803,6 +795,33 @@ void _furFlicks(
     );
   }
 }
+
+/// Soft painted tone: large blurred patches a few percent lighter or darker,
+/// recorded once. Laid over a fill it gives the gentle unevenness of paint
+/// that a flat vector fill lacks.
+final ui.Picture _tone = () {
+  final r = ui.PictureRecorder();
+  final c = Canvas(r);
+  final rnd = math.Random(11);
+  for (var i = 0; i < 46; i++) {
+    final at = Offset(
+      rnd.nextDouble() * 6.4 - 3.2,
+      rnd.nextDouble() * 5.4 - 4.8,
+    );
+    final radius = .3 + rnd.nextDouble() * .45;
+    final color = i.isEven ? const Color(0x12ffffff) : const Color(0x0e1c1730);
+    c.drawCircle(
+      at,
+      radius,
+      Paint()
+        ..shader = ui.Gradient.radial(at, radius, [
+          color,
+          color.withValues(alpha: 0),
+        ]),
+    );
+  }
+  return r.endRecording();
+}();
 
 /// Smoothstep on 0…1, clamped.
 double _ease(double x) {
@@ -1035,8 +1054,9 @@ extension on CatPainter {
     // of the body, the light coming from the upper left.
     _crescent(canvas, trunk, inks, .2);
     _rim(canvas, trunk, inks);
+    canvas.drawPicture(_tone);
     canvas.drawPicture(_grain);
-    _furFlicks(canvas, trunk, inks.fur, inks.ink);
+    _furFlicks(canvas, trunk, inks.fur, inks.ink, step: .2, length: .09);
     // Two or three tapered strokes of fur clustered at the front of the
     // thigh, unevenly spaced, in the shade's colour: drawn hairs, not a
     // seam.
@@ -1372,7 +1392,7 @@ extension on CatPainter {
       under.add(s[i] + Offset(d.dy, -d.dx) / d.distance * tail.width[i] * .42);
     }
     _crescent(c, tail.path, inks, .2);
-    _furFlicks(c, tail.path, inks.fur, inks.ink, step: .12, length: .09);
+    _furFlicks(c, tail.path, inks.fur, inks.ink, step: .22, length: .08);
     final n = tail.spine.length - 1;
     Color? tip;
     var from = 0.0;
@@ -1819,17 +1839,25 @@ extension on CatPainter {
         }
       }
     }
-    // Inked hairs along the lower edge, where the bib meets the fur.
+    // A few loose hairs along the lower edge, fanned and uneven, in the
+    // shade's colour.
     final hair = Paint()
-      ..color = inks.outline.withValues(alpha: .5 * a)
+      ..color = Color.lerp(inks.fur, inks.ink, .25)!.withValues(alpha: .5 * a)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = .045
+      ..strokeWidth = .03
       ..strokeCap = StrokeCap.round;
-    for (final u in const [.12, .3, .43, .61, .82]) {
+    for (final (u, len, fan) in const [
+      (.1, .07, -.3),
+      (.24, .11, -.15),
+      (.37, .06, .05),
+      (.58, .09, -.05),
+      (.71, .12, .15),
+      (.88, .06, .3),
+    ]) {
       final x = cx + w / 2 - w * u;
       final y = top + h * (.35 + .65 * (.62 + .38 * math.sin(math.pi * u)));
-      final o = Offset(x, y + h * .06);
-      c.drawLine(o - Offset((u - .5) * .06, .08), o, hair);
+      final o = Offset(x, y + h * .04);
+      c.drawLine(o - Offset(math.sin(fan), math.cos(fan)) * len, o, hair);
     }
   }
 
