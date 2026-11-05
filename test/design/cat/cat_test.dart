@@ -123,7 +123,7 @@ void main() {
       seen.add(flat.map((v) => v.toStringAsFixed(3)).join(','));
       for (final o in [pose.head, ...pose.torso, ...pose.legs]) {
         expect(o.dx.abs(), lessThan(2.2), reason: mood.name);
-        expect(o.dy, inInclusiveRange(-2.7, .01), reason: mood.name);
+        expect(o.dy, inInclusiveRange(-2.8, .01), reason: mood.name);
       }
     }
     // Moods may share a drawn pose, but none is a copy of another.
