@@ -807,19 +807,14 @@ class CatPainter extends CustomPainter {
     final fill = Paint()..color = head;
     canvas.drawPath(shape, fill);
     canvas.drawPath(fur, fill);
-    // A pale rim along the upper left where the light falls, and a few
-    // strokes of fur at the cheeks.
+    // The same faint grain as the body's.
     canvas.save();
     canvas.clipPath(outline);
-    canvas.drawPath(
-      Path.combine(
-        PathOperation.difference,
-        outline,
-        outline.shift(Offset(b.rx * .09, b.rx * .08)),
-      ),
-      Paint()..color = Color.lerp(head, Colors.white, .12)!,
-    );
+    canvas.translate(b.cx, b.cy);
+    canvas.scale(b.rx / 1.1);
+    canvas.drawPicture(_grain);
     canvas.restore();
+    // A few strokes of fur at the cheeks.
     final strand = Paint()
       ..color = Color.lerp(head, ink, .3)!
       ..style = PaintingStyle.stroke

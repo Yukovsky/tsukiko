@@ -294,10 +294,10 @@ class BodyPose {
       Offset(.55, .55),
     ],
     legs: [
-      Offset(-.3, -1.0),
-      Offset(-.3, -.08),
-      Offset(.06, -1.0),
-      Offset(.06, -.08),
+      Offset(-.31, -1.0),
+      Offset(-.31, -.08),
+      Offset(.07, -1.0),
+      Offset(.07, -.08),
       Offset(-.8, -.2),
       Offset(-.94, -.1),
       Offset(.98, -.2),
@@ -305,10 +305,10 @@ class BodyPose {
     ],
     tail: [
       Offset(1.0, -.15),
-      Offset(1.75, -.35),
-      Offset(2.05, -.9),
-      Offset(1.95, -1.4),
-      Offset(1.6, -1.62),
+      Offset(1.7, -.35),
+      Offset(2.0, -.85),
+      Offset(1.85, -1.35),
+      Offset(1.55, -1.6),
     ],
     shadow: Offset(.2, 2.9),
   );
@@ -514,13 +514,13 @@ class BodyPose {
           .withLeg(
             0,
             const Offset(-.38, -1.0),
-            const Offset(-.31, -1.57),
+            const Offset(-.22, -1.46),
             over: 1,
           )
           .withLeg(
             1,
             const Offset(.18, -1.0),
-            const Offset(.11, -1.57),
+            const Offset(.02, -1.52),
             over: 1,
           )
           .copyWith(
@@ -728,6 +728,25 @@ double _along(List<double> v, double u) {
   final k = math.min(x.floor(), v.length - 2);
   return v[k] + (v[k + 1] - v[k]) * (x - k);
 }
+
+/// A faint grain of light and dark specks in unit space, recorded once:
+/// laid over the fills it takes the vector flatness off, as paper and a
+/// soft brush do in the drawings.
+final ui.Picture _grain = () {
+  final r = ui.PictureRecorder();
+  final c = Canvas(r);
+  final rnd = math.Random(7);
+  final light = Paint()..color = const Color(0x0affffff);
+  final dark = Paint()..color = const Color(0x081c1730);
+  for (var i = 0; i < 900; i++) {
+    final at = Offset(
+      rnd.nextDouble() * 6.4 - 3.2,
+      rnd.nextDouble() * 5.4 - 4.8,
+    );
+    c.drawCircle(at, .01 + rnd.nextDouble() * .022, i.isEven ? light : dark);
+  }
+  return r.endRecording();
+}();
 
 /// Smoothstep on 0…1, clamped.
 double _ease(double x) {
@@ -960,6 +979,25 @@ extension on CatPainter {
     // of the body, the light coming from the upper left.
     _crescent(canvas, trunk, inks, .2);
     _rim(canvas, trunk, inks);
+    canvas.drawPicture(_grain);
+    // A few strokes of fur on the top of the thigh.
+    final hc = p.haunch[2], hr = p.haunch[3];
+    if (hr.dx > .4) {
+      final strand = Paint()
+        ..color = Color.lerp(inks.fur, inks.ink, .3)!
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = lw * .5
+        ..strokeCap = StrokeCap.round;
+      for (final a in const [-1.95, -1.6, -1.25]) {
+        final o =
+            hc + Offset(math.cos(a) * hr.dx * .78, math.sin(a) * hr.dy * .78);
+        canvas.drawLine(
+          o,
+          o + Offset(math.cos(a + 1.9), math.sin(a + 1.9)) * .08,
+          strand,
+        );
+      }
+    }
     _paintBodyMarks(canvas, p, inks);
     // Thighs go behind the front legs.
     canvas.save();
@@ -981,8 +1019,8 @@ extension on CatPainter {
       if (rr.dx < .33) continue;
       final right = c.dx > p.head.dx;
       final arc = right
-          ? _arc(c, rr * .98, math.pi * 1.6, math.pi * .95)
-          : _arc(c, rr * .98, -math.pi * .6, math.pi * .05);
+          ? _arc(c, rr * .98, math.pi * 1.83, math.pi * 1.11)
+          : _arc(c, rr * .98, math.pi * 1.17, math.pi * 1.89);
       _brush(canvas, arc, lw * 1.2, inks.outline);
     }
     canvas.restore();
@@ -1147,7 +1185,14 @@ extension on CatPainter {
     ];
     // The pose's five points, the last one turned further in for a tail
     // that ends in a curl.
-    final c = [...p.tail];
+    // A plume stands taller than a plain tail.
+    final c = [
+      for (final o in p.tail)
+        kind == CatTail.bushy
+            ? p.tail[0] +
+                  Offset(o.dx - p.tail[0].dx, (o.dy - p.tail[0].dy) * 1.18)
+            : o,
+    ];
     if (kind == CatTail.curl || kind == CatTail.bushy) {
       final d = c[4] - c[3], e = c[3] - c[2];
       final k = kind == CatTail.curl ? .9 : .5;
@@ -1334,9 +1379,9 @@ extension on CatPainter {
     return [
       _capsule(
         root,
-        hind ? .27 : .24 - .07 * p.merge,
+        hind ? .27 : .24 - .05 * p.merge,
         paw - const Offset(0, .04),
-        .22 - .06 * p.merge,
+        .22 - .04 * p.merge,
       ),
       Path()..addOval(Rect.fromCenter(center: paw, width: .52, height: .3)),
     ];
@@ -1356,7 +1401,12 @@ extension on CatPainter {
     final fur = Color.lerp(inks.fur, inks.ink, .22 * p.shade[leg])!;
     c.save();
     if (melt > 0) {
-      c.clipRect(Rect.fromLTRB(-9, root.dy + .45 * melt, 9, 9));
+      // Sitting, the leg's ink starts where the bib ends, so no bare stub
+      // shows between them.
+      final b = profile.layout.body;
+      final chin = p.head.dy + b.ry * .86 / b.rx * _headScale;
+      final from = chin - .3 + .95 * (.35 + .65 * .62) - .05;
+      c.clipRect(Rect.fromLTRB(-9, root.dy + (from - root.dy) * melt, 9, 9));
     }
     c.drawPath(unit, inks.line(lw * 2));
     c.drawPath(unit.shift(const Offset(.008, .014)), inks.line(lw * 2));
@@ -1387,7 +1437,9 @@ extension on CatPainter {
         shape,
         shape.shift(const Offset(.1, .09)),
       ),
-      Paint()..color = Color.lerp(inks.fur, Colors.white, .12)!,
+      Paint()
+        ..color = Color.lerp(inks.fur, Colors.white, .07)!
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, .03),
     );
   }
 
@@ -1409,19 +1461,20 @@ extension on CatPainter {
   /// turned up.
   void _paintArm(Canvas c, BodyPose p, int leg, _Inks inks, double lw) {
     final root = p.legs[leg * 2], paw = p.legs[leg * 2 + 1];
-    final arm = _capsule(root, .18, paw, .16);
-    // No ink at the shoulder: the arm grows out of the chest.
-    c.save();
-    c.clipPath(
-      Path.combine(
-        PathOperation.difference,
-        Path()..addRect(const Rect.fromLTRB(-9, -9, 9, 9)),
-        Path()..addOval(Rect.fromCircle(center: root, radius: .3)),
-      ),
-    );
-    c.drawPath(arm, inks.line(lw * 2));
-    c.restore();
+    final arm = _capsule(root, .17, paw, .15);
     c.drawPath(arm, Paint()..color = inks.fur);
+    // Only the arm's outer side is inked, running from the paw down into
+    // the chest: inner lines would make the two paws read as goggles.
+    final d = paw - root;
+    var n = Offset(-d.dy, d.dx) / d.distance;
+    final out = leg == 0 ? -1.0 : 1.0;
+    if (n.dx * out < 0) n = -n;
+    _brush(
+      c,
+      [for (var i = 0; i <= 8; i++) paw - d * (i / 8 * .85) + n * .16],
+      lw * 1.6,
+      inks.outline,
+    );
     if (p.over[leg] <= .9) _paintPaw(c, paw, inks, lw, leg, p);
   }
 
@@ -1452,20 +1505,34 @@ extension on CatPainter {
   ) {
     final up = paw.dy < p.legs[leg * 2].dy - .15;
     // A raised paw tips a little inward, the way paws held up do.
-    final tilt = up ? (leg == 0 ? .26 : -.26) : 0.0;
+    final tilt = up ? (leg == 0 ? .38 : -.38) : 0.0;
     c.save();
     c.translate(paw.dx, paw.dy);
     c.rotate(tilt);
     c.translate(-paw.dx, -paw.dy);
     final foot = Path()
-      ..addOval(Rect.fromCenter(center: paw, width: .3, height: .24));
-    c.drawPath(foot, inks.line(lw * 2));
-    c.drawPath(foot, Paint()..color = _sock(inks) ?? inks.fur);
+      ..addOval(
+        Rect.fromCenter(
+          center: paw,
+          width: up ? .38 : .3,
+          height: up ? .3 : .24,
+        ),
+      );
+    // Raised paws are soft mittens: a finer line and a lighter fill than
+    // the body's, or two of them read as rings.
+    c.drawPath(foot, inks.line(lw * (up ? 1.5 : 2)));
+    c.drawPath(
+      foot,
+      Paint()
+        ..color =
+            _sock(inks) ??
+            (up ? Color.lerp(inks.fur, Colors.white, .1)! : inks.fur),
+    );
     if (up) {
       // Three short ticks on the top edge: the toes of a raised paw.
       final toe = inks.line(lw * .7);
-      for (final x in const [-.06, 0.0, .06]) {
-        c.drawLine(paw + Offset(x, -.105), paw + Offset(x, -.05), toe);
+      for (final x in const [-.08, 0.0, .08]) {
+        c.drawLine(paw + Offset(x, -.145), paw + Offset(x, -.1), toe);
       }
     } else {
       _toes(c, paw, inks, lw);
