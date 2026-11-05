@@ -24,7 +24,7 @@ void main() {
         mood: mood,
         glow: false,
         frame: () => CatFrame(
-          body: body ? BodyPose.forMood(mood) : null,
+          body: body ? FigureState.at(BodyPose.forMood(mood)) : null,
           pose: mood.expression.pose,
           motion: blob.motionAt(profile.seeds, 0, 0),
           headColor: CatProfile.hex(palette[blob.colorHead]!),

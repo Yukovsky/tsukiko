@@ -20,12 +20,16 @@ const _crown = -.54;
 const _sides = {
   // Round temples, cheeks full below the eyes, and a soft rounded jaw
   // instead of corners: the drawn cats' head.
+  // Measured off the drawn sheets: a narrow forehead, cheeks widest just
+  // under the eyes and staying full down to where the chest fur takes
+  // over.
   CatHead.mochi: [
-    Vertex(1.06, -.26),
-    Vertex(1.24, .22, .5),
-    Vertex(1.0, .52, .5),
-    Vertex(.6, .76, .5),
-    Vertex(0, .86, .5),
+    Vertex(.98, -.3),
+    Vertex(1.0, -.02, .5),
+    Vertex(1.24, .3, .5),
+    Vertex(1.1, .62, .5),
+    Vertex(.7, .86, .5),
+    Vertex(0, .92, .5),
   ],
   CatHead.bun: [
     Vertex(1.06, -.16),
@@ -61,10 +65,10 @@ const _ears = {
   // A high round crown with the ears on its shoulders, as in the drawings.
   CatEars.moon: [
     Vertex(.2, -.68),
-    Vertex(.44, -.96),
-    Vertex(.84, -1.26, .46),
-    Vertex(1.11, -.84),
-    Vertex(1.07, -.4),
+    Vertex(.42, -.96),
+    Vertex(.76, -1.28, .46),
+    Vertex(1.0, -.86),
+    Vertex(.99, -.42),
   ],
   CatEars.tiny: [
     Vertex(.3, -.58),
@@ -90,10 +94,10 @@ const _ears = {
   // tip (see the painter).
   CatEars.tuft: [
     Vertex(.2, -.68),
-    Vertex(.44, -.94),
-    Vertex(.82, -1.23, .46),
-    Vertex(1.1, -.82),
-    Vertex(1.06, -.42),
+    Vertex(.42, -.94),
+    Vertex(.75, -1.25, .46),
+    Vertex(.99, -.84),
+    Vertex(.98, -.42),
   ],
   CatEars.bear: [
     Vertex(.34, -.58),

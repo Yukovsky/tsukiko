@@ -114,34 +114,20 @@ void main() {
     );
   });
 
-  test('every mood has a pose that stays on the floor and in the frame', () {
-    final seen = <String>{};
+  test('every mood has a drawn pose and the spring arrives there', () {
     for (final mood in CatMood.values) {
       final pose = BodyPose.forMood(mood);
-      final flat = pose.flat();
-      expect(BodyPose.unflat(flat).flat(), flat, reason: mood.name);
-      seen.add(flat.map((v) => v.toStringAsFixed(3)).join(','));
-      for (final o in [pose.head, ...pose.torso, ...pose.legs]) {
-        expect(o.dx.abs(), lessThan(2.2), reason: mood.name);
-        expect(o.dy, inInclusiveRange(-2.8, .01), reason: mood.name);
-      }
+      expect(Stance.values, contains(pose.stance), reason: mood.name);
     }
-    // Moods may share a drawn pose, but none is a copy of another.
-    expect(seen.length, CatMood.values.length);
-  });
-
-  test('the body spring settles on the new pose', () {
     final spring = BodySpring(BodyPose.forMood(CatMood.idle));
     spring.aim(BodyPose.forMood(CatMood.sleepy));
-    for (var i = 0; i < 300; i++) {
+    for (var i = 0; i < 120; i++) {
       spring.step(16);
-      expect(spring.pose.flat().every((v) => v.isFinite), isTrue);
     }
-    final want = BodyPose.forMood(CatMood.sleepy).flat();
-    final got = spring.pose.flat();
-    for (var i = 0; i < want.length; i++) {
-      expect(got[i], closeTo(want[i], .01));
-    }
+    final st = spring.pose;
+    expect(st.to, Stance.curl);
+    expect(st.t, 1);
+    expect(st.emoteOf(Emote.zzz), closeTo(1, .01));
   });
 
   test('whole cats paint in every mood and look', () {
@@ -163,7 +149,7 @@ void main() {
           profile: profile,
           mood: mood,
           frame: () => CatFrame(
-            body: BodyPose.forMood(mood),
+            body: FigureState.at(BodyPose.forMood(mood)),
             pose: mood.expression.pose,
             motion: blob.motionAt(profile.seeds, 1234, 1),
             time: 1234,

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:blobatar/blobatar.dart' as blob;
@@ -12,6 +14,7 @@ import 'genome.dart';
 import 'silhouette.dart';
 
 part 'figure.dart';
+part 'figure_data.dart';
 
 enum CatMood {
   idle('Покой', 'Просто рядом', blob.idle),
@@ -613,7 +616,7 @@ class StillCat extends StatelessWidget {
         mood: mood,
         glow: false,
         frame: () => CatFrame(
-          body: body ? BodyPose.forMood(mood) : null,
+          body: body ? FigureState.at(BodyPose.forMood(mood)) : null,
           pose: mood.expression.pose,
           motion: blob.motionAt(profile.seeds, 0, 0),
         ),
@@ -644,7 +647,7 @@ class CatFrame {
   });
 
   /// The whole cat on the floor; null paints the head alone.
-  final BodyPose? body;
+  final FigureState? body;
   final blob.Pose pose;
   final blob.MotionFrame motion;
   final Offset gaze;
@@ -757,28 +760,26 @@ class CatPainter extends CustomPainter {
     return (outline, shape, tufts);
   }
 
-  /// Only the head's ink, for a body that shares one outline with it.
-  void _paintHeadInk(
-    Canvas canvas,
-    CatFrame f,
-    CatRig r,
-    blob.MotionFrame motion,
-    _Inks inks,
-  ) {
-    canvas.save();
-    final (left, right) = _enterHead(canvas, f, r, motion);
-    final (_, shape, _) = _headShape(left, right, f.time);
-    _ink(canvas, [shape, profile.cheekFur], inks);
-    canvas.restore();
-  }
-
-  void _ink(Canvas canvas, List<Path> paths, _Inks inks) {
+  void _ink(Canvas canvas, List<Path> paths, _Inks inks, {double? open}) {
     final b = profile.layout.body;
     final line = inks.line(b.rx * .096);
+    canvas.save();
+    if (open != null) {
+      // Below [open] the head's line fades out: the cheeks run into the
+      // chest fur without a chin line, as drawn.
+      final y = b.cy + open * b.ry;
+      canvas.clipRect(Rect.fromLTRB(-200, -200, 300, y + b.rx * .25));
+      line.shader = ui.Gradient.linear(
+        Offset(0, y - b.rx * .05),
+        Offset(0, y + b.rx * .25),
+        [line.color, line.color.withValues(alpha: 0)],
+      );
+    }
     for (final p in paths) {
       canvas.drawPath(p, line);
       canvas.drawPath(p.shift(Offset(b.rx * .012, b.rx * .02)), line);
     }
+    canvas.restore();
   }
 
   /// The head in its own 100-unit box, where Blobatar laid it out: outline,
@@ -792,6 +793,7 @@ class CatPainter extends CustomPainter {
     _Inks inks, {
     bool glow = false,
     bool inked = true,
+    double? chinOpen,
   }) {
     final head = inks.fur, eye = inks.eye, ink = inks.ink, blush = inks.blush;
     final b = profile.layout.body;
@@ -809,7 +811,7 @@ class CatPainter extends CustomPainter {
     }
     // Ink first, fill over it: only the outer half of the line survives, and
     // the cheek fur joins the head without a seam.
-    if (inked) _ink(canvas, [shape, fur], inks);
+    if (inked) _ink(canvas, [shape, fur], inks, open: chinOpen);
     final fill = Paint()..color = head;
     canvas.drawPath(shape, fill);
     canvas.drawPath(fur, fill);

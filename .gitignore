@@ -55,3 +55,6 @@ macos/Engine/
 windows/Engine/
 # Личные голосовые записи и локальные результаты проверки распознавания.
 /records/
+/tool/cat_trace/*.png
+/tool/cat_trace/traced.json
+/tool/cat_trace/__pycache__/
