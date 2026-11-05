@@ -246,7 +246,7 @@ class CatProfile {
       for (var i = 0; i < 240; i++)
         metric.getTangentForOffset(metric.length * i / 240)!,
     ];
-    for (final (at, size) in const [(.3, .9), (.48, .75)]) {
+    for (final (at, size) in const [(.26, .85), (.4, 1.0), (.54, .8)]) {
       final y = b.cy + at * b.ry;
       final hit = samples
           .where((t) => t.position.dx > b.cx)
@@ -260,7 +260,7 @@ class CatProfile {
         // Outward and a little down, the way cheek fur lies.
         final out0 = Offset(math.cos(.55), math.sin(.55));
         final along = Offset(-out0.dy, out0.dx);
-        final w = b.rx * .1 * size, len = b.rx * .11 * size;
+        final w = b.rx * .09 * size, len = b.rx * .13 * size;
         final base0 = p - out0 * (w * .9) - along * w;
         final base1 = p - out0 * (w * .9) + along * w;
         final tip = p + out0 * len + along * (len * .35);
@@ -1186,12 +1186,17 @@ class CatPainter extends CustomPainter {
       final iris = Color.lerp(profile.head, ink, dark ? .62 : .3)!;
       c.drawCircle(
         Offset(0, ry * .08),
-        rx * (dark ? .74 : .76),
-        Paint()..color = iris.withValues(alpha: alpha),
+        rx * (dark ? .69 : .71),
+        Paint()
+          ..shader =
+              ui.Gradient.linear(Offset(0, -ry * .6), Offset(0, ry * .8), [
+                iris.withValues(alpha: alpha),
+                Color.lerp(iris, Colors.white, .18)!.withValues(alpha: alpha),
+              ]),
       );
       c.drawCircle(
         Offset(0, ry * .12),
-        rx * (dark ? .46 : .42),
+        rx * (dark ? .43 : .4),
         Paint()
           ..color = Color.lerp(
             profile.head,

@@ -295,9 +295,9 @@ class BodyPose {
     ],
     legs: [
       Offset(-.31, -1.0),
-      Offset(-.31, -.08),
-      Offset(.07, -1.0),
-      Offset(.07, -.08),
+      Offset(-.38, -.08),
+      Offset(.09, -1.0),
+      Offset(.16, -.08),
       Offset(-.8, -.2),
       Offset(-.94, -.1),
       Offset(.98, -.2),
@@ -736,8 +736,8 @@ final ui.Picture _grain = () {
   final r = ui.PictureRecorder();
   final c = Canvas(r);
   final rnd = math.Random(7);
-  final light = Paint()..color = const Color(0x0affffff);
-  final dark = Paint()..color = const Color(0x081c1730);
+  final light = Paint()..color = const Color(0x10ffffff);
+  final dark = Paint()..color = const Color(0x0e1c1730);
   for (var i = 0; i < 900; i++) {
     final at = Offset(
       rnd.nextDouble() * 6.4 - 3.2,
@@ -980,20 +980,21 @@ extension on CatPainter {
     _crescent(canvas, trunk, inks, .2);
     _rim(canvas, trunk, inks);
     canvas.drawPicture(_grain);
-    // A few strokes of fur on the top of the thigh.
+    // Two or three tapered strokes of fur clustered at the front of the
+    // thigh, unevenly spaced, in the shade's colour: drawn hairs, not a
+    // seam.
     final hc = p.haunch[2], hr = p.haunch[3];
     if (hr.dx > .4) {
-      final strand = Paint()
-        ..color = Color.lerp(inks.fur, inks.ink, .3)!
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = lw * .5
-        ..strokeCap = StrokeCap.round;
-      for (final a in const [-1.95, -1.6, -1.25]) {
+      final strand = Color.lerp(inks.fur, inks.ink, .28)!;
+      for (final (a, len) in const [(-2.45, .12), (-2.2, .09), (-1.82, .1)]) {
         final o =
-            hc + Offset(math.cos(a) * hr.dx * .78, math.sin(a) * hr.dy * .78);
-        canvas.drawLine(
-          o,
-          o + Offset(math.cos(a + 1.9), math.sin(a + 1.9)) * .08,
+            hc + Offset(math.cos(a) * hr.dx * .8, math.sin(a) * hr.dy * .8);
+        final dir = Offset(math.cos(a + 2.1), math.sin(a + 2.1));
+        final bend = Offset(-dir.dy, dir.dx) * .02;
+        _brush(
+          canvas,
+          [o, o + dir * (len / 2) + bend, o + dir * len],
+          lw * .55,
           strand,
         );
       }
@@ -1379,11 +1380,17 @@ extension on CatPainter {
     return [
       _capsule(
         root,
-        hind ? .27 : .24 - .05 * p.merge,
+        hind ? .27 : .24 - .03 * p.merge,
         paw - const Offset(0, .04),
         .22 - .04 * p.merge,
       ),
-      Path()..addOval(Rect.fromCenter(center: paw, width: .52, height: .3)),
+      Path()..addOval(
+        Rect.fromCenter(
+          center: paw,
+          width: .52 - .08 * p.merge,
+          height: .3 - .06 * p.merge,
+        ),
+      ),
     ];
   }
 
@@ -1405,7 +1412,7 @@ extension on CatPainter {
       // shows between them.
       final b = profile.layout.body;
       final chin = p.head.dy + b.ry * .86 / b.rx * _headScale;
-      final from = chin - .3 + .95 * (.35 + .65 * .62) - .05;
+      final from = chin - .3 + .8 * (.35 + .65 * .62) - .05;
       c.clipRect(Rect.fromLTRB(-9, root.dy + (from - root.dy) * melt, 9, 9));
     }
     c.drawPath(unit, inks.line(lw * 2));
@@ -1450,10 +1457,11 @@ extension on CatPainter {
       Path.combine(
         PathOperation.difference,
         shape,
-        shape.shift(const Offset(-.15, -.13)),
+        shape.shift(const Offset(-.24, -.2)),
       ),
       Paint()
-        ..color = Color.lerp(inks.fur, inks.ink, depth)!.withValues(alpha: .6),
+        ..color = Color.lerp(inks.fur, inks.ink, depth)!.withValues(alpha: .5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, .05),
     );
   }
 
@@ -1514,8 +1522,8 @@ extension on CatPainter {
       ..addOval(
         Rect.fromCenter(
           center: paw,
-          width: up ? .38 : .3,
-          height: up ? .3 : .24,
+          width: up ? .44 : .3,
+          height: up ? .34 : .24,
         ),
       );
     // Raised paws are soft mittens: a finer line and a lighter fill than
@@ -1651,7 +1659,7 @@ extension on CatPainter {
     final b = profile.layout.body;
     final chin = p.head + Offset(0, b.ry * .86 / b.rx * _headScale);
     final muzzle = profile.look.mark == CatMark.muzzle;
-    final w = big ? 1.36 : .82, h = big ? .95 : .42;
+    final w = big ? 1.36 : .82, h = big ? .8 : .42;
     final top = chin.dy - (big ? .3 : .26);
     final cx = chin.dx;
     // Upper half: a smooth arch hidden mostly under the chin; lower half:
