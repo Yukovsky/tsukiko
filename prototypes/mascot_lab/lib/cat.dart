@@ -813,6 +813,20 @@ class CatPainter extends CustomPainter {
     final fill = Paint()..color = head;
     canvas.drawPath(shape, fill);
     canvas.drawPath(fur, fill);
+    // A very soft glow in the middle of the face, as a painted head has.
+    canvas.save();
+    canvas.clipPath(outline);
+    canvas.drawCircle(
+      Offset(b.cx, b.cy + b.ry * .1),
+      b.rx * .9,
+      Paint()
+        ..shader =
+            ui.Gradient.radial(Offset(b.cx, b.cy + b.ry * .1), b.rx * .9, [
+              Color.lerp(head, Colors.white, .07)!,
+              Color.lerp(head, Colors.white, .07)!.withValues(alpha: 0),
+            ]),
+    );
+    canvas.restore();
     // The same faint grain as the body's.
     canvas.save();
     canvas.clipPath(outline);

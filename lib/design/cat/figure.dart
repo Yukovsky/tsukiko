@@ -1179,7 +1179,7 @@ extension on CatPainter {
     final width = [
       for (var i = 0; i <= n; i++)
         (bushy
-                ? (.26 + .5 * math.sin(math.pi * math.pow(i / n, 1.94))) *
+                ? (.26 + .56 * math.sin(math.pi * math.pow(i / n, 1.7))) *
                       (1 - .78 * _ease(((i / n) - .55) / .45))
                 : _along(const [.3, .5, .64, .62, .46], i / n)) *
             puff,
@@ -1191,12 +1191,15 @@ extension on CatPainter {
       for (final o in p.tail)
         kind == CatTail.bushy
             ? p.tail[0] +
-                  Offset(o.dx - p.tail[0].dx, (o.dy - p.tail[0].dy) * 1.18)
+                  Offset(
+                    (o.dx - p.tail[0].dx) * .92,
+                    (o.dy - p.tail[0].dy) * 1.28,
+                  )
             : o,
     ];
     if (kind == CatTail.curl || kind == CatTail.bushy) {
       final d = c[4] - c[3], e = c[3] - c[2];
-      final k = kind == CatTail.curl ? .9 : .5;
+      final k = kind == CatTail.curl ? .9 : .25;
       final turn = (e.dx * d.dy - e.dy * d.dx) >= 0 ? k : -k;
       c[4] =
           c[3] +
@@ -1664,7 +1667,7 @@ extension on CatPainter {
     final chin = p.head + Offset(0, b.ry * .86 / b.rx * _headScale);
     final muzzle = profile.look.mark == CatMark.muzzle;
     final w = big ? 1.36 : .82, h = big ? .8 : .42;
-    final top = chin.dy - (big ? .3 : .26);
+    final top = chin.dy - (big ? .4 : .26);
     final cx = chin.dx;
     // Upper half: a smooth arch hidden mostly under the chin; lower half:
     // five scallops.
@@ -1715,8 +1718,8 @@ extension on CatPainter {
       path,
       Paint()
         ..shader = ui.Gradient.linear(
-          Offset(cx, top - h * .1),
-          Offset(cx, top + h * .3),
+          Offset(cx, top - h * .05),
+          Offset(cx, top + h * .42),
           [inks.fur.withValues(alpha: a), inks.fur.withValues(alpha: 0)],
         ),
     );
@@ -1729,6 +1732,34 @@ extension on CatPainter {
     for (final (x, y) in const [(-.18, .66), (.18, .66)]) {
       final o = Offset(cx + x * w, top + y * h);
       c.drawLine(o, o + Offset(x * .1, .1 * h), fur);
+    }
+    // Tufts of the bib sticking out past its sides, so it merges with the
+    // fur instead of sitting on it like a collar.
+    if (big) {
+      final tuftPaint = Paint()..color = edge.withValues(alpha: a);
+      for (final side in [-1.0, 1.0]) {
+        for (final (y, len) in const [(.42, .1), (.6, .08)]) {
+          final at = Offset(cx + side * w * .47, top + h * y);
+          c.drawPath(
+            Path()
+              ..moveTo(at.dx, at.dy - .06)
+              ..quadraticBezierTo(
+                at.dx + side * len * .5,
+                at.dy - .02,
+                at.dx + side * len,
+                at.dy + .05,
+              )
+              ..quadraticBezierTo(
+                at.dx + side * len * .3,
+                at.dy + .03,
+                at.dx,
+                at.dy + .06,
+              )
+              ..close(),
+            tuftPaint,
+          );
+        }
+      }
     }
     // Inked hairs along the lower edge, where the bib meets the fur.
     final hair = Paint()
