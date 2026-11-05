@@ -28,10 +28,11 @@ const _sides = {
     Vertex(0, .86, .5),
   ],
   CatHead.bun: [
-    Vertex(1.04, -.12),
-    Vertex(1.34, .28, .44),
-    Vertex(1.0, .76),
-    Vertex(0, .76),
+    Vertex(1.06, -.16),
+    Vertex(1.32, .26, .48),
+    Vertex(1.08, .6, .5),
+    Vertex(.62, .78, .5),
+    Vertex(0, .82, .5),
   ],
   CatHead.round: [
     Vertex(1.08, -.2),

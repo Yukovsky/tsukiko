@@ -1035,9 +1035,7 @@ class CatPainter extends CustomPainter {
       c.restore();
       return;
     }
-    // Closing, the lid comes down: the eye flattens instead of fading, so
-    // the white never shows without its iris.
-    c.scale(width, height * math.max(seen, .06));
+    c.scale(width, height);
     c.rotate(_rad(motion.wrap.rotation * side));
     c.scale(
       1 + motion.wrap.magnitudeX + motion.wrap.side * side * damp,
@@ -1061,12 +1059,46 @@ class CatPainter extends CustomPainter {
       );
     }
     c.drawPath(path, Paint()..color = bead ? _beadColor(ink) : color);
-    final open = ((height * motion.blink - .5) / .3).clamp(0.0, 1.0);
+    // While the lid comes down the iris stays: a squinting pose must not
+    // leave a white eye without one.
+    final open = shut > 0
+        ? 1.0
+        : ((height * motion.blink - .5) / .3).clamp(0.0, 1.0);
     if (open > 0 && kind != CatEyes.pill) {
       c.save();
       c.clipPath(path);
       _eyeDetail(c, eye, kind, motion, color, ink, open);
       c.restore();
+    }
+    if (seen < 1 && !small) {
+      // Closing, a lid of fur comes down over the eye with a dark lash
+      // line on its edge, so the white never shows without its iris.
+      final box = path.getBounds();
+      final lid = box.top + box.height * (1 - seen);
+      c.save();
+      c.clipPath(path);
+      c.drawRect(
+        Rect.fromLTRB(box.left - 1, box.top - 1, box.right + 1, lid),
+        Paint()..color = profile.head,
+      );
+      c.restore();
+      final half =
+          box.width /
+          2 *
+          math.sqrt(
+            math.max(
+              0,
+              1 - math.pow((lid - box.center.dy) / (box.height / 2), 2),
+            ),
+          );
+      c.drawLine(
+        Offset(box.center.dx - half, lid),
+        Offset(box.center.dx + half, lid),
+        Paint()
+          ..color = ink
+          ..strokeWidth = eye.ry * .16
+          ..strokeCap = StrokeCap.round,
+      );
     }
     c.restore();
   }

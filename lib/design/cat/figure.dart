@@ -72,11 +72,7 @@ class BodyPose {
     this.front = const [1, 1, 1, 1],
     this.over = const [0, 0],
     this.shade = const [0, 0, 0, 0],
-    required this.tailRoot,
-    required this.tailAngle,
-    this.tailBend = 0,
-    this.tailCurl = 0,
-    this.tailLength = 2,
+    required this.tail,
     this.tailFront = 0,
     this.puff = 0,
     this.chest = 1,
@@ -112,12 +108,10 @@ class BodyPose {
   /// Per leg: 1 for the far side, a shade darker.
   final List<double> shade;
 
-  /// The tail leaves [tailRoot] at [tailAngle], turns by [tailBend] along
-  /// its length and by [tailCurl] more near the tip. Angles of tails laid
-  /// forward are written past -π, so a cat that lies down swings its tail
-  /// up over its back instead of through the floor.
-  final Offset tailRoot;
-  final double tailAngle, tailBend, tailCurl, tailLength;
+  /// The tail as five points from root to tip; a smooth curve runs
+  /// through them. Poses blend these points directly, so between two poses
+  /// the tail moves straight to its new place instead of swinging round.
+  final List<Offset> tail;
 
   /// 1 when the tail lies in front of the body, wrapped round the paws.
   final double tailFront;
@@ -154,11 +148,7 @@ class BodyPose {
     List<double>? front,
     List<double>? over,
     List<double>? shade,
-    Offset? tailRoot,
-    double? tailAngle,
-    double? tailBend,
-    double? tailCurl,
-    double? tailLength,
+    List<Offset>? tail,
     double? tailFront,
     double? puff,
     double? chest,
@@ -175,11 +165,7 @@ class BodyPose {
     front: front ?? this.front,
     over: over ?? this.over,
     shade: shade ?? this.shade,
-    tailRoot: tailRoot ?? this.tailRoot,
-    tailAngle: tailAngle ?? this.tailAngle,
-    tailBend: tailBend ?? this.tailBend,
-    tailCurl: tailCurl ?? this.tailCurl,
-    tailLength: tailLength ?? this.tailLength,
+    tail: tail ?? this.tail,
     tailFront: tailFront ?? this.tailFront,
     puff: puff ?? this.puff,
     chest: chest ?? this.chest,
@@ -223,9 +209,8 @@ class BodyPose {
     for (final v in [...front, ...over, ...shade]) {
       w(v, 10, 1);
     }
-    p(tailRoot, 8);
-    for (final v in [tailAngle, tailBend, tailCurl, tailLength]) {
-      w(v, 4.5, .66);
+    for (final o in tail) {
+      p(o, 6, .75);
     }
     w(tailFront, 8, 1);
     w(puff, 9, .7);
@@ -268,11 +253,7 @@ class BodyPose {
       front: ns(4),
       over: ns(2),
       shade: ns(4),
-      tailRoot: o(),
-      tailAngle: n(),
-      tailBend: n(),
-      tailCurl: n(),
-      tailLength: n(),
+      tail: os(5),
       tailFront: n(),
       puff: n(),
       chest: n(),
@@ -316,11 +297,13 @@ class BodyPose {
       Offset(.92, -.2),
       Offset(1.08, -.1),
     ],
-    tailRoot: Offset(1.05, -.2),
-    tailAngle: .15,
-    tailBend: -2.6,
-    tailCurl: -.35,
-    tailLength: 2.4,
+    tail: [
+      Offset(1.0, -.15),
+      Offset(1.6, -.42),
+      Offset(1.86, -1.05),
+      Offset(1.78, -1.66),
+      Offset(1.45, -1.95),
+    ],
     shadow: Offset(.2, 2.9),
   );
 
@@ -356,14 +339,16 @@ class BodyPose {
     ],
     front: [1, 1, 0, 1],
     over: [1, 1],
-    tailRoot: Offset(1.35, -1.0),
-    tailAngle: -4.0,
-    tailBend: .8,
-    tailCurl: .9,
-    tailLength: 2.0,
+    tail: [
+      Offset(1.45, -.32),
+      Offset(1.2, -.16),
+      Offset(.6, -.15),
+      Offset(.05, -.16),
+      Offset(-.15, -.42),
+    ],
     tailFront: 1,
     merge: 0,
-    chest: .8,
+    chest: 0,
     shadow: Offset(.4, 3.5),
   );
 
@@ -387,12 +372,14 @@ class BodyPose {
       Offset(1.08, -.62),
       Offset(.58, .56),
     ],
-    tailRoot: const Offset(1.42, -.95),
-    tailAngle: -4.0,
-    tailBend: .8,
-    tailCurl: 1.4,
-    tailLength: 2.0,
-    chest: .9,
+    tail: const [
+      Offset(1.5, -.32),
+      Offset(1.25, -.16),
+      Offset(.65, -.15),
+      Offset(.1, -.16),
+      Offset(-.08, -.44),
+    ],
+    chest: 0,
   );
 
   /// Curled up asleep, head resting on a paw, tail wrapped round.
@@ -427,11 +414,13 @@ class BodyPose {
     ],
     front: [1, 0, 0, 0],
     over: [1, 0],
-    tailRoot: Offset(1.35, -1.0),
-    tailAngle: -4.08,
-    tailBend: .9,
-    tailCurl: .6,
-    tailLength: 2.2,
+    tail: [
+      Offset(1.55, -.32),
+      Offset(1.2, -.16),
+      Offset(.5, -.15),
+      Offset(-.1, -.17),
+      Offset(-.35, -.36),
+    ],
     tailFront: 1,
     merge: 0,
     chest: 0,
@@ -440,17 +429,17 @@ class BodyPose {
 
   /// Standing on all four, head turned to us, tail up.
   static const prowl = BodyPose(
-    head: Offset(-1.1, -1.5),
+    head: Offset(-1.1, -1.55),
     headTilt: -.14,
     torso: [
-      Offset(-.55, -1.62),
-      Offset(-1.0, -1.15),
-      Offset(-.85, -.62),
-      Offset(0, -.82),
-      Offset(.95, -.86),
-      Offset(1.55, -1.05),
-      Offset(1.58, -1.58),
-      Offset(.5, -1.48),
+      Offset(-.55, -1.78),
+      Offset(-1.02, -1.2),
+      Offset(-.85, -.66),
+      Offset(0, -.72),
+      Offset(.95, -.76),
+      Offset(1.58, -1.02),
+      Offset(1.62, -1.62),
+      Offset(.5, -1.72),
     ],
     haunch: [
       Offset(.9, -1.1),
@@ -460,7 +449,7 @@ class BodyPose {
     ],
     legs: [
       Offset(-.7, -1.0),
-      Offset(-1.36, -.12),
+      Offset(-1.26, -.12),
       Offset(-.4, -.96),
       Offset(-.84, -.12),
       Offset(.86, -.98),
@@ -470,11 +459,13 @@ class BodyPose {
     ],
     front: [0, 1, 0, 1],
     shade: [1, 0, 1, 0],
-    tailRoot: Offset(1.5, -1.42),
-    tailAngle: -1.15,
-    tailBend: -.3,
-    tailCurl: -1.35,
-    tailLength: 2.0,
+    tail: [
+      Offset(1.5, -1.42),
+      Offset(1.88, -1.85),
+      Offset(1.95, -2.45),
+      Offset(1.78, -2.88),
+      Offset(1.5, -2.95),
+    ],
     merge: 0,
     chest: 0,
     shadow: Offset(.1, 3.5),
@@ -486,9 +477,13 @@ class BodyPose {
     CatMood.idle => sit.copyWith(moves: {Move.fidget: 1}),
     CatMood.listening => sit.copyWith(
       head: const Offset(-.1, -2.5),
-      tailAngle: -.45,
-      tailBend: -1.3,
-      tailCurl: -1.1,
+      tail: [
+        Offset(1.0, -.18),
+        Offset(1.5, -.55),
+        Offset(1.66, -1.25),
+        Offset(1.6, -1.95),
+        Offset(1.38, -2.3),
+      ],
       moves: {Move.wag: .15},
     ),
     // A paw to the chin.
@@ -503,9 +498,13 @@ class BodyPose {
           .copyWith(emotes: {Emote.dots: 1}, moves: {Move.tap: 1}),
     CatMood.happy => sit.copyWith(
       head: const Offset(-.1, -2.52),
-      tailAngle: -.5,
-      tailBend: -1.9,
-      tailCurl: -.9,
+      tail: [
+        Offset(1.0, -.18),
+        Offset(1.55, -.5),
+        Offset(1.78, -1.2),
+        Offset(1.68, -1.85),
+        Offset(1.35, -2.12),
+      ],
       emotes: {Emote.dashes: 1},
       moves: {Move.wag: .8, Move.bounce: .6},
     ),
@@ -514,19 +513,23 @@ class BodyPose {
           .withLeg(
             0,
             const Offset(-.4, -1.05),
-            const Offset(-.36, -1.44),
+            const Offset(-.28, -1.48),
             over: 1,
           )
           .withLeg(
             1,
             const Offset(.2, -1.05),
-            const Offset(.16, -1.44),
+            const Offset(.08, -1.48),
             over: 1,
           )
           .copyWith(
-            tailAngle: -.4,
-            tailBend: -1.4,
-            tailCurl: -2.2,
+            tail: [
+              Offset(1.0, -.18),
+              Offset(1.6, -.45),
+              Offset(1.85, -1.05),
+              Offset(1.62, -1.55),
+              Offset(1.3, -1.45),
+            ],
             emotes: {Emote.hearts: 1},
             moves: {Move.sway: .7, Move.wag: .3},
           ),
@@ -541,18 +544,25 @@ class BodyPose {
           )
           .copyWith(
             head: const Offset(-.14, -2.46),
-            tailAngle: -.5,
-            tailBend: -1.8,
+            tail: [
+              Offset(1.0, -.18),
+              Offset(1.55, -.5),
+              Offset(1.78, -1.2),
+              Offset(1.68, -1.85),
+              Offset(1.35, -2.12),
+            ],
             moves: {Move.wave: 1, Move.wag: .4},
           ),
     // Tail wrapped round the front paws.
     CatMood.smug => sit.copyWith(
       head: const Offset(-.1, -2.46),
-      tailRoot: const Offset(.95, -.2),
-      tailAngle: -3.28,
-      tailBend: .15,
-      tailCurl: 1.2,
-      tailLength: 1.8,
+      tail: const [
+        Offset(.95, -.18),
+        Offset(.55, -.15),
+        Offset(-.05, -.15),
+        Offset(-.6, -.16),
+        Offset(-.85, -.38),
+      ],
       tailFront: 1,
       moves: {Move.wag: .12},
     ),
@@ -568,11 +578,13 @@ class BodyPose {
           .withLeg(1, const Offset(.2, -1.3), const Offset(.76, -1.74), over: 1)
           .copyWith(
             head: const Offset(-.1, -2.34),
-            tailRoot: const Offset(.95, -.2),
-            tailAngle: -3.28,
-            tailBend: .2,
-            tailCurl: 1.0,
-            tailLength: 1.7,
+            tail: const [
+              Offset(.95, -.18),
+              Offset(.55, -.15),
+              Offset(0, -.15),
+              Offset(-.5, -.16),
+              Offset(-.72, -.36),
+            ],
             tailFront: 1,
             moves: {Move.sway: .4},
           ),
@@ -584,11 +596,13 @@ class BodyPose {
         for (final (i, p) in sit.legs.indexed)
           i.isEven ? Offset(p.dx * 1.1, p.dy * .76) : p,
       ],
-      tailRoot: const Offset(.95, -.18),
-      tailAngle: -3.23,
-      tailBend: .2,
-      tailCurl: .7,
-      tailLength: 1.5,
+      tail: const [
+        Offset(.95, -.18),
+        Offset(.6, -.15),
+        Offset(.1, -.15),
+        Offset(-.35, -.17),
+        Offset(-.55, -.35),
+      ],
       tailFront: 1,
       puff: .2,
       emotes: {Emote.sweat: 1},
@@ -622,10 +636,13 @@ class BodyPose {
         Offset(1.42, -1.85),
         Offset(.4, -2.4),
       ],
-      tailRoot: const Offset(1.35, -1.75),
-      tailAngle: -1.45,
-      tailBend: .1,
-      tailCurl: -.5,
+      tail: const [
+        Offset(1.35, -1.75),
+        Offset(1.45, -2.25),
+        Offset(1.5, -2.75),
+        Offset(1.5, -3.15),
+        Offset(1.42, -3.4),
+      ],
       puff: 1,
       emotes: {Emote.anger: 1},
       moves: {Move.lash: 1},
@@ -697,14 +714,11 @@ class BodySpring {
       final i = _legsAt + p * 2;
       final speed = math.sqrt(_v[i] * _v[i] + _v[i + 1] * _v[i + 1]);
       x[i + 1] -= math.min(.32, speed * .09);
+      // A front paw on its way stays behind the face until it arrives.
+      if (p < 4 && speed > .6) x[_legsAt + 16 + 4 + p ~/ 2] = 0;
     }
     return BodyPose.unflat(x);
   }
-}
-
-double _smooth(double e0, double e1, double x) {
-  final t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-  return t * t * (3 - 2 * t);
 }
 
 /// A closed loop through [p], as a smooth Catmull-Rom curve.
@@ -1103,11 +1117,10 @@ extension on CatPainter {
       front: p.front,
       over: p.over,
       shade: p.shade,
-      tailRoot: p.tailRoot,
-      tailAngle: p.tailAngle - tailFlick * .5,
-      tailBend: p.tailBend,
-      tailCurl: p.tailCurl,
-      tailLength: p.tailLength,
+      tail: [
+        for (final (i, o) in p.tail.indexed)
+          o + Offset(tailFlick * .08 * i, -tailFlick * .14 * i),
+      ],
       tailFront: p.tailFront,
       puff: p.puff,
       chest: p.chest,
@@ -1145,30 +1158,6 @@ extension on CatPainter {
   _TailShape _tailShape(BodyPose p, double t) {
     final kind = profile.look.tail;
     const n = 18;
-    final curl = p.tailCurl * (kind == CatTail.curl ? 1.45 : 1);
-    final seg = p.tailLength / n;
-    final wag = p[Move.wag], lash = p[Move.lash];
-    final spine = [p.tailRoot];
-    var at = p.tailRoot;
-    for (var i = 1; i <= n; i++) {
-      final u = i / n;
-      // A wave runs down the tail; wagging and lashing add faster ones.
-      final wave =
-          (math.sin(t / 900 - i * .32) * .1 +
-              math.sin(t / 95 - i * .45) * .22 * wag +
-              math.sin(t / 150 - i * .3) * .4 * lash) *
-          u;
-      final a = p.tailAngle + p.tailBend * u + curl * _smooth(.5, 1, u) + wave;
-      at += Offset(math.cos(a), math.sin(a)) * seg;
-      spine.add(at);
-    }
-    // The tail lies on the floor, never through it.
-    // Lying on the floor, the tail rests on it: its centre stays half its
-    // width up.
-    for (var i = 0; i < spine.length; i++) {
-      final floor = -.2 * (1 + .45 * p.puff) - .02;
-      if (spine[i].dy > floor) spine[i] = Offset(spine[i].dx, floor);
-    }
     final bushy = kind == CatTail.bushy;
     final puff = 1 + .45 * p.puff;
     final width = [
@@ -1176,9 +1165,57 @@ extension on CatPainter {
         (bushy
                 ? (.26 + .5 * math.sin(math.pi * math.pow(i / n, 1.94))) *
                       (1 - .55 * math.pow(i / n, 6))
-                : .34 + .24 * math.pow(i / n, 1.3)) *
+                : .34 + .16 * math.sin(math.pi * .5 * math.pow(i / n, .9))) *
             puff,
     ];
+    // The pose's five points, the last one turned further in for a tail
+    // that ends in a curl.
+    final c = [...p.tail];
+    if (kind == CatTail.curl) {
+      final d = c[4] - c[3], e = c[3] - c[2];
+      final turn = (e.dx * d.dy - e.dy * d.dx) >= 0 ? .9 : -.9;
+      c[4] =
+          c[3] +
+          Offset(
+            d.dx * math.cos(turn) - d.dy * math.sin(turn),
+            d.dx * math.sin(turn) + d.dy * math.cos(turn),
+          );
+    }
+    // A smooth curve through them (Catmull-Rom, ends doubled).
+    Offset at(double u) {
+      final x = u * 4;
+      final k = math.min(x.floor(), 3);
+      final f = x - k;
+      final p0 = c[math.max(k - 1, 0)], p1 = c[k];
+      final p2 = c[k + 1], p3 = c[math.min(k + 2, 4)];
+      final f2 = f * f, f3 = f2 * f;
+      return (p1 * 2 +
+              (p2 - p0) * f +
+              (p0 * 2 - p1 * 5 + p2 * 4 - p3) * f2 +
+              (p1 * 3 - p0 - p2 * 3 + p3) * f3) /
+          2;
+    }
+
+    final wag = p[Move.wag], lash = p[Move.lash];
+    final base = [for (var i = 0; i <= n; i++) at(i / n)];
+    final spine = <Offset>[];
+    for (var i = 0; i <= n; i++) {
+      final u = i / n;
+      final d = base[math.min(i + 1, n)] - base[math.max(i - 1, 0)];
+      final nn = Offset(-d.dy, d.dx) / d.distance;
+      // A wave runs down the tail; wagging and lashing add faster ones.
+      final wave =
+          (math.sin(t / 900 - i * .32) * .06 +
+              math.sin(t / 95 - i * .45) * .16 * wag +
+              math.sin(t / 150 - i * .3) * .3 * lash) *
+          u *
+          u;
+      var q = base[i] + nn * wave;
+      // Lying on the floor, the tail rests on it: never through it.
+      final floor = -width[i] / 2 - .02;
+      if (q.dy > floor) q = Offset(q.dx, floor);
+      spine.add(q);
+    }
     final fur = bushy || p.puff > .25;
     final left = <Offset>[], right = <Offset>[];
     for (var i = 0; i <= n; i++) {
@@ -1382,10 +1419,19 @@ extension on CatPainter {
     BodyPose p,
   ) {
     final foot = Path()
-      ..addOval(Rect.fromCenter(center: paw, width: .32, height: .25));
+      ..addOval(Rect.fromCenter(center: paw, width: .27, height: .21));
     c.drawPath(foot, inks.line(lw * 2));
     c.drawPath(foot, Paint()..color = _sock(inks) ?? inks.fur);
-    _toes(c, paw, inks, lw, up: paw.dy < p.legs[leg * 2].dy - .15);
+    final up = paw.dy < p.legs[leg * 2].dy - .15;
+    if (up) {
+      // Three short ticks on the top edge: the toes of a raised paw.
+      final toe = inks.line(lw * .7);
+      for (final x in const [-.06, 0.0, .06]) {
+        c.drawLine(paw + Offset(x, -.105), paw + Offset(x, -.05), toe);
+      }
+    } else {
+      _toes(c, paw, inks, lw);
+    }
   }
 
   /// A couple of small tufts on the top of the near thigh, so the outline
@@ -1460,7 +1506,7 @@ extension on CatPainter {
     final metrics = body.computeMetrics().toList();
     if (metrics.isEmpty) return out;
     final m = metrics.reduce((a, b) => a.length > b.length ? a : b);
-    const step = .27;
+    const step = .45;
     var k = 0;
     for (var d = step / 2; d < m.length; d += step, k++) {
       final t = m.getTangentForOffset(d)!;
@@ -1469,10 +1515,8 @@ extension on CatPainter {
       if (body.contains(at + n * .04)) n = -n;
       // Fur on the back, flanks and chest, none on the floor or belly.
       if (n.dy > .35 || at.dy > -.25) continue;
-      // Two in three spots get a tuft, so the breaks feel drawn.
-      if (k % 3 == 2) continue;
-      final size = k.isEven ? 1.0 : .75;
-      final w = .055 * size, len = .075 * size;
+      final size = k.isEven ? 1.0 : .8;
+      final w = .07 * size, len = .055 * size;
       final lean = dir * (len * .9);
       final tip = at + n * len + lean;
       final b0 = at - n * .05 - dir * w, b1 = at - n * .05 + dir * w;
@@ -1506,15 +1550,25 @@ extension on CatPainter {
     final cx = chin.dx;
     // Upper half: a smooth arch hidden mostly under the chin; lower half:
     // five scallops.
+    // Two lobes rising beside the chin, like a heart of fur.
     final path = Path()..moveTo(cx - w / 2, top + h * .35);
-    path.cubicTo(
-      cx - w / 2,
-      top - h * .05,
-      cx + w / 2,
-      top - h * .05,
-      cx + w / 2,
-      top + h * .35,
-    );
+    path
+      ..cubicTo(
+        cx - w / 2,
+        top - h * .12,
+        cx - w * .08,
+        top - h * .1,
+        cx,
+        top + h * .12,
+      )
+      ..cubicTo(
+        cx + w * .08,
+        top - h * .1,
+        cx + w / 2,
+        top - h * .12,
+        cx + w / 2,
+        top + h * .35,
+      );
     const scallops = 5;
     for (var i = 0; i < scallops; i++) {
       final u0 = i / scallops, u1 = (i + 1) / scallops;
@@ -1532,10 +1586,21 @@ extension on CatPainter {
     c.drawPath(
       path,
       Paint()
-        ..shader = ui.Gradient.radial(Offset(cx, top + h * .45), w * .62, [
+        ..shader = ui.Gradient.radial(Offset(cx, top + h * .5), w * .62, [
           centre.withValues(alpha: a),
           edge.withValues(alpha: a),
         ]),
+    );
+    // Fading back into the fur at the top where it meets the chin, so it
+    // has no edge there.
+    c.drawPath(
+      path,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(cx, top - h * .1),
+          Offset(cx, top + h * .3),
+          [inks.fur.withValues(alpha: a), inks.fur.withValues(alpha: 0)],
+        ),
     );
     // A few strokes of fur near the lower edge.
     final fur = Paint()
@@ -1543,7 +1608,7 @@ extension on CatPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = .03
       ..strokeCap = StrokeCap.round;
-    for (final (x, y) in const [(-.22, .62), (.0, .74), (.22, .62)]) {
+    for (final (x, y) in const [(-.18, .66), (.18, .66)]) {
       final o = Offset(cx + x * w, top + y * h);
       c.drawLine(o, o + Offset(x * .1, .1 * h), fur);
     }
