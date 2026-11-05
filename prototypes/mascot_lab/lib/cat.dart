@@ -807,6 +807,30 @@ class CatPainter extends CustomPainter {
     final fill = Paint()..color = head;
     canvas.drawPath(shape, fill);
     canvas.drawPath(fur, fill);
+    // A pale rim along the upper left where the light falls, and a few
+    // strokes of fur at the cheeks.
+    canvas.save();
+    canvas.clipPath(outline);
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        outline,
+        outline.shift(Offset(b.rx * .09, b.rx * .08)),
+      ),
+      Paint()..color = Color.lerp(head, Colors.white, .12)!,
+    );
+    canvas.restore();
+    final strand = Paint()
+      ..color = Color.lerp(head, ink, .3)!
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = b.rx * .035
+      ..strokeCap = StrokeCap.round;
+    for (final side in [-1.0, 1.0]) {
+      for (final (x, y) in const [(.98, .3), (.94, .46)]) {
+        final o = Offset(b.cx + side * x * b.rx, b.cy + y * b.ry);
+        canvas.drawLine(o, o + Offset(-side * b.rx * .09, b.rx * .03), strand);
+      }
+    }
     for (final t in tufts) {
       // Dipped in ink: darkest at the hair's end, fading back down the ear.
       final hair = Color.lerp(head, ink, .8)!;
@@ -1075,13 +1099,9 @@ class CatPainter extends CustomPainter {
       // line on its edge, so the white never shows without its iris.
       final box = path.getBounds();
       final lid = box.top + box.height * (1 - seen);
-      c.save();
-      c.clipPath(path);
-      c.drawRect(
-        Rect.fromLTRB(box.left - 1, box.top - 1, box.right + 1, lid),
-        Paint()..color = profile.head,
-      );
-      c.restore();
+      // The lid's edge sags a little in the middle, as a soft lid does; a
+      // straight one reads as a frown.
+      final sag = box.height * .12 * (1 - seen);
       final half =
           box.width /
           2 *
@@ -1091,11 +1111,38 @@ class CatPainter extends CustomPainter {
               1 - math.pow((lid - box.center.dy) / (box.height / 2), 2),
             ),
           );
-      c.drawLine(
-        Offset(box.center.dx - half, lid),
-        Offset(box.center.dx + half, lid),
+      final edge = Path()
+        ..moveTo(box.center.dx - half, lid)
+        ..quadraticBezierTo(
+          box.center.dx,
+          lid + sag * 2,
+          box.center.dx + half,
+          lid,
+        );
+      c.save();
+      c.clipPath(path);
+      c.drawPath(
+        Path()
+          ..moveTo(box.left - 1, box.top - 1)
+          ..lineTo(box.right + 1, box.top - 1)
+          ..lineTo(box.right + 1, lid)
+          ..lineTo(box.center.dx + half, lid)
+          ..quadraticBezierTo(
+            box.center.dx,
+            lid + sag * 2,
+            box.center.dx - half,
+            lid,
+          )
+          ..lineTo(box.left - 1, lid)
+          ..close(),
+        Paint()..color = profile.head,
+      );
+      c.restore();
+      c.drawPath(
+        edge,
         Paint()
           ..color = ink
+          ..style = PaintingStyle.stroke
           ..strokeWidth = eye.ry * .16
           ..strokeCap = StrokeCap.round,
       );
