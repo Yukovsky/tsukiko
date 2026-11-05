@@ -358,8 +358,9 @@ class _LivingCatState extends State<LivingCat>
   String? _reaction;
   late final BodySpring _body = BodySpring(BodyPose.forMood(widget.mood));
 
+  double _morphMs = 420;
   double get _progress =>
-      blob.easeInOut(((_time - _morphStart) / 420).clamp(0, 1));
+      blob.easeInOut(((_time - _morphStart) / _morphMs).clamp(0, 1));
   CatRig get _rig => CatRig.lerp(_rigFrom, _rigTo, _progress);
   blob.Pose get _pose => blob.lerpPose(_from, _to, _progress);
 
@@ -453,6 +454,11 @@ class _LivingCatState extends State<LivingCat>
     _from = _pose;
     _to = target;
     _morphStart = _time;
+    // Eyes fly open for love and surprise; a slow lid there reads as a
+    // suspicious squint.
+    _morphMs = widget.mood == CatMood.love || widget.mood == CatMood.surprised
+        ? 260
+        : 420;
     if (!_ticker.isActive) {
       _body.snap();
       _from = _to;
@@ -1020,17 +1026,17 @@ class CatPainter extends CustomPainter {
       // eyes arch high, sleeping ones sag only a little.
       final rise = bend > 0 ? 1.0 : .62;
       final crescent = Path()
-        ..moveTo(-rx * .82, ry * .16 * k)
+        ..moveTo(-rx * .9, ry * .16 * k)
         ..quadraticBezierTo(
           0,
           -ry * (1.1 * rise + .2) * k,
-          rx * .82,
+          rx * .9,
           ry * .16 * k,
         )
         ..quadraticBezierTo(
           0,
-          -ry * (1.1 * rise - .55) * k,
-          -rx * .82,
+          -ry * (1.1 * rise - .8) * k,
+          -rx * .9,
           ry * .16 * k,
         )
         ..close();

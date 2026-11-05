@@ -736,14 +736,14 @@ final ui.Picture _grain = () {
   final r = ui.PictureRecorder();
   final c = Canvas(r);
   final rnd = math.Random(7);
-  final light = Paint()..color = const Color(0x10ffffff);
-  final dark = Paint()..color = const Color(0x0e1c1730);
-  for (var i = 0; i < 900; i++) {
+  final light = Paint()..color = const Color(0x0cffffff);
+  final dark = Paint()..color = const Color(0x061c1730);
+  for (var i = 0; i < 1400; i++) {
     final at = Offset(
       rnd.nextDouble() * 6.4 - 3.2,
       rnd.nextDouble() * 5.4 - 4.8,
     );
-    c.drawCircle(at, .01 + rnd.nextDouble() * .022, i.isEven ? light : dark);
+    c.drawCircle(at, .008 + rnd.nextDouble() * .016, i % 4 == 0 ? dark : light);
   }
   return r.endRecording();
 }();
@@ -848,7 +848,7 @@ class _TailShape {
 }
 
 /// How big the head is against the body: the drawn cats are mostly head.
-const _headScale = 1.1;
+const _headScale = 1.16;
 
 extension on CatPainter {
   /// The whole cat on the floor of [size]: body behind, head and face from
@@ -1412,7 +1412,11 @@ extension on CatPainter {
       // shows between them.
       final b = profile.layout.body;
       final chin = p.head.dy + b.ry * .86 / b.rx * _headScale;
-      final from = chin - .3 + .8 * (.35 + .65 * .62) - .05;
+      // Well below it, so the rounded top of the leg never shows as a knee.
+      final from = math.max(
+        chin - .3 + .8 * (.35 + .65 * .62) + .2,
+        root.dy + .25,
+      );
       c.clipRect(Rect.fromLTRB(-9, root.dy + (from - root.dy) * melt, 9, 9));
     }
     c.drawPath(unit, inks.line(lw * 2));
@@ -1695,8 +1699,8 @@ extension on CatPainter {
     }
     path.close();
     final a = p.chest.clamp(0.0, 1.0);
-    final centre = Color.lerp(inks.fur, Colors.white, muzzle ? .62 : .25)!;
-    final edge = Color.lerp(inks.fur, Colors.white, muzzle ? .5 : .1)!;
+    final centre = Color.lerp(inks.fur, Colors.white, muzzle ? .62 : .27)!;
+    final edge = Color.lerp(inks.fur, Colors.white, muzzle ? .5 : .2)!;
     c.drawPath(
       path,
       Paint()
