@@ -1070,6 +1070,41 @@ extension on CatPainter {
     // of the body, the light coming from the upper left.
     _crescent(canvas, trunk, inks, .2);
     _rim(canvas, trunk, inks);
+    // Painted shade shapes, as the drawings place them: a band along the
+    // bottom of the near thigh, and a shade under the chest of a sitting
+    // cat, both with soft but readable edges.
+    final shadeShape = Paint()
+      ..color = Color.lerp(inks.fur, inks.ink, .22)!.withValues(alpha: .55)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, .045);
+    final hc0 = p.haunch[2], hr0 = p.haunch[3];
+    if (hr0.dx > .4) {
+      final thigh = Rect.fromCenter(
+        center: hc0,
+        width: hr0.dx * 2,
+        height: hr0.dy * 2,
+      );
+      canvas.drawPath(
+        Path.combine(
+          PathOperation.difference,
+          Path()..addOval(thigh),
+          Path()..addOval(thigh.shift(const Offset(-.07, -.24))),
+        ),
+        shadeShape,
+      );
+    }
+    if (p.merge > .5) {
+      final b0 = profile.layout.body;
+      final chin = p.head.dy + b0.ry * .86 / b0.rx * _headScale;
+      final under = chin - .4 + .8 * .98 + .08;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(p.head.dx + .05, under + .12),
+          width: 1.0,
+          height: .3,
+        ),
+        shadeShape..color = shadeShape.color.withValues(alpha: .3 * p.merge),
+      );
+    }
     canvas.drawPicture(_tone(soft: _grey(inks)));
     canvas.drawPicture(_grain);
     _furFlicks(canvas, trunk, inks.fur, inks.ink, step: .2, length: .09);
