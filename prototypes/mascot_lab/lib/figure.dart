@@ -748,6 +748,62 @@ final ui.Picture _grain = () {
   return r.endRecording();
 }();
 
+/// Brushed fur inside an outline: short tapered flicks running in from the
+/// edge every [step], leaning along it, darker where the edge faces down
+/// and right, paler where it faces the light. Callers clip to [shape].
+void _furFlicks(
+  Canvas c,
+  Path shape,
+  Color fur,
+  Color ink, {
+  double step = .1,
+  double length = .1,
+  double width = .022,
+}) {
+  final metrics = shape.computeMetrics().toList();
+  if (metrics.isEmpty) return;
+  final m = metrics.reduce((a, b) => a.length > b.length ? a : b);
+  final dark = Paint()
+    ..color = Color.lerp(fur, ink, .3)!.withValues(alpha: .28)
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final light = Paint()
+    ..color = Color.lerp(fur, Colors.white, .2)!.withValues(alpha: .35)
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  var k = 0;
+  for (var d = step * .5; d < m.length; d += step, k++) {
+    final t = m.getTangentForOffset(d)!;
+    final dir = t.vector;
+    var inward = Offset(-dir.dy, dir.dx);
+    if (!shape.contains(t.position + inward * (length * .5))) inward = -inward;
+    final facing = -(inward.dx + inward.dy);
+    // Edges facing the light (up-left) get pale flicks, edges in shade
+    // dark ones; edges in between are left alone.
+    final Paint paint;
+    if (facing > .45) {
+      paint = dark;
+    } else if (facing < -.45) {
+      paint = light;
+    } else {
+      continue;
+    }
+    // A little irregular, as hand strokes are.
+    final r = ((k * 7919) % 13) / 13;
+    final len = length * (.65 + .6 * r);
+    final from = t.position + inward * (width * .6);
+    final to = from + inward * len + dir * (len * (.35 + .3 * r));
+    final mid = (from + to) / 2 + Offset(-inward.dy, inward.dx) * (len * .12);
+    paint.strokeWidth = width * (.8 + .4 * r);
+    c.drawPath(
+      Path()
+        ..moveTo(from.dx, from.dy)
+        ..quadraticBezierTo(mid.dx, mid.dy, to.dx, to.dy),
+      paint,
+    );
+  }
+}
+
 /// Smoothstep on 0…1, clamped.
 double _ease(double x) {
   final t = x.clamp(0.0, 1.0);
@@ -980,6 +1036,7 @@ extension on CatPainter {
     _crescent(canvas, trunk, inks, .2);
     _rim(canvas, trunk, inks);
     canvas.drawPicture(_grain);
+    _furFlicks(canvas, trunk, inks.fur, inks.ink);
     // Two or three tapered strokes of fur clustered at the front of the
     // thigh, unevenly spaced, in the shade's colour: drawn hairs, not a
     // seam.
@@ -1315,6 +1372,7 @@ extension on CatPainter {
       under.add(s[i] + Offset(d.dy, -d.dx) / d.distance * tail.width[i] * .42);
     }
     _crescent(c, tail.path, inks, .2);
+    _furFlicks(c, tail.path, inks.fur, inks.ink, step: .12, length: .09);
     final n = tail.spine.length - 1;
     Color? tip;
     var from = 0.0;
@@ -1767,8 +1825,7 @@ extension on CatPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = .045
       ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < 6; i++) {
-      final u = (i + .5) / 6;
+    for (final u in const [.12, .3, .43, .61, .82]) {
       final x = cx + w / 2 - w * u;
       final y = top + h * (.35 + .65 * (.62 + .38 * math.sin(math.pi * u)));
       final o = Offset(x, y + h * .06);
