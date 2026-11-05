@@ -47,8 +47,9 @@ extension on Mood {
       };
 }
 
-/// Лунный кот приложения. Дышит, моргает, смотрит на курсор; тычок, щелчок
-/// или Enter заставляют подмигнуть.
+/// Лунный кот приложения. Дышит, моргает, смотрит на курсор; у каждого
+/// настроения своя поза и свои движения, позы перетекают одна в другую.
+/// Тычок, щелчок или Enter заставляют подмигнуть и подпрыгнуть.
 ///
 /// Тикер кота сам замирает, когда окно не на переднем плане, когда
 /// система просит меньше движения и под выключенным TickerMode.
@@ -87,19 +88,24 @@ class _MascotState extends State<Mascot> {
 
   @override
   Widget build(BuildContext context) {
-    // Кот рисуется в квадрате: голова занимает его середину, а края
-    // остаются свечению и ушам.
-    final side = widget.height * 1.25;
+    // Где места хватает, кот целиком: сидит, лежит или стоит на полу
+    // своей позы, и поле шире высоты, чтобы влезли хвост и лежачие позы.
+    // Маленький кот (шапка панели диктовки) — одна голова в квадрате:
+    // тело в 36 точках не разглядеть.
+    final body = widget.height >= 60;
+    final width = widget.height * (body ? 1.5 : 1.25);
     Widget cat = ValueListenableBuilder<String>(
       valueListenable: catLook,
       builder: (context, look, _) => LivingCat(
         profile: _profileFor(look),
         mood: widget.mood.cat,
-        size: side,
+        size: width,
+        height: body ? widget.height * 1.28 : null,
+        body: body,
         animate: Mascot.animate,
-        // На маленьком коте размытое свечение не разглядеть, а платить
-        // за него приходится каждый кадр.
-        glow: widget.height >= 64,
+        // У кота целиком вместо свечения тень на полу; на маленьком
+        // свечение не разглядеть, а платить за него приходится каждый кадр.
+        glow: !body && widget.height >= 64,
         voiceLevel: widget.voiceLevel ?? .65,
       ),
     );

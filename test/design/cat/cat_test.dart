@@ -1,3 +1,6 @@
+import 'dart:ui' as ui;
+
+import 'package:blobatar/blobatar.dart' as blob;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tsukiko/design/cat/cat.dart';
@@ -92,24 +95,107 @@ void main() {
     }
   });
 
+  test('a cat wears one thing of its own accord, more only when asked', () {
+    CatLook resolve(String text) {
+      final g = CatGenome.parse(text);
+      return CatLook(g, g.traits);
+    }
+
+    for (var i = 0; i < 200; i++) {
+      final look = resolve('cat$i');
+      if (look.wear != CatWear.none) expect(look.charm, CatCharm.none);
+    }
+    expect(resolve('mori наушники').charm, CatCharm.none);
+    final both = resolve('mori наушники шарфик');
+    expect((both.wear, both.charm), (CatWear.phones, CatCharm.scarf));
+    expect(
+      CatGenome.parse('mori ленточка пушистый').withSeed('yuko'),
+      'yuko-gezo',
+    );
+  });
+
+  test('every mood has a pose that stays on the floor and in the frame', () {
+    final seen = <String>{};
+    for (final mood in CatMood.values) {
+      final pose = BodyPose.forMood(mood);
+      final flat = pose.flat();
+      expect(BodyPose.unflat(flat).flat(), flat, reason: mood.name);
+      seen.add(flat.map((v) => v.toStringAsFixed(3)).join(','));
+      for (final o in [pose.head, ...pose.torso, ...pose.legs]) {
+        expect(o.dx.abs(), lessThan(2.2), reason: mood.name);
+        expect(o.dy, inInclusiveRange(-2.7, .01), reason: mood.name);
+      }
+    }
+    // Moods may share a drawn pose, but none is a copy of another.
+    expect(seen.length, CatMood.values.length);
+  });
+
+  test('the body spring settles on the new pose', () {
+    final spring = BodySpring(BodyPose.forMood(CatMood.idle));
+    spring.aim(BodyPose.forMood(CatMood.sleepy));
+    for (var i = 0; i < 300; i++) {
+      spring.step(16);
+      expect(spring.pose.flat().every((v) => v.isFinite), isTrue);
+    }
+    final want = BodyPose.forMood(CatMood.sleepy).flat();
+    final got = spring.pose.flat();
+    for (var i = 0; i < want.length; i++) {
+      expect(got[i], closeTo(want[i], .01));
+    }
+  });
+
+  test('whole cats paint in every mood and look', () {
+    final looks = [
+      'tsukiko',
+      'lumi пепел полоски кисточки',
+      'yuko пушистый месяц',
+      'cat4 шарфик пятно',
+      'cat5 ленточка маска кончик',
+      'cat6 мордочка завиток малыш',
+      'cat7 звёзды ошейник',
+      'cat8 наушники #33313f',
+    ];
+    for (final text in looks) {
+      final profile = CatProfile(text);
+      for (final mood in CatMood.values) {
+        final recorder = ui.PictureRecorder();
+        CatPainter(
+          profile: profile,
+          mood: mood,
+          frame: () => CatFrame(
+            body: BodyPose.forMood(mood),
+            pose: mood.expression.pose,
+            motion: blob.motionAt(profile.seeds, 1234, 1),
+            time: 1234,
+          ),
+        ).paint(Canvas(recorder), const Size(160, 136));
+        recorder.endRecording().dispose();
+      }
+    }
+  });
+
   testWidgets('moods, petting and reduced motion run without errors', (
     tester,
   ) async {
-    Widget cat(CatMood mood, {bool animate = true}) => Directionality(
-      textDirection: TextDirection.ltr,
-      child: Center(
-        child: LivingCat(
-          profile: CatProfile('tsukiko'),
-          mood: mood,
-          animate: animate,
-        ),
-      ),
-    );
+    Widget cat(CatMood mood, {bool animate = true, bool body = false}) =>
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: LivingCat(
+              profile: CatProfile('tsukiko'),
+              mood: mood,
+              animate: animate,
+              body: body,
+            ),
+          ),
+        );
 
-    await tester.pumpWidget(cat(CatMood.idle));
-    for (final mood in CatMood.values) {
-      await tester.pumpWidget(cat(mood));
-      await tester.pump(const Duration(milliseconds: 500));
+    for (final body in [false, true]) {
+      await tester.pumpWidget(cat(CatMood.idle, body: body));
+      for (final mood in CatMood.values) {
+        await tester.pumpWidget(cat(mood, body: body));
+        await tester.pump(const Duration(milliseconds: 500));
+      }
     }
     await tester.tap(find.byType(LivingCat));
     await tester.pump(const Duration(milliseconds: 200));

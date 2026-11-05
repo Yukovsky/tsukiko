@@ -49,5 +49,44 @@ void main() {
       cell: 220,
       top: 24,
     );
+    // The whole cat: the three drawn sheets in every mood, then the named
+    // cats with their bodies, tails and what they wear.
+    await sheet(
+      '$out/moon-cats-poses.png',
+      [
+        for (final text in const [
+          'tsukiko',
+          'lumi пепел полоски кисточки налегке простой хвостик',
+          'yuko лунный месяц кисточки омега пушистый налегке простой',
+        ])
+          for (final mood in CatMood.values) (text, mood),
+      ],
+      columns: 15,
+      cell: 220,
+      body: true,
+    );
+    await sheet(
+      '$out/moon-cats-bodies.png',
+      [
+        for (final name in const [
+          'mori',
+          'komorebi',
+          'nori',
+          'sora',
+          'hana',
+          'kuro',
+          'momo',
+          'yuki',
+          'aki',
+          'ren',
+          'miso',
+          'taro',
+        ])
+          (name, CatMood.idle),
+      ],
+      columns: 6,
+      cell: 240,
+      body: true,
+    );
   });
 }

@@ -42,7 +42,7 @@ class _MascotLabState extends State<MascotLab> {
   final field = TextEditingController(text: brandName);
   CatMood mood = CatMood.idle;
   bool animate = true;
-  bool body = false;
+  bool body = true;
   int roll = 0;
 
   CatProfile get profile => CatProfile(field.text);
@@ -173,7 +173,8 @@ class _MascotLabState extends State<MascotLab> {
               mood: mood,
               animate: animate,
               body: body,
-              size: 300,
+              size: body ? 380 : 300,
+              height: body ? 324 : null,
             ),
           ),
           const SizedBox(height: 12),
@@ -214,9 +215,9 @@ class _MascotLabState extends State<MascotLab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Тело и лапки', style: TextStyle(fontSize: 13)),
+                    Text('Кот целиком', style: TextStyle(fontSize: 13)),
                     Text(
-                      'Кот сидит целиком, лапы и хвост двигаются с настроением',
+                      'У каждого настроения своя поза; позы перетекают одна в другую',
                       style: TextStyle(fontSize: 11, color: _muted),
                     ),
                   ],
@@ -369,6 +370,7 @@ class _MascotLabState extends State<MascotLab> {
                 StillCat(
                   profile: CatProfile(p.genome.withPin(gene, option)),
                   size: 58,
+                  body: body,
                 ),
                 Text(
                   option.word,
@@ -422,7 +424,12 @@ class _MascotLabState extends State<MascotLab> {
       ),
       child: Column(
         children: [
-          StillCat(profile: CatProfile(text), mood: mood, size: 90),
+          StillCat(
+            profile: CatProfile(text),
+            mood: mood,
+            size: 90,
+            body: body,
+          ),
           Text(
             text.split(' ').first,
             style: const TextStyle(fontSize: 11, color: _muted),

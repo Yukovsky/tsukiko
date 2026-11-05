@@ -135,8 +135,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(
       tester.widget<Switch>(find.byKey(const ValueKey('body'))).value,
-      true,
+      false,
     );
+    await tester.tap(find.byKey(const ValueKey('body')));
+    await tester.pump(const Duration(milliseconds: 300));
 
     await tester.tap(find.text('Слушает'));
     await tester.pump(const Duration(milliseconds: 500));

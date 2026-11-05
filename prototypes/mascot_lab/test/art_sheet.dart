@@ -17,7 +17,11 @@ Future<void> sheet(
   final rows = (cells.length / columns).ceil();
   final recorder = ui.PictureRecorder();
   final c = Canvas(recorder);
-  c.drawColor(const Color(0xff202024), BlendMode.src);
+  // Whole cats sit on the paper of the drawn sheets.
+  c.drawColor(
+    body ? const Color(0xffefeae7) : const Color(0xff202024),
+    BlendMode.src,
+  );
   for (var i = 0; i < cells.length; i++) {
     final (text, mood) = cells[i];
     final p = CatProfile(text);
@@ -27,8 +31,9 @@ Future<void> sheet(
     CatPainter(
       profile: p,
       mood: mood,
-      body: body,
+      glow: !body,
       frame: () => CatFrame(
+        body: body ? BodyPose.forMood(mood) : null,
         pose: mood.expression.pose,
         motion: blob.motionAt(p.seeds, 0, 0),
         headColor: CatProfile.hex(palette[blob.colorHead]!),

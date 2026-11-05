@@ -102,6 +102,31 @@ enum CatWear implements CatOption {
   final String word;
 }
 
+/// How the tail ends. Stripes on the coat ring the tail instead.
+enum CatTail implements CatOption {
+  plain('хвостик'),
+  bushy('пушистый'),
+  tipped('кончик'),
+  curl('завиток');
+
+  const CatTail(this.word);
+  @override
+  final String word;
+}
+
+/// Something worn on the body. A cat picks at most one thing to wear on its
+/// own: with a hat or headphones on, the body stays bare unless pinned.
+enum CatCharm implements CatOption {
+  none('простой'),
+  collar('ошейник'),
+  scarf('шарфик'),
+  ribbon('ленточка');
+
+  const CatCharm(this.word);
+  @override
+  final String word;
+}
+
 /// Hand-checked colour sets: the body hue alone would not guarantee a face.
 enum CatCoat implements CatOption {
   moon('лунный', 0xff8e92da, 0xffe6e4f1, 0xff2e2c6e, 0xffee7fb6),
@@ -169,6 +194,9 @@ const coatGene = Gene('Окрас', 'cat.coat', CatCoat.values, [
   1,
 ]);
 
+const tailGene = Gene('Хвост', 'cat.tail', CatTail.values, [5, 3, 2, 2]);
+const charmGene = Gene('На теле', 'cat.charm', CatCharm.values, [6, 2, 2, 2]);
+
 const List<Gene<CatOption>> genes = [
   headGene,
   sizeGene,
@@ -179,6 +207,8 @@ const List<Gene<CatOption>> genes = [
   markGene,
   wearGene,
   coatGene,
+  tailGene,
+  charmGene,
 ];
 
 /// The brand cat: this name always resolves to each gene's first value.
@@ -213,6 +243,8 @@ const _consonants = {
   markGene: 'ld',
   wearGene: 'p',
   coatGene: 'hv',
+  tailGene: 'g',
+  charmGene: 'z',
 };
 
 String _syllable(Gene<CatOption> gene, CatOption option) {
@@ -347,6 +379,12 @@ class CatLook {
       mark = _gene(markGene, g, t),
       wear = _gene(wearGene, g, t),
       coat = _gene(coatGene, g, t),
+      tail = _gene(tailGene, g, t),
+      charm =
+          (g.pins[charmGene] as CatCharm?) ??
+          (_gene(wearGene, g, t) != CatWear.none
+              ? CatCharm.none
+              : _gene(charmGene, g, t)),
       paint = g.paint;
 
   final CatHead head;
@@ -358,6 +396,8 @@ class CatLook {
   final CatMark mark;
   final CatWear wear;
   final CatCoat coat;
+  final CatTail tail;
+  final CatCharm charm;
   final Color? paint;
 
   static T _gene<T extends CatOption>(
@@ -377,6 +417,8 @@ class CatLook {
     _ when identical(gene, cheeksGene) => cheeks,
     _ when identical(gene, markGene) => mark,
     _ when identical(gene, wearGene) => wear,
+    _ when identical(gene, tailGene) => tail,
+    _ when identical(gene, charmGene) => charm,
     _ => coat,
   };
 
