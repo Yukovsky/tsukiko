@@ -1105,6 +1105,35 @@ extension on CatPainter {
         shadeShape..color = shadeShape.color.withValues(alpha: .3 * p.merge),
       );
     }
+    if (p.merge < .5) {
+      // Lying or standing: a band of shade along the underside of the
+      // body, and a shade where the head lies over it.
+      final lie = 1 - p.merge * 2;
+      final under = shadeShape
+        ..color = Color.lerp(
+          inks.fur,
+          inks.ink,
+          .22,
+        )!.withValues(alpha: .45 * lie);
+      final belly = p.torso.map((o) => o.dy).reduce(math.max);
+      canvas.drawPath(
+        Path.combine(
+          PathOperation.difference,
+          trunk,
+          trunk.shift(Offset(0, -math.min(.28, (belly + 2) * .2))),
+        ),
+        under,
+      );
+      final b0 = profile.layout.body;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: p.head + Offset(b0.rx / b0.rx * .9, .35),
+          width: .7,
+          height: 1.0,
+        ),
+        under..color = under.color.withValues(alpha: .3 * lie),
+      );
+    }
     canvas.drawPicture(_tone(soft: _grey(inks)));
     canvas.drawPicture(_grain);
     _furFlicks(canvas, trunk, inks.fur, inks.ink, step: .2, length: .09);
@@ -1443,6 +1472,28 @@ extension on CatPainter {
       under.add(s[i] + Offset(d.dy, -d.dx) / d.distance * tail.width[i] * .42);
     }
     _crescent(c, tail.path, inks, .2);
+    // A darker band down the tail's inner side, painted with a soft but
+    // readable edge, as in the drawings.
+    final band = <Offset>[];
+    for (var i = 0; i < tail.spine.length; i++) {
+      final sp = tail.spine;
+      final d = sp[math.min(i + 1, sp.length - 1)] - sp[math.max(i - 1, 0)];
+      final nn = Offset(-d.dy, d.dx) / d.distance;
+      // The inner side is the one facing down and right.
+      final side = (nn.dx + nn.dy) >= 0 ? 1.0 : -1.0;
+      band.add(sp[i] + nn * side * tail.width[i] * .32);
+    }
+    c.save();
+    c.drawPath(
+      (Path()..addPolygon(band, false)),
+      Paint()
+        ..color = Color.lerp(inks.fur, inks.ink, .22)!.withValues(alpha: .55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = .16
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, .04),
+    );
+    c.restore();
     _furFlicks(c, tail.path, inks.fur, inks.ink, step: .22, length: .08);
     final n = tail.spine.length - 1;
     Color? tip;
