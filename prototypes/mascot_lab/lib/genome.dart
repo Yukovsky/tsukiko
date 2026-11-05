@@ -129,7 +129,7 @@ enum CatCharm implements CatOption {
 
 /// Hand-checked colour sets: the body hue alone would not guarantee a face.
 enum CatCoat implements CatOption {
-  moon('лунный', 0xff8e92da, 0xffe6e4f1, 0xff2e2c6e, 0xffee7fb6),
+  moon('лунный', 0xff9798db, 0xfff5f3fb, 0xff2e2c6e, 0xffee7fb6),
   dusk('сумерки', 0xff5f60a4, 0xffe9e6ec, 0xff1f1e4a, 0xffd86ea8),
   sky('небо', 0xff7db6ea, 0xff123350, 0xff1c4670, 0xfff09ab4),
   mint('мята', 0xff8ad4bf, 0xff1f443d, 0xff256055, 0xfff29a9a),

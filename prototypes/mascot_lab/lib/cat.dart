@@ -177,6 +177,23 @@ class CatRig {
     ),
   };
 
+  /// The same face with the ears' droop scaled: a cat lying down keeps
+  /// its ears up more than a sad head alone would.
+  CatRig withEars(double k) => CatRig(
+    tilt: tilt,
+    lift: lift,
+    leftEar: leftEar * k,
+    rightEar: rightEar * k,
+    arc: arc,
+    wink: wink,
+    blush: blush,
+    curve: curve,
+    open: open,
+    lid: lid,
+    frown: frown,
+    attention: attention,
+  );
+
   static CatRig lerp(CatRig a, CatRig b, double t) {
     double v(double x, double y) => x + (y - x) * t;
     return CatRig(
@@ -229,7 +246,7 @@ class CatProfile {
       for (var i = 0; i < 240; i++)
         metric.getTangentForOffset(metric.length * i / 240)!,
     ];
-    for (final (at, size) in const [(.2, .85), (.38, 1.1), (.56, .85)]) {
+    for (final (at, size) in const [(.3, .9), (.48, .75)]) {
       final y = b.cy + at * b.ry;
       final hit = samples
           .where((t) => t.position.dx > b.cx)
@@ -243,7 +260,7 @@ class CatProfile {
         // Outward and a little down, the way cheek fur lies.
         final out0 = Offset(math.cos(.55), math.sin(.55));
         final along = Offset(-out0.dy, out0.dx);
-        final w = b.rx * .11 * size, len = b.rx * .15 * size;
+        final w = b.rx * .1 * size, len = b.rx * .11 * size;
         final base0 = p - out0 * (w * .9) - along * w;
         final base1 = p - out0 * (w * .9) + along * w;
         final tip = p + out0 * len + along * (len * .35);
@@ -270,7 +287,7 @@ class CatProfile {
     return out;
   }
 
-  /// A mood warms the fur a little; the eyes keep the cat's own colour.
+  /// A mood tints the fur a touch; the eyes keep the cat's own colour.
   blob.Palette colorsFor(blob.Expression expression) {
     final base = {blob.colorHead: _hex(head), blob.colorEye: _hex(eyeColor)};
     return {
@@ -278,7 +295,7 @@ class CatProfile {
       blob.colorHead: blob.mixHex(
         base[blob.colorHead]!,
         blob.expressionPalette(base, expression)[blob.colorHead]!,
-        .32,
+        .05,
       ),
     };
   }
@@ -969,6 +986,37 @@ class CatPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round,
       );
     }
+    // A closed eye is a thick pale crescent, as in the drawings: ^ when
+    // glad, ‿ asleep. It fades in as the eye fades out, so an eye never
+    // passes through a broken shape on the way.
+    final bend = rig.arc + picked * rig.wink;
+    final shut = small ? 0.0 : ((bend.abs() - .9) / 1.1).clamp(0.0, 1.0);
+    // The open eye leaves in the first half, the crescent comes in the
+    // second: never two half-seen eyes at once.
+    final arcIn = (shut * 2 - 1).clamp(0.0, 1.0);
+    if (arcIn > 0) {
+      final k = bend > 0 ? 1.0 : -1.0;
+      final rx = eye.rx, ry = eye.ry;
+      c.drawPath(
+        Path()
+          ..moveTo(-rx * .8, ry * .18 * k)
+          ..quadraticBezierTo(0, -ry * .95 * k, rx * .8, ry * .18 * k),
+        Paint()
+          ..color = Color.lerp(
+            color,
+            Colors.white,
+            .6,
+          )!.withValues(alpha: arcIn)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = ry * .36
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+    final seen = (1 - shut * 2).clamp(0.0, 1.0);
+    if (seen <= .01) {
+      c.restore();
+      return;
+    }
     c.scale(width, height);
     c.rotate(_rad(motion.wrap.rotation * side));
     c.scale(
@@ -977,7 +1025,10 @@ class CatPainter extends CustomPainter {
     );
 
     final closing = (1 - motion.blink).clamp(0.0, 1.0);
-    final path = _eyePath(eye, rig.arc + picked * rig.wink - closing * 1.4);
+    final path = _eyePath(
+      eye,
+      (rig.arc + picked * rig.wink) * (1 - shut * .6) - closing * 1.4,
+    );
     final bead = kind == CatEyes.bead && !profile.look.darkEyes;
     if (rig.lid > 0 && !small) {
       c.clipRect(
@@ -989,18 +1040,11 @@ class CatPainter extends CustomPainter {
         ),
       );
     }
-    c.drawPath(path, Paint()..color = bead ? _beadColor(ink) : color);
-    if (!small) {
-      // The drawn eyes are inked round like the rest of the cat.
-      c.drawPath(
-        path,
-        Paint()
-          ..color = Color.lerp(ink, color, .12)!
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = eye.rx * .14,
-      );
-    }
-    final open = ((height * motion.blink - .5) / .3).clamp(0.0, 1.0);
+    c.drawPath(
+      path,
+      Paint()..color = (bead ? _beadColor(ink) : color).withValues(alpha: seen),
+    );
+    final open = ((height * motion.blink - .5) / .3).clamp(0.0, 1.0) * seen;
     if (open > 0 && kind != CatEyes.pill) {
       c.save();
       c.clipPath(path);
@@ -1045,26 +1089,23 @@ class CatPainter extends CustomPainter {
       // dark one ringed by the eye's pale colour; bare, the shine was lost
       // on the pale fill.
       final dark = profile.traits('cat.eye.dark') < .5;
-      // Iris and pupil, as in the drawings: a wide soft ring in the eye's
-      // own hue and a deep centre under the shine.
+      // Iris and pupil, as in the drawings: a wide ring tinted with the
+      // cat's own fur and a deep centre under the shine.
+      // Tinted with the cat's own fur, a good deal darker than it.
+      final iris = Color.lerp(profile.head, ink, dark ? .62 : .3)!;
       c.drawCircle(
         Offset(0, ry * .08),
-        rx * (dark ? .64 : .66),
-        Paint()
-          ..color = Color.lerp(
-            fill,
-            ink,
-            dark ? .6 : .36,
-          )!.withValues(alpha: alpha),
+        rx * (dark ? .74 : .76),
+        Paint()..color = iris.withValues(alpha: alpha),
       );
       c.drawCircle(
         Offset(0, ry * .12),
-        rx * (dark ? .42 : .38),
+        rx * (dark ? .46 : .42),
         Paint()
           ..color = Color.lerp(
-            fill,
+            profile.head,
             ink,
-            dark ? .92 : .74,
+            dark ? .92 : .8,
           )!.withValues(alpha: alpha),
       );
       c.drawCircle(Offset(-rx * .28, -ry * .3), rx * .26, shine);

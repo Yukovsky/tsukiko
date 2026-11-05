@@ -18,11 +18,14 @@ const _crown = -.54;
 
 /// Right side of the head below the ear, ending on the chin axis.
 const _sides = {
+  // Round temples, cheeks full below the eyes, and a soft rounded jaw
+  // instead of corners: the drawn cats' head.
   CatHead.mochi: [
-    Vertex(.98, -.14),
-    Vertex(1.22, .36, .38),
-    Vertex(.8, .8),
-    Vertex(0, .82),
+    Vertex(1.06, -.26),
+    Vertex(1.24, .24, .5),
+    Vertex(1.04, .64, .5),
+    Vertex(.6, .86),
+    Vertex(0, .9),
   ],
   CatHead.bun: [
     Vertex(1.04, -.12),
@@ -56,11 +59,11 @@ const _sides = {
 const _ears = {
   // A high round crown with the ears on its shoulders, as in the drawings.
   CatEars.moon: [
-    Vertex(.32, -.8),
-    Vertex(.5, -1.12),
-    Vertex(.76, -1.5, .46),
-    Vertex(1.02, -1.04),
-    Vertex(1.0, -.46),
+    Vertex(.24, -.68),
+    Vertex(.46, -.98),
+    Vertex(.84, -1.33, .46),
+    Vertex(1.08, -.88),
+    Vertex(1.06, -.4),
   ],
   CatEars.tiny: [
     Vertex(.3, -.58),
@@ -85,11 +88,11 @@ const _ears = {
   // The moon ear's soft leaf, a little lower; the brush grows out of its
   // tip (see the painter).
   CatEars.tuft: [
-    Vertex(.32, -.8),
-    Vertex(.5, -1.08),
-    Vertex(.76, -1.44, .46),
-    Vertex(1.03, -1.0),
-    Vertex(1.0, -.48),
+    Vertex(.24, -.68),
+    Vertex(.46, -.96),
+    Vertex(.82, -1.3, .46),
+    Vertex(1.07, -.86),
+    Vertex(1.05, -.42),
   ],
   CatEars.bear: [
     Vertex(.34, -.58),
@@ -211,8 +214,10 @@ class CatSilhouette extends blob.Shape {
   /// radians. Rebuilt per frame while the ears move; it is only ~24 points.
   blob.BlobPath trace(blob.Body b, {double left = 0, double right = 0}) {
     final chin = _sides[look.head]!.last;
-    // The crown rises with ears set high on it, never above their roots.
-    final crown = math.min(_crown, _ears[look.ears]!.first.y);
+    // The crown rises with ears set high on it: a dome between them, a
+    // touch above their roots.
+    final root = _ears[look.ears]!.first.y;
+    final crown = root < _crown ? root - .08 : _crown;
     final loop = [
       Vertex(0, crown),
       ..._side(right),
