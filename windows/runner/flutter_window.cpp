@@ -117,10 +117,13 @@ class FileDropTarget final : public IDropTarget {
 
   // Тип проверяем сразу, а не после броска: неподходящий файл получает
   // перечёркнутый курсор, а окно говорит, что такие не берёт.
+  // Файлов нет вовсе (zip в Проводнике, текст из браузера, облачный файл
+  // без локальной копии): вуаль всё равно показывает «такое не беру»,
+  // чтобы бросок не уходил в тишину.
   HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL point,
                                       DWORD* effect) override {
     const auto paths = DataObjectPaths(data);
-    hovering_ = !paths.empty();
+    hovering_ = true;
     supported_ = false;
     for (const auto& path : paths) {
       if (DropTakes(path)) {
@@ -128,18 +131,16 @@ class FileDropTarget final : public IDropTarget {
         break;
       }
     }
-    *effect = supported_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
-    if (hovering_) {
-      last_ = {LONG_MIN, LONG_MIN};
-      Report(point);
-      channel_->InvokeMethod("fileDragEntered",
-                             std::make_unique<flutter::EncodableValue>(supported_));
-    }
+    *effect = Allowed(*effect);
+    last_ = {LONG_MIN, LONG_MIN};
+    Report(point);
+    channel_->InvokeMethod("fileDragEntered",
+                           std::make_unique<flutter::EncodableValue>(supported_));
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL point, DWORD* effect) override {
     if (hovering_) Report(point);
-    *effect = supported_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    *effect = Allowed(*effect);
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE DragLeave() override {
@@ -149,14 +150,14 @@ class FileDropTarget final : public IDropTarget {
   }
   HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL,
                                 DWORD* effect) override {
+    const DWORD chosen = Allowed(*effect);
     *effect = DROPEFFECT_NONE;
     if (hovering_) Notify("fileDragExited");
-    const bool supported = supported_;
     hovering_ = supported_ = false;
-    if (!supported) return S_OK;
+    if (chosen == DROPEFFECT_NONE) return S_OK;
     const auto paths = DataObjectPaths(data);
     if (!paths.empty()) {
-      *effect = DROPEFFECT_COPY;
+      *effect = chosen;
       channel_->InvokeMethod(
           "filesDropped", std::make_unique<flutter::EncodableValue>(ToEncodable(paths)));
     }
@@ -164,6 +165,17 @@ class FileDropTarget final : public IDropTarget {
   }
 
  private:
+  // Эффект выбираем из разрешённых источником: кто не разрешает COPY,
+  // на него получил бы перечёркнутый курсор, и Drop не пришёл бы. Файл мы
+  // только читаем, поэтому годится и LINK. MOVE не отвечаем никогда:
+  // источник после него вправе удалить оригинал.
+  DWORD Allowed(DWORD offered) const {
+    if (!supported_) return DROPEFFECT_NONE;
+    for (const DWORD e : {DROPEFFECT_COPY, DROPEFFECT_LINK}) {
+      if (offered & e) return e;
+    }
+    return DROPEFFECT_NONE;
+  }
   // Где курсор, в логических точках Flutter: над очередью у неё своя
   // вуаль, над остальным окном — большая.
   void Report(POINTL screen) {
@@ -260,6 +272,16 @@ bool FlutterWindow::OnCreate() {
         }
       }
       result->Success();
+    } else if (call.method_name() == "clipboardFiles") {
+      // Ctrl+V в окне: файлы, скопированные в Проводнике (CF_HDROP).
+      flutter::EncodableList paths;
+      if (OpenClipboard(GetHandle())) {
+        if (HANDLE drop = GetClipboardData(CF_HDROP)) {
+          paths = ToEncodable(DroppedPaths(static_cast<HDROP>(drop)));
+        }
+        CloseClipboard();
+      }
+      result->Success(flutter::EncodableValue(paths));
     } else if (call.method_name() == "pickAudioFiles") {
       DWORD error = 0;
       auto paths = PickAudioFiles(GetHandle(), &error);

@@ -146,6 +146,13 @@ extension _Menus on _HomeViewState {
           ]),
           PlatformMenuItemGroup(members: [
             PlatformMenuItem(
+              label: l10n.menuPasteFiles,
+              shortcut: const SingleActivator(LogicalKeyboardKey.keyV, meta: true),
+              onSelected: _paste,
+            ),
+          ]),
+          PlatformMenuItemGroup(members: [
+            PlatformMenuItem(
               label: l10n.menuSelectAllRecordings,
               shortcut: const SingleActivator(LogicalKeyboardKey.keyA, meta: true),
               onSelected: s.jobs.isEmpty ? null : _sendAll,

@@ -258,6 +258,7 @@
   "menuEdit": "Edit",
   "menuCopyText": "Copy Text",
   "menuCopyWithTimestamps": "Copy with Timestamps",
+  "menuPasteFiles": "Paste Files",
   "menuSelectAllRecordings": "Select All Recordings",
   "menuDeselectAll": "Deselect All",
   "menuRemoveFromQueue": "Remove from Queue",

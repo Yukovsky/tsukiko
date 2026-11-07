@@ -723,6 +723,7 @@
   "menuEdit": "Правка",
   "menuCopyText": "Скопировать текст",
   "menuCopyWithTimestamps": "Скопировать с таймкодами",
+  "menuPasteFiles": "Вставить файлы",
   "menuSelectAllRecordings": "Выбрать все записи",
   "menuDeselectAll": "Снять выделение",
   "menuRemoveFromQueue": "Убрать из очереди",

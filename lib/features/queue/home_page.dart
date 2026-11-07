@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Directory, File, Platform, stderr;
+import 'dart:io'
+    show Directory, File, FileSystemEntity, FileSystemEntityType, Platform, stderr;
 import 'dart:ui' show ImageFilter;
 
 import 'package:file_selector/file_selector.dart';
@@ -531,6 +532,47 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
       if (files.isNotEmpty) _send(FilesAdded(files.map((f) => f.path)));
     } catch (e, stack) {
       Log.warn('Queue', 'Failed to pick audio files: $e', e, stack);
+    }
+  }
+
+  /// ⌘V (Ctrl+V). В поле ввода это обычная вставка текста, вне поля
+  /// файлы из буфера встают в очередь так же, как при перетаскивании:
+  /// неподходящие очередь отклонит со своим сообщением.
+  Future<void> _paste() async {
+    final focused = primaryFocus?.context;
+    if (focused?.findAncestorStateOfType<EditableTextState>() != null) {
+      Actions.maybeInvoke(
+        focused!,
+        const PasteTextIntent(SelectionChangedCause.keyboard),
+      );
+      return;
+    }
+    var paths = <String>[];
+    try {
+      paths = await _fileInput.invokeListMethod<String>('clipboardFiles') ?? [];
+    } on PlatformException catch (e) {
+      Log.warn('Queue', 'Could not read files from the clipboard: $e');
+    }
+    if (paths.isEmpty) {
+      // «Копировать как путь» в Проводнике и ⌥⌘C в Finder кладут путь
+      // текстом. Берём его, только если каждая строка — существующий путь,
+      // иначе это обычный текст, и вставлять его вне поля некуда.
+      final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+      final lines = text
+          .split(RegExp(r'[\r\n]+'))
+          .where((l) => l.trim().isNotEmpty)
+          .toList();
+      if (lines.isNotEmpty && lines.every(_isExistingPath)) paths = lines;
+    }
+    if (mounted && paths.isNotEmpty) _send(FilesAdded(paths));
+  }
+
+  static bool _isExistingPath(String line) {
+    try {
+      return FileSystemEntity.typeSync(normalizePath(line)) !=
+          FileSystemEntityType.notFound;
+    } catch (_) {
+      return false;
     }
   }
 

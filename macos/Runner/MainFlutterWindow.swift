@@ -100,12 +100,16 @@ final class FileDropView: NSView {
       [.fileURL] + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) })
     controller.view.addSubview(view)
     channel.setMethodCallHandler { [weak view] call, result in
-      guard call.method == "setDropExtensions", let list = call.arguments as? [String] else {
+      switch (call.method, call.arguments) {
+      case ("setDropExtensions", let list as [String]):
+        view?.extensions = Set(list.map { $0.lowercased() })
+        result(nil)
+      case ("clipboardFiles", _):
+        // ⌘V в окне: файлы, скопированные в Finder, идут в очередь.
+        result(view?.fileURLs(.general).map(\.path) ?? [])
+      default:
         result(FlutterMethodNotImplemented)
-        return
       }
-      view?.extensions = Set(list.map { $0.lowercased() })
-      result(nil)
     }
   }
 
