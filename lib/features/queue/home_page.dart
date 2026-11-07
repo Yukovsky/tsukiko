@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:io'
-    show Directory, File, FileSystemEntity, FileSystemEntityType, Platform, stderr;
+import 'dart:io' show Directory, File, Platform, stderr;
 import 'dart:ui' show ImageFilter;
 
 import 'package:file_selector/file_selector.dart';
@@ -34,6 +33,7 @@ import '../../platform/bridge.dart';
 import '../../platform/os.dart';
 import 'job.dart';
 import 'library_sheet.dart';
+import 'paste.dart';
 import 'prompt_section.dart';
 import 'queue_bloc.dart';
 import 'queue_event.dart';
@@ -536,44 +536,20 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
   }
 
   /// ⌘V (Ctrl+V). В поле ввода это обычная вставка текста, вне поля
-  /// файлы из буфера встают в очередь так же, как при перетаскивании:
-  /// неподходящие очередь отклонит со своим сообщением.
+  /// файлы из буфера встают в очередь так же, как при перетаскивании.
   Future<void> _paste() async {
-    final focused = primaryFocus?.context;
-    if (focused?.findAncestorStateOfType<EditableTextState>() != null) {
+    if (textFieldFocused()) {
       Actions.maybeInvoke(
-        focused!,
+        primaryFocus!.context!,
         const PasteTextIntent(SelectionChangedCause.keyboard),
       );
       return;
     }
-    var paths = <String>[];
-    try {
-      paths = await _fileInput.invokeListMethod<String>('clipboardFiles') ?? [];
-    } on PlatformException catch (e) {
-      Log.warn('Queue', 'Could not read files from the clipboard: $e');
-    }
-    if (paths.isEmpty) {
-      // «Копировать как путь» в Проводнике и ⌥⌘C в Finder кладут путь
-      // текстом. Берём его, только если каждая строка — существующий путь,
-      // иначе это обычный текст, и вставлять его вне поля некуда.
-      final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
-      final lines = text
-          .split(RegExp(r'[\r\n]+'))
-          .where((l) => l.trim().isNotEmpty)
-          .toList();
-      if (lines.isNotEmpty && lines.every(_isExistingPath)) paths = lines;
-    }
+    final paths = await pastedPaths(
+      files: () => _fileInput.invokeListMethod<String>('clipboardFiles'),
+      text: () async => (await Clipboard.getData(Clipboard.kTextPlain))?.text,
+    );
     if (mounted && paths.isNotEmpty) _send(FilesAdded(paths));
-  }
-
-  static bool _isExistingPath(String line) {
-    try {
-      return FileSystemEntity.typeSync(normalizePath(line)) !=
-          FileSystemEntityType.notFound;
-    } catch (_) {
-      return false;
-    }
   }
 
   Future<void> _openTranscript() async {
