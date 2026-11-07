@@ -26,7 +26,7 @@ jobs:
       !contains(github.event.head_commit.message, '[skip-macos]') &&
       !contains(github.event.head_commit.message, '[build-windows]') &&
       !contains(github.event.head_commit.message, '[build-win]')
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v7
@@ -84,7 +84,7 @@ jobs:
           contains(github.event.head_commit.message, '[release]')
         )
       )
-    runs-on: macos-14
+    runs-on: macos-15
     # Секреты подписи лежат в окружении release, а оно открыто только
     # ветке main и тегам v*: ни одна другая ветка и ни один pull request
     # до сертификата не доберётся.
