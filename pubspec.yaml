@@ -54,6 +54,9 @@ dependencies:
   # (её тянет за собой почти любой плагин). Своими руками пришлось бы
   # звать LocalAlloc через ту же ffi, только длиннее.
   ffi: ^2.2.0
+  # SHA-256 скачанного обновления (lib/core/update.dart). Тоже dart.dev,
+  # и уже приезжал транзитивно.
+  crypto: ^3.0.7
   record: ^7.1.1
   sherpa_onnx: ^1.13.8
   dart_sentencepiece_tokenizer: ^1.4.1

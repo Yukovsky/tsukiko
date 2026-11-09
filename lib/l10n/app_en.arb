@@ -548,6 +548,26 @@
   "updateFoundBody": "Download it from the release page and install over the current one: settings and models stay where they are.",
   "buttonOpenReleasePage": "Open the page",
   "buttonLater": "Later",
+  "buttonUpdate": "Update",
+  "updateDownloading": "Downloading the update… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "updateFailed": "Could not download the update, try again later",
+  "updateReadyTitle": "Version {version} is downloaded",
+  "@updateReadyTitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updateReadyBody": "Restart now? Settings and models stay where they are.",
+  "buttonRestartNow": "Restart",
   "sectionApi": "Local API",
   "checkApiEnabled": "Let programs transcribe through tsukiko",
   "hintApiEnabled": "The app starts listening on 127.0.0.1:{port} — this machine only, not the network. A script or an AI agent puts a recording into the same queue you use by hand and picks up the finished text.",
