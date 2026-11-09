@@ -219,3 +219,26 @@ Future<String?> _team(String app) async {
 
 /// Открыть страницу выпуска в браузере.
 Future<void> openReleasePage(String url) => os.openUrl(url);
+
+/// Одна фраза о выпуске для окна «Вышла версия»: первый абзац описания
+/// без Markdown и без вступления «Tsukiko 1.5.2 (сборка 47):». Целиком
+/// описание со списками и ссылками для скачивания в окне не читается,
+/// оно остаётся на странице выпуска.
+String releaseSummary(String notes) {
+  final first = notes
+      .replaceAll('\r', '')
+      .split(RegExp(r'\n\s*\n'))
+      .map((p) => p.trim())
+      .firstWhere((p) => p.isNotEmpty && !p.startsWith('#'), orElse: () => '');
+  var text = first
+      .replaceAllMapped(RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m[1]!)
+      .replaceAll(RegExp(r'[*_`]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final intro = RegExp(r'^Tsukiko\s+v?\d[\w.+-]*(\s*\([^)]*\))?\s*[:.]\s*', caseSensitive: false);
+  text = text.replaceFirst(intro, '');
+  if (text.isEmpty) return '';
+  text = text[0].toUpperCase() + text.substring(1);
+  return text.length > 240 ? '${text.substring(0, 239).trimRight()}…' : text;
+}
+

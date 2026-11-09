@@ -34,4 +34,14 @@ void main() {
     expect(await checkForUpdate('1.0.0', url: 'https://127.0.0.1:9/nothing'),
         isNull);
   });
+
+  test('в окне обновления одна фраза о выпуске, без Markdown', () {
+    const notes = 'Tsukiko 1.5.2 (сборка 47): аудиофайлы вставляются в очередь, '
+        '**расшифровка** из `командной` строки снова работает.\n\n'
+        '## Очередь\n• **Cmd+V** кладёт файлы\n\n## Скачать\n• [tsukiko.dmg](https://x/y)';
+    expect(releaseSummary(notes),
+        'Аудиофайлы вставляются в очередь, расшифровка из командной строки снова работает.');
+    expect(releaseSummary(''), '');
+    expect(releaseSummary('## Только заголовки'), '');
+  });
 }

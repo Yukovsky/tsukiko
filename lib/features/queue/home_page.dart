@@ -292,7 +292,9 @@ class _HomeViewState extends State<_HomeView> with WidgetsBindingObserver {
           style: Type.emptyTitle,
         ),
         message: Text(
-          update.notes.isEmpty ? l10n.updateFoundBody : update.notes,
+          releaseSummary(update.notes).isEmpty
+              ? l10n.updateFoundBody
+              : releaseSummary(update.notes),
           textAlign: TextAlign.center,
           style: Type.control,
         ),
