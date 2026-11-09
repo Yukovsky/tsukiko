@@ -174,9 +174,27 @@ find "$APP/Contents/Frameworks" -depth 1 -print0 |
   xargs -0 -I{} codesign --force --sign "$ID" "$STAMP" $RUNTIME {}
 find "$APP/Contents/Helpers" -type f \( -perm -111 -o -name '*.dylib' \) -print0 |
   xargs -0 -I{} codesign --force --sign "$ID" "$STAMP" $RUNTIME {}
+# Dart AOT-расшифровщик при запуске делает исполняемой память под свой
+# снапшот. Hardened runtime (он включён с подписью Developer ID) такое
+# запрещает, и ядро убивает процесс на старте: SIGKILL, «Code Signature
+# Invalid», ни строчки вывода. С ad-hoc или Apple Development подписью
+# runtime выключен, поэтому раньше всё работало. Нужно ровно одно
+# разрешение, и только этим двум файлам, не всему приложению.
+for CLI in tsukiko-transcribe-arm64 tsukiko-transcribe-x64; do
+  codesign --force --sign "$ID" "$STAMP" $RUNTIME \
+    --entitlements macos/Runner/TranscribeCli.entitlements "$APP/Contents/Helpers/$CLI"
+done
 codesign --force --sign "$ID" "$STAMP" $RUNTIME \
   --entitlements macos/Runner/Release.entitlements "$APP"
 codesign --verify --deep --strict "$APP"
+# codesign --verify проверяет файл, а не запуск: убитый ядром расшифровщик
+# проходил его чисто. Поэтому запускаем по-настоящему.
+CLI_RC=0
+"$APP/Contents/Helpers/tsukiko-transcribe" --help >/dev/null 2>&1 || CLI_RC=$?
+if [ "$CLI_RC" -ge 128 ]; then
+  echo "tsukiko-transcribe не запускается после подписи (код $CLI_RC)." >&2
+  exit 1
+fi
 SIGN_DETAILS=$(codesign -dv "$APP" 2>&1)
 if [ -n "$CI" ] && printf '%s\n' "$SIGN_DETAILS" | grep -q 'Signature=adhoc'; then
   echo "Официальная macOS-сборка не может иметь ad-hoc подпись." >&2
