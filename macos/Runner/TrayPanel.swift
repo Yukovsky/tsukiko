@@ -16,6 +16,11 @@ private final class TrayPanel: NSPanel {
 
 final class PanelController: NSObject, NSWindowDelegate {
   private var statusItem: NSStatusItem?
+  private var pasteTarget: Int?
+  private var destinationText = ""
+  private var retargetTitle = "Зафиксировать поле перед открытием меню"
+  private var capturedDestination: (() -> Void)?
+  var onCaptureDestination: ((Int) -> (() -> Void)?)?
   private var panel: TrayPanel?
   private var controller: FlutterViewController?
   private var onShown: (() -> Void)?
@@ -206,25 +211,29 @@ final class PanelController: NSObject, NSWindowDelegate {
     pickedValue = sender.representedObject
   }
 
-  func setRecordingIndicator(_ active: Bool) {
+  func updateDictationStatus(_ model: HUDModel) {
+    pasteTarget = model.state == .transcribing ? model.target : nil
+    destinationText = model.statusText
+    retargetTitle = model.label("retargetMenu", "Зафиксировать поле перед открытием меню")
     guard let button = statusItem?.button else { return }
-    if active, let symbol = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Идёт запись") {
+    if let name = model.statusSymbol,
+      let symbol = NSImage(systemSymbolName: name, accessibilityDescription: model.statusText) {
+      let color: NSColor = model.state == .recording || model.editing ? .systemRed
+        : model.fieldHint || model.state == .copied || model.state == .failed ? .systemOrange : .controlAccentColor
       let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
         symbol.draw(in: rect)
-        NSColor.systemRed.setFill()
-        rect.fill(using: .sourceAtop)
+        color.setFill(); rect.fill(using: .sourceAtop)
         return true
       }
       image.isTemplate = false
       button.image = image
-      button.toolTip = "tsukiko — идёт запись"
     } else {
       let image = NSImage(named: "MenuBarIcon")
       image?.isTemplate = true
       button.image = image
-      button.toolTip = "tsukiko"
     }
-    button.setAccessibilityLabel(active ? "tsukiko — идёт запись" : "tsukiko")
+    button.toolTip = model.statusText
+    button.setAccessibilityLabel("tsukiko — " + model.statusText)
   }
 
   @objc private func clicked(_ sender: NSStatusBarButton) {
@@ -239,7 +248,20 @@ final class PanelController: NSObject, NSWindowDelegate {
   }
 
   private func showMenu() {
+    // Снимок делаем до открытия меню: оно само может изменить AX-фокус.
+    capturedDestination = pasteTarget.flatMap { onCaptureDestination?($0) }
+    defer { capturedDestination = nil }
     let menu = NSMenu()
+    menu.autoenablesItems = false
+    if pasteTarget != nil {
+      let status = NSMenuItem(title: destinationText, action: nil, keyEquivalent: "")
+      menu.addItem(status)
+      let retarget = NSMenuItem(title: retargetTitle, action: #selector(setDestination), keyEquivalent: "")
+      retarget.target = self
+      retarget.isEnabled = capturedDestination != nil
+      menu.addItem(retarget)
+      menu.addItem(.separator())
+    }
     menu.addItem(
       NSMenuItem(
         title: "Открыть tsukiko", action: #selector(openMain), keyEquivalent: ""))
@@ -253,6 +275,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     statusItem?.button?.performClick(nil)
     statusItem?.menu = nil
   }
+
+  @objc private func setDestination() { capturedDestination?() }
 
   @objc private func openMain() {
     hide()

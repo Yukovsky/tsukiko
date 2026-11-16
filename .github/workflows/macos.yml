@@ -35,6 +35,7 @@ jobs:
         run: |
           python3 tool/version.py check
           python3 -m unittest discover -s tool -p test_version.py
+          python3 tool/test_sign_candidate.py
 
       - name: Раскладка DMG и сохранность уже открытого установщика
         run: python3 tool/test_dmg.py
@@ -53,6 +54,8 @@ jobs:
         run: |
           swiftc macos/Runner/RecordingHUD.swift tool/hud_placement_test.swift -o "$RUNNER_TEMP/hud-swift-test"
           "$RUNNER_TEMP/hud-swift-test"
+          swiftc macos/Runner/PasteVerification.swift tool/paste_verification_test.swift -o "$RUNNER_TEMP/paste-swift-test"
+          "$RUNNER_TEMP/paste-swift-test"
           cmake -S tool/native-tests -B build/native-tests
           cmake --build build/native-tests --config Release
           ctest --test-dir build/native-tests -C Release --output-on-failure
@@ -87,8 +90,9 @@ jobs:
     runs-on: macos-15
     # Секреты подписи лежат в окружении release, а оно открыто только
     # ветке main и тегам v*: ни одна другая ветка и ни один pull request
-    # до сертификата не доберётся.
-    environment: release
+    # до сертификата не доберётся. Ручная сборка другой ветки идёт в candidate
+    # без секретов release и получает только тестовую ad-hoc подпись.
+    environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 'release' || 'candidate' }}
     permissions:
       contents: write
 
@@ -147,6 +151,12 @@ jobs:
           SIGNING_CERT: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
           SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ] && ! [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "Проверочная сборка ветки: без сертификата окружения release."
+            echo "TSUKIKO_CANDIDATE_BUILD=1" >> "$GITHUB_ENV"
+            echo "TSUKIKO_ADHOC_SIGN=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           if [ -z "$SIGNING_CERT" ] || [ -z "$SIGNING_PASSWORD" ]; then
             echo "Нет MACOS_SIGNING_P12_BASE64 или MACOS_SIGNING_P12_PASSWORD: выпуск без постоянной подписи запрещён." >&2
             exit 1

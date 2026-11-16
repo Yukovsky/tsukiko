@@ -50,6 +50,155 @@ void main() {
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 20));
 
+  Future<void> nativeEvent(String name, Object arguments) async {
+    await binding.defaultBinaryMessenger.handlePlatformMessage(
+      'tsukiko/dictation',
+      const StandardMethodCodec().encodeMethodCall(MethodCall(name, arguments)),
+      (_) {},
+    );
+    await settle();
+  }
+
+  group('доставка в сохранённое поле', () {
+    test('цель фиксируется до ожидания остановки микрофона', () async {
+      native.stopGate = Completer<void>();
+      await cubit.start();
+      final completion = cubit.stop();
+      await settle();
+      expect(
+        native.calls.indexOf('markTarget'),
+        lessThan(native.calls.indexOf('stopRecord')),
+      );
+      native.stopGate!.complete();
+      await completion;
+      expect(native.pasteArguments.single['target'], 41);
+      expect(native.pasteArguments.single['requireTarget'], isTrue);
+      expect(native.forgottenTargets, contains(41));
+    });
+
+    test(
+      'предупреждение меняется только для явно выбранной диктовки',
+      () async {
+        native.markedTarget = {'id': 41, 'field': 'no'};
+        server.gate = Completer<String?>();
+        await cubit.start();
+        final completion = cubit.stop();
+        await settle();
+        expect(native.hudArguments.last['fieldHint'], isTrue);
+        expect(native.hudArguments.last['target'], 41);
+        await nativeEvent('pasteTargetChanged', {'id': 99, 'field': 'yes'});
+        expect(native.hudArguments.last['fieldHint'], isTrue);
+        await nativeEvent('pasteTargetChanged', {'id': 41, 'field': 'yes'});
+        expect(native.hudArguments.last['fieldHint'], isFalse);
+        expect(native.hudArguments.last['field'], 'yes');
+        server.gate!.complete('новый текст');
+        await completion;
+        expect(native.pasteArguments.single['target'], 41);
+      },
+    );
+
+    test(
+      'непроверенное поле предупреждает, но попытка вставки остаётся',
+      () async {
+        native.markedTarget = {'id': 41, 'field': 'unknown'};
+        server.gate = Completer<String?>();
+        await cubit.start();
+        final completion = cubit.stop();
+        await settle();
+        expect(native.hudArguments.last['fieldHint'], isTrue);
+        expect(native.hudArguments.last['field'], 'unknown');
+        server.gate!.complete('текст');
+        await completion;
+        expect(native.pastes, ['текст']);
+      },
+    );
+
+    test(
+      'неподтверждённая вставка не отправляет Enter и сохраняет текст',
+      () async {
+        native.pasteOutcome = 'unverified';
+        await cubit.start();
+        await nativeEvent('hotkey', {'id': 'send', 'down': true});
+        await cubit.stop();
+        expect(
+          native.pastes,
+          hasLength(1),
+          reason: 'Не повторяем непроверенную вставку',
+        );
+        expect(native.calls, isNot(contains('pressReturn')));
+        expect(cubit.state.last, isNotEmpty);
+        expect(cubit.state.failure, contains('Не удалось подтвердить вставку'));
+        expect(native.hudStates.last, 'copied');
+      },
+    );
+
+    test('подтверждённая вставка отправляет Enter после текста', () async {
+      await cubit.start();
+      await nativeEvent('hotkey', {'id': 'send', 'down': true});
+      await cubit.stop();
+      expect(
+        native.calls.indexOf('paste'),
+        lessThan(native.calls.indexOf('pressReturn')),
+      );
+      expect(cubit.state.failure, isNull);
+    });
+
+    test('сбой Enter сообщается отдельно после успешной вставки', () async {
+      native.returnSucceeds = false;
+      await cubit.start();
+      await nativeEvent('hotkey', {'id': 'send', 'down': true});
+      await cubit.stop();
+      expect(native.pastes, hasLength(1));
+      expect(
+        cubit.state.failure,
+        contains('Текст вставлен, но отправить Enter не удалось'),
+      );
+      expect(native.hudStates.last, 'copied');
+    });
+
+    test(
+      'выключенный возврат разрешает вставку без сохранённой цели',
+      () async {
+        final settings = DictationSettings.load();
+        settings.returnToTarget = false;
+        settings.save();
+        await cubit.reloadSettingsForTesting();
+        await cubit.start();
+        await cubit.stop();
+        expect(native.calls, isNot(contains('markTarget')));
+        expect(native.pasteArguments.single['requireTarget'], isFalse);
+      },
+    );
+
+    test('потерянная цель не отключает требование возврата', () async {
+      native.markedTarget = null;
+      native.pasteOutcome = 'focus';
+      await cubit.start();
+      await cubit.stop();
+      expect(native.pasteArguments.single['requireTarget'], isTrue);
+      expect(native.pasteArguments.single.containsKey('target'), isFalse);
+      expect(native.hudStates.last, 'copied');
+    });
+
+    test('отмена очереди освобождает только её сохранённые цели', () async {
+      server.gate = Completer<String?>();
+      await cubit.start();
+      final first = cubit.stop();
+      await settle();
+      native.markedTarget = {'id': 42, 'field': 'yes'};
+      native.recordPath = os.join(os.supportDir, 'pending-target.wav');
+      await cubit.start();
+      final second = cubit.stop();
+      await settle();
+      await cubit.clearPending();
+      expect(native.forgottenTargets, contains(42));
+      expect(native.forgottenTargets, isNot(contains(41)));
+      server.gate!.complete('первая');
+      await Future.wait([first, second]);
+      expect(native.pastes, ['первая']);
+    });
+  });
+
   group('запись', () {
     test('видимость применяется к текущей записи сразу', () async {
       await cubit.start();
@@ -875,6 +1024,12 @@ class _FakeNative {
 
   bool permitted = true;
   bool pasteSucceeds = true;
+  bool returnSucceeds = true;
+  String? pasteOutcome;
+  Object? markedTarget = const {'id': 41, 'field': 'yes'};
+  final pasteArguments = <Map>[];
+  final hudArguments = <Map>[];
+  final forgottenTargets = <int>[];
   String? pasted;
   final pastes = <String>[];
   Completer<void>? stopGate;
@@ -902,11 +1057,20 @@ class _FakeNative {
               return 0.3;
             case 'permissions':
               return permitted;
+            case 'markTarget':
+              return markedTarget;
+            case 'forgetTarget':
+              forgottenTargets.add((call.arguments as Map)['target'] as int);
+              return null;
+            case 'pressReturn':
+              return returnSucceeds;
             case 'paste':
+              pasteArguments.add(call.arguments as Map);
               pasted = (call.arguments as Map)['text'] as String?;
               pastes.add(pasted!);
-              return pasteSucceeds;
+              return pasteOutcome ?? pasteSucceeds;
             case 'hud':
+              hudArguments.add(call.arguments as Map);
               hudStates.add((call.arguments as Map)['state'] as String);
               hudModes.add((call.arguments as Map)['mode'] as String);
               return null;

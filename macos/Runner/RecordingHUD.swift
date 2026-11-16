@@ -15,6 +15,9 @@ final class HUDModel: ObservableObject {
   @Published var enter = false
   /// Курсор был не в поле: пока идёт расшифровка, просим его туда поставить.
   @Published var fieldHint = false
+  @Published var target: Int?
+  @Published var field = "unknown"
+  var onRetarget: (Int) -> Void = { _ in }
   @Published var editing = false
   @Published var scale: Double = 1
   @Published var mode: IndicatorStyle = .panel
@@ -23,7 +26,11 @@ final class HUDModel: ObservableObject {
     if editing { return max(2, outstanding) }
     return max(0, outstanding - (state == .recording ? 0 : 1))
   }
-  var size: NSSize { mode == .timer ? NSSize(width: 92, height: 34) : NSSize(width: queueCount > 0 ? 420 : 372, height: 52) }
+  var size: NSSize {
+    if mode == .timer { return NSSize(width: state == .transcribing && target != nil ? 122 : 92, height: 34) }
+    let base: CGFloat = state == .transcribing && target != nil ? 460 : 372
+    return NSSize(width: base + (queueCount > 0 ? 48 : 0), height: 52)
+  }
   @Published var elapsed: TimeInterval = 0
   /// Микрофон уже отдаёт звук. Пока нет, панель говорит «включаю», а не «записываю».
   @Published var live = true
@@ -41,6 +48,40 @@ final class HUDModel: ObservableObject {
   var onRecord: () -> Void = {}
   func label(_ key: String, _ fallback: String) -> String { labels[key] ?? fallback }
   var warming: Bool { !editing && state == .recording && !live }
+  var destinationText: String {
+    if !fieldHint { return label("fieldSaved", "Место вставки сохранено") }
+    return field == "no"
+      ? label("fieldHint", "Поле не найдено · результат в буфер")
+      : label("fieldUnknown", "Поле не проверено · попробуем вставить")
+  }
+  var statusText: String {
+    switch state {
+    case .recording: return label("recording", "Идёт запись")
+    case .transcribing:
+      let title = label("transcribing", "Распознаю…")
+      return target == nil ? title : "\(title) · \(destinationText)"
+    case .done: return label("done", "Готово")
+    case .failed: return label("failed", "Не распознано · запись сохранена")
+    case .copied: return label("copied", "Текст в буфере · проверьте поле")
+    case .cancelled: return label("cancelled", "Отменено · запись сохранена")
+    case .silent: return label("silent", "Ничего не записалось")
+    case .hidden: return "tsukiko"
+    }
+  }
+  var statusSymbol: String? {
+    guard mode == .status else { return nil }
+    if editing { return "mic.fill" }
+    switch state {
+    case .recording: return "mic.fill"
+    case .transcribing: return fieldHint ? "exclamationmark.bubble.fill" : "hourglass"
+    case .done: return "checkmark.circle.fill"
+    case .failed: return "exclamationmark.triangle.fill"
+    case .copied: return "doc.on.clipboard"
+    case .cancelled: return "xmark.circle"
+    case .silent: return "mic.slash"
+    case .hidden: return nil
+    }
+  }
   func push(level: Double) { levels.removeFirst(); levels.append(level) }
 }
 
@@ -98,6 +139,14 @@ struct HUDView: View {
                 .overlay(alignment: .bottomTrailing) { if model.enter { enterMark.offset(x: 2, y: 2) } }
             }
             Spacer(minLength: 0)
+            if !recording, let target = model.target {
+              Button { action { model.onRetarget(target) } } label: {
+                Image(systemName: model.fieldHint ? "exclamationmark.bubble" : "scope")
+                  .foregroundColor(model.fieldHint ? .orange : .primary).frame(width: 24, height: 24)
+              }.buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(model.label("retarget", "Зафиксировать"))
+                .help(model.destinationText + "\n" + model.label("retargetHelp", "Поставьте курсор в нужное поле и нажмите, чтобы запомнить место вставки"))
+            }
             if recording {
               Button { action(model.onCancel) } label: {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
@@ -135,16 +184,21 @@ struct HUDView: View {
             HUDButton(title: "Остановить", filled: true) { action(model.onStop) }
           } else if displayState == .transcribing {
             ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 20)
-            if model.fieldHint {
-              let hint = model.label("fieldHint", "Поставьте курсор в поле — текст вставится сюда сам")
+            if model.target != nil {
+              let hint = model.destinationText
               Text(hint).font(.system(size: 12, weight: .medium)).foregroundColor(.secondary)
-                .lineLimit(1).minimumScaleFactor(0.75).help(hint)
+                .lineLimit(2).help(hint)
             } else {
               Text("Распознаю…").font(.system(size: 13, weight: .medium))
             }
             if model.enter { enterMark }
             if count > 0 { queue }
             Spacer(minLength: 0)
+            if let target = model.target {
+              HUDButton(title: model.label("retarget", "Зафиксировать"), filled: false) {
+                action { model.onRetarget(target) }
+              }.help(model.destinationText + "\n" + model.label("retargetHelp", "Поставьте курсор в нужное поле и нажмите, чтобы запомнить место вставки"))
+            }
             Button { action(model.onAbort) } label: {
               Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 28, height: 32)
             }.buttonStyle(PlainButtonStyle()).help("Отменить распознавание")
@@ -173,16 +227,7 @@ struct HUDView: View {
     default: return "xmark.circle.fill"
     }
   }
-  private var resultText: String {
-    switch displayState {
-    case .done: return "Готово"
-    case .failed: return "Не распознано · запись сохранена"
-    case .copied: return "Не вставилось · текст в буфере, ⌘V"
-    case .silent: return "Ничего не записалось"
-    case .cancelled: return "Отменено · запись сохранена"
-    default: return ""
-    }
-  }
+  private var resultText: String { model.statusText }
 }
 
 private struct HUDButton: View {
@@ -282,8 +327,13 @@ final class RecordingHUD {
   private var editorCorner = 0
   var levelSource: () -> Double = { 0 }
   var liveSource: () -> Bool = { true }
+  var onRetarget: (Int) -> Void {
+    get { model.onRetarget }
+    set { model.onRetarget = newValue }
+  }
   var onModeChanged: (String) -> Void = { _ in }
   var onStatusChanged: (Bool) -> Void = { _ in }
+  var onPresentationChanged: (HUDModel) -> Void = { _ in }
   var currentPlacement: HUDPlacement { placement }
   var currentMode: String { model.mode.rawValue }
   var isEditing: Bool { model.editing }
@@ -450,11 +500,13 @@ final class RecordingHUD {
       }
     } else { editor.setFrameOrigin(target.origin) }
   }
-  func updateQueue(pending: Int, processing: Bool, enter: Bool = false, fieldHint: Bool = false, labels: [String: String] = [:]) {
+  func updateQueue(pending: Int, processing: Bool, enter: Bool = false, fieldHint: Bool = false, labels: [String: String] = [:], target: Int? = nil, field: String = "unknown") {
     let before = size, origin = restingOrigin
     model.labels.merge(labels) { _, new in new }; model.pending = max(0, pending); model.processing = processing; model.enter = enter; model.fieldHint = fieldHint
+    model.target = target; model.field = field
     preserveCenter(from: before, origin: origin)
     if size != before && panel != nil { resize() }
+    onPresentationChanged(model)
   }
   private func preserveCenter(from before: NSSize, origin: NSPoint) {
     if size != before {
@@ -499,6 +551,7 @@ final class RecordingHUD {
   }
   private func refreshVisibility() {
     showNumber += 1
+    onPresentationChanged(model)
     onStatusChanged(model.mode == .status && (model.state == .recording || model.editing))
     guard model.mode.floating && (model.editing || model.state != .hidden) else {
       panel?.orderOut(nil); return

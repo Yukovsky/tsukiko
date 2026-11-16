@@ -99,6 +99,8 @@ class NativeBridge {
   final _shown = StreamController<void>.broadcast();
   final _hidden = StreamController<void>.broadcast();
   final _hudActions = StreamController<String>.broadcast();
+  final _pasteTargets = StreamController<MarkedTarget>.broadcast();
+  Stream<MarkedTarget> get pasteTargets => _pasteTargets.stream;
   final _systemSleep = StreamController<void>.broadcast();
   final _systemWake = StreamController<void>.broadcast();
 
@@ -163,6 +165,9 @@ class NativeBridge {
         _hidden.add(null);
       case 'hud':
         _hudActions.add(call.arguments as String);
+      case 'pasteTargetChanged':
+        final target = MarkedTarget.parse(call.arguments);
+        if (target != null) _pasteTargets.add(target);
       case 'hudMode':
         _hudModes.add(call.arguments as String);
       case 'hudLayout':
@@ -253,6 +258,8 @@ class NativeBridge {
     IndicatorMode mode = IndicatorMode.panel,
     bool enter = false,
     bool fieldHint = false,
+    int? target,
+    FieldState field = FieldState.unknown,
   }) {
     final l10n = currentL10n();
     return _channel.invokeMethod('hud', {
@@ -262,8 +269,21 @@ class NativeBridge {
       'processing': processing,
       'enter': enter,
       'fieldHint': fieldHint,
+      'target': target,
+      'field': field.name,
       'labels': {
         'fieldHint': l10n.hudFieldHint,
+        'fieldUnknown': l10n.hudFieldUnknown,
+        'fieldSaved': l10n.hudFieldSaved,
+        'retarget': l10n.hudRetarget,
+        'retargetMenu': l10n.hudRetargetMenu,
+        'recording': l10n.liveRecording,
+        'transcribing': l10n.hudTranscribing,
+        'done': l10n.hudDone,
+        'failed': l10n.hudFailed,
+        'copied': l10n.hudCopied,
+        'cancelled': l10n.hudCancelled,
+        'retargetHelp': l10n.hudRetargetHelp,
         'queueTitle': l10n.hudQueueCount(
           hudBacklogCount(state, pending, processing),
         ),
@@ -425,11 +445,24 @@ class NativeBridge {
     }
   }
 
+  Future<void> forgetTarget(int? target) async {
+    if (target == null) return;
+    try {
+      await _channel.invokeMethod<void>('forgetTarget', {'target': target});
+    } on MissingPluginException {
+      // Прежние сборки и Windows освобождают цели на родной стороне.
+    }
+  }
+
   Future<bool> insert(String text, {int? target}) async =>
       await insertChecked(text, target: target) == PasteOutcome.pasted;
 
   /// Как [insert], но различает «вставить нечем» и «курсор был не в поле».
-  Future<PasteOutcome> insertChecked(String text, {int? target}) async {
+  Future<PasteOutcome> insertChecked(
+    String text, {
+    int? target,
+    bool requireTarget = false,
+  }) async {
     final previous = _pasteReady;
     final ready = Completer<void>();
     _pasteReady = ready.future;
@@ -440,6 +473,7 @@ class NativeBridge {
         await _channel.invokeMethod<Object>('paste', {
           'text': text,
           'target': ?target,
+          'requireTarget': requireTarget,
         }),
       );
       sent = outcome == PasteOutcome.pasted;

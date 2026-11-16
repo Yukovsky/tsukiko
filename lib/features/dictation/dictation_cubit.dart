@@ -91,6 +91,20 @@ class DictationCubit extends Cubit<DictationState> {
         _ => stop(),
       },
     );
+    bridge.pasteTargets.listen((target) {
+      for (final job in [?_active, ..._pending]) {
+        if (job.target == target.id && !job.delivering && !job.aborted) {
+          job.field = target.field;
+          job.fieldHint = showFieldHint(
+            target.field,
+            warn: _settings.warnNoField,
+            hasTarget: true,
+          );
+          unawaited(_showActivity());
+          break;
+        }
+      }
+    });
     bridge.hudModes.listen((value) {
       final settings = DictationSettings.load();
       settings.indicatorMode = IndicatorMode.fromValue(value);
@@ -280,8 +294,15 @@ class DictationCubit extends Cubit<DictationState> {
         processing: _active != null,
         mode: _settings.indicatorMode,
         enter: _enterShown,
-        fieldHint: !state.recording && (_active?.fieldHint ?? false),
+        fieldHint: !state.recording && (_activityJob?.fieldHint ?? false),
+        target: !state.recording && !(_activityJob?.delivering ?? false)
+            ? _activityJob?.target
+            : null,
+        field: _activityJob?.field ?? FieldState.unknown,
       );
+
+  _DictationJob? get _activityJob =>
+      _active ?? (_pending.isEmpty ? null : _pending.first);
 
   /// Значок «⏎» на плашке: пометка у идущей записи, а когда записи нет — у
   /// последнего недоставленного задания.
@@ -744,16 +765,19 @@ class DictationCubit extends Cubit<DictationState> {
     final finished = Completer<void>();
     _finishingRecording = finished.future;
     _DictationJob? job;
+    MarkedTarget? marked;
     try {
       _wakeWordService?.notifyRecordingStopped();
       _stopMeter();
+      // Цель фиксируем до ожидания остановки микрофона: пользователь уже
+      // может переключиться, пока родная сторона дописывает файл.
+      final returnToTarget = _settings.returnToTarget;
+      marked = _settings.insert && returnToTarget
+          ? await bridge.markTarget(probe: _settings.warnNoField)
+          : null;
       final path = await bridge.stopRecording() ?? _wav;
       _wav = null;
       if (path != null && path.isNotEmpty) {
-        // Место для текста запоминаем сейчас, пока человек ещё в нём.
-        final marked = _settings.insert && _settings.returnToTarget
-            ? await bridge.markTarget(probe: _settings.warnNoField)
-            : null;
         job = _DictationJob(
           path,
           _options,
@@ -765,6 +789,8 @@ class DictationCubit extends Cubit<DictationState> {
           ownVoiceOnly: _settings.ownVoiceOnly,
           ownVoiceThreshold: _settings.ownVoiceThreshold,
           target: marked?.id,
+          returnToTarget: returnToTarget,
+          field: marked?.field ?? FieldState.unknown,
           enterWord: effectiveEnterWord(
             _settings.enterWord,
             _settings.wakeWord,
@@ -802,6 +828,7 @@ class DictationCubit extends Cubit<DictationState> {
       );
       unawaited(_showActivity(HudState.failed));
     } finally {
+      if (job == null) await bridge.forgetTarget(marked?.id);
       _finishingRecording = null;
       finished.complete();
     }
@@ -818,6 +845,7 @@ class DictationCubit extends Cubit<DictationState> {
         try {
           await _transcribeJob(job);
         } finally {
+          await bridge.forgetTarget(job.target);
           _active = null;
           _syncQueue();
           job.done.complete();
@@ -908,10 +936,15 @@ class DictationCubit extends Cubit<DictationState> {
           // ставится по тем же правилам: только со вставкой и только если
           // за этим заданием в очереди нет более нового, иначе Enter упал бы
           // в середину чужой серии вставок.
-          final (rest, enterSpoken) = takeTrailingEnterWord(text, job.enterWord);
+          final (rest, enterSpoken) = takeTrailingEnterWord(
+            text,
+            job.enterWord,
+          );
           if (enterSpoken) {
             text = rest;
-            if (job.insert && !job.aborted && _pending.every((j) => !j.markable)) {
+            if (job.insert &&
+                !job.aborted &&
+                _pending.every((j) => !j.markable)) {
               job.enter = true;
               unawaited(_showActivity());
             }
@@ -931,6 +964,7 @@ class DictationCubit extends Cubit<DictationState> {
               final outcome = await bridge.insertChecked(
                 text,
                 target: job.target,
+                requireTarget: job.returnToTarget,
               );
               ok = outcome == PasteOutcome.pasted;
               // Родная сторона вернёт прежний буфер через 1,5 с, но только
@@ -942,18 +976,22 @@ class DictationCubit extends Cubit<DictationState> {
               if (ok && job.enter && !job.aborted) {
                 await Future<void>.delayed(_enterPause);
                 if (job.enter && !job.aborted && !isClosed) {
-                  await bridge.pressReturn();
+                  if (!await bridge.pressReturn()) {
+                    await _copyResult(text);
+                    failure = currentL10n().insertNotSent;
+                    ok = false;
+                  }
                 }
               }
-              if (!ok) {
-                // Вставка не состоялась: либо отозван «Универсальный доступ»,
-                // либо курсор не в поле и ⌘V вслепую слать не стали. Текст
-                // уже распознан, терять его нельзя: кладём в буфер ПОСЛЕДНИМ
-                // (прежний не возвращаем — пусть сразу жмут ⌘V) и говорим вслух.
+              if (!ok && failure == null) {
+                // Вставки не вышло (нет «Универсального доступа» или курсор не в поле).
+                // Текст терять нельзя: кладём в буфер последним и говорим вслух.
                 await _copyResult(text);
-                failure = outcome == PasteOutcome.focusLost
-                    ? currentL10n().insertNoField
-                    : currentL10n().insertFailed(os.accessibilityName);
+                failure = switch (outcome) {
+                  PasteOutcome.focusLost => currentL10n().insertNoField,
+                  PasteOutcome.unverified => currentL10n().insertUnverified,
+                  _ => currentL10n().insertFailed(os.accessibilityName),
+                };
               }
             }
           }
@@ -1011,7 +1049,12 @@ class DictationCubit extends Cubit<DictationState> {
       processing: _pending.isNotEmpty,
       mode: _settings.indicatorMode,
       enter: _enterShown,
-      fieldHint: !state.recording && _pending.isNotEmpty && _pending.first.fieldHint,
+      fieldHint:
+          !state.recording && _pending.isNotEmpty && _pending.first.fieldHint,
+      target: !state.recording && _pending.isNotEmpty
+          ? _pending.first.target
+          : null,
+      field: _pending.isNotEmpty ? _pending.first.field : FieldState.unknown,
     );
   }
 
@@ -1180,8 +1223,10 @@ class DictationCubit extends Cubit<DictationState> {
 
   /// Waiting recordings are preserved in the recovery library.
   Future<void> clearPending() async {
-    while (_pending.isNotEmpty) {
-      final job = _pending.removeFirst();
+    final pending = _pending.toList();
+    _pending.clear();
+    for (final job in pending) {
+      await bridge.forgetTarget(job.target);
       final saved = rescueRecording(job.path) ?? job.path;
       _emit(
         state.copyWith(
@@ -1518,6 +1563,8 @@ class _DictationJob extends EnterMark {
     this.ownVoiceOnly = false,
     this.ownVoiceThreshold = ownVoiceDefaultThreshold,
     this.target,
+    this.returnToTarget = false,
+    this.field = FieldState.unknown,
     this.fieldHint = false,
     this.enterWord = '',
   });
@@ -1528,7 +1575,9 @@ class _DictationJob extends EnterMark {
   final int? target;
 
   /// На плашке горит «Поставьте курсор в поле», пока идёт расшифровка.
-  final bool fieldHint;
+  bool fieldHint;
+  FieldState field;
+  final bool returnToTarget;
   final bool ownVoiceOnly;
   final double ownVoiceThreshold;
   final RunOptions options;

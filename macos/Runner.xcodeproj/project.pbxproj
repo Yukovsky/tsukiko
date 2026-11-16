@@ -21,6 +21,7 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+        A1D1C7A82C0000010000AAA1 /* PasteVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D1C7A92C0000010000AAA1 /* PasteVerification.swift */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
 		33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC10F02044A3C60003C045 /* AppDelegate.swift */; };
@@ -79,6 +80,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        A1D1C7A92C0000010000AAA1 /* PasteVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteVerification.swift; sourceTree = "<group>"; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A1D1C7A12C0000010000AAA1 /* Dictation.swift */,
+                A1D1C7A92C0000010000AAA1 /* PasteVerification.swift */,
 				A1D1C7A32C0000010000AAA1 /* TrayPanel.swift */,
 				A1D1C7A52C0000010000AAA1 /* RecordingHUD.swift */,
 				A1D1C7A72C0000010000AAA1 /* SettingsWindow.swift */,
@@ -388,6 +391,7 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				A1D1C7A02C0000010000AAA1 /* Dictation.swift in Sources */,
+                A1D1C7A82C0000010000AAA1 /* PasteVerification.swift in Sources */,
 				A1D1C7A22C0000010000AAA1 /* TrayPanel.swift in Sources */,
 				A1D1C7A42C0000010000AAA1 /* RecordingHUD.swift in Sources */,
 				A1D1C7A62C0000010000AAA1 /* SettingsWindow.swift in Sources */,

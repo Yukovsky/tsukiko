@@ -419,7 +419,12 @@ final class DictationBridge: NSObject {
       onClearQueue: { [weak self] in self?.channel?.invokeMethod("hud", arguments: "clearQueue") },
       onRecord: { [weak self] in self?.channel?.invokeMethod("hud", arguments: "record") })
     hud.onModeChanged = { [weak self] mode in self?.channel?.invokeMethod("hudMode", arguments: mode) }
-    hud.onStatusChanged = { [weak self] active in self?.panel.setRecordingIndicator(active) }
+    hud.onPresentationChanged = { [weak self] model in self?.panel.updateDictationStatus(model) }
+    panel.onCaptureDestination = { [weak self] id in
+      guard let self, let destination = self.captureDestination() else { return nil }
+      return { [weak self] in self?.retarget(id, to: destination) }
+    }
+    hud.onRetarget = { [weak self] id in self?.retarget(id) }
     hud.levelSource = { [weak self] in self?.currentLevel() ?? 0 }
     hud.liveSource = { [weak self] in self?.micLive() ?? true }
     return hud
@@ -625,16 +630,23 @@ final class DictationBridge: NSObject {
       // нечем и некуда: надиктованный текст пропадал вместе с буфером,
       // который через 0,4 с возвращался к прежнему содержимому.
       let text = (args?["text"] as? String) ?? ""
-      guard let id = args?["target"] as? Int, var target = targets.removeValue(forKey: id) else {
-        reply(paste(text).reply); return
+      if let id = args?["target"] as? Int {
+        guard let target = targets.removeValue(forKey: id) else {
+          reply(PasteResult.focus.reply); return
+        }
+        // Возвращаемся даже после «не поле»: оценка могла быть неточной.
+        returnTo(target) { [weak self] in
+          guard let self else { reply(false); return }
+          self.paste(text, expecting: target) { reply($0.reply) }
+        }
+      } else if (args?["requireTarget"] as? Bool) == true {
+        reply(PasteResult.focus.reply)
+      } else {
+        paste(text) { reply($0.reply) }
       }
-      // Курсор был не в поле, а плашка просила его поставить: смотрим, не
-      // поставили ли. Нет — вслепую не вставляем и фокус не трогаем.
-      if target.field == .no {
-        refresh(&target)
-        if target.field == .no { reply(PasteResult.focus.reply); return }
-      }
-      returnTo(target) { [weak self] in reply(self?.paste(text, expecting: target).reply ?? false) }
+    case "forgetTarget":
+      if let id = args?["target"] as? Int { targets.removeValue(forKey: id) }
+      reply(nil)
     case "pressReturn":
       reply(pressReturn())
     case "markTarget":
@@ -647,7 +659,7 @@ final class DictationBridge: NSObject {
       reply(nil)
     case "hud":
       hud.setMode((args?["mode"] as? String) ?? "panel")
-      hud.updateQueue(pending: (args?["pending"] as? Int) ?? 0, processing: (args?["processing"] as? Bool) ?? false, enter: (args?["enter"] as? Bool) ?? false, fieldHint: (args?["fieldHint"] as? Bool) ?? false, labels: (args?["labels"] as? [String: String]) ?? [:])
+      hud.updateQueue(pending: (args?["pending"] as? Int) ?? 0, processing: (args?["processing"] as? Bool) ?? false, enter: (args?["enter"] as? Bool) ?? false, fieldHint: (args?["fieldHint"] as? Bool) ?? false, labels: (args?["labels"] as? [String: String]) ?? [:], target: args?["target"] as? Int, field: (args?["field"] as? String) ?? "unknown")
       switch (args?["state"] as? String) ?? "" {
       case "recording": hud.show()
       case "transcribing": hud.transcribing()
@@ -1303,13 +1315,13 @@ final class DictationBridge: NSObject {
   /// тогда ведём себя как раньше и не блокируем.
   private enum FieldState: String { case yes, no, unknown }
 
-  /// Ответ на `paste`: true — нажато, false — вставить нечем,
-  /// "focus" — фокус не в поле цели, ⌘V вслепую не слали.
+  /// true — текст появился; unverified — нажатие ушло, результат не подтверждён.
   private enum PasteResult {
-    case pasted, failed, focus
+    case pasted, failed, focus, unverified
     var reply: Any {
       switch self {
       case .pasted: return true
+      case .unverified: return "unverified"
       case .failed: return false
       case .focus: return "focus"
       }
@@ -1341,6 +1353,8 @@ final class DictationBridge: NSObject {
   ]
   private static let chromiumFrameworks = [
     "Electron", "Chromium", "Google Chrome", "Microsoft Edge", "Brave Browser", "Arc",
+    // Codex поставляет Chromium под своим именем (в том числе внутри ChatGPT.app).
+    "Codex",
   ]
   private var chromiumPids: [pid_t: Bool] = [:]
   private var preparedPids: Set<pid_t> = []
@@ -1411,46 +1425,56 @@ final class DictationBridge: NSObject {
     return (element, window, Self.classify(element, chromium: chromium))
   }
 
-  /// Цель теперь в поле того же приложения — взять новое поле и курсор.
-  private func refresh(_ target: inout PasteTarget) {
-    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return }
-    let now = readFocus(target.pid)
-    guard now.state == .yes, let element = now.element else { return }
-    target.element = element
-    target.window = now.window ?? target.window
-    target.range = Self.attribute(element, kAXSelectedTextRangeAttribute)
-    target.field = .yes
+  /// Меняем цель только явной кнопкой на неактивирующей плашке.
+  /// Номер принадлежит конкретной записи; начавшуюся доставку менять уже нельзя.
+  private func captureDestination() -> PasteTarget? {
+    guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication,
+      app.processIdentifier != getpid() else { return nil }
+    let focus = readFocus(app.processIdentifier)
+    guard focus.state != .no else { return nil }
+    return PasteTarget(
+      pid: app.processIdentifier, window: focus.window, element: focus.element,
+      range: focus.element.flatMap { Self.attribute($0, kAXSelectedTextRangeAttribute) },
+      field: focus.state)
   }
 
-  /// Перед ⌘V: фокус действительно в нужном поле? Блокируем только когда
-  /// явно не то — другое приложение, другое окно, не-поле. Нечитаемое
-  /// (Chromium без дерева, терминалы) не повод отказывать.
+  private func retarget(_ id: Int, to destination: PasteTarget? = nil) {
+    guard targets[id] != nil, let destination = destination ?? captureDestination() else { return }
+    targets[id] = destination
+    channel?.invokeMethod("pasteTargetChanged", arguments: ["id": id, "field": destination.field.rawValue])
+  }
+
   private func focusIsRight(_ target: PasteTarget) -> Bool {
     guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return false }
     let now = readFocus(target.pid)
-    if let was = target.element, let current = now.element, CFEqual(was, current) { return true }
-    if let was = target.window, let current = now.window, !CFEqual(was, current) { return false }
-    return now.state != .no
+    if let was = target.window {
+      guard let current = now.window, CFEqual(was, current) else { return false }
+    }
+    if target.field == .yes, let was = target.element {
+      guard let current = now.element, CFEqual(was, current) else { return false }
+    }
+    return true
   }
 
   /// Запомнить место вставки. [probe] — заодно определить, поле ли это
   /// (при unknown один повтор через 150 мс: дерево доступности строится не
-  /// сразу); тогда ответ — `{id, field}`, иначе просто номер. nil — запоминать
-  /// нечего: впереди мы сами или нет «Универсального доступа».
+  /// сразу); тогда ответ — `{id, field}`, иначе просто номер.
   private func markTarget(probe: Bool, then reply: @escaping (Any?) -> Void) {
-    guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication,
-      app.processIdentifier != getpid()
+    guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication
     else { return reply(nil) }
     let pid = app.processIdentifier
-    var focus = readFocus(pid)
+    // При остановке из нашей панели пока нет внешней цели. Оставляем номер,
+    // чтобы её можно было явно выбрать кнопкой во время расшифровки.
+    var focus = pid == getpid()
+      ? (element: Optional<AXUIElement>.none, window: Optional<AXUIElement>.none, state: FieldState.no)
+      : readFocus(pid)
     func finish() {
       lastTarget += 1
       targets[lastTarget] = PasteTarget(
         pid: pid, window: focus.window, element: focus.element,
         range: focus.element.flatMap { Self.attribute($0, kAXSelectedTextRangeAttribute) },
         field: focus.state)
-      // Цели отменённых записей никто не заберёт — держим только свежие.
-      targets = targets.filter { $0.key > lastTarget - 16 }
+      // Dart освобождает цель при завершении или отмене задания.
       reply(probe ? ["id": lastTarget, "field": focus.state.rawValue] : lastTarget)
     }
     guard probe, focus.state == .unknown else { return finish() }
@@ -1483,14 +1507,20 @@ final class DictationBridge: NSObject {
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
       }
-      if let element = target.element {
+      // Контейнер Chromium ещё не является полем: его фокусировка может
+      // убрать курсор из редактора, который приложение восстановило само.
+      if let element = target.element, target.field == .yes || target.range != nil {
         AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         if let range = target.range {
           AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, range)
         }
       }
-      // Пауза, чтобы фокус дошёл до поля раньше нажатия.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: then)
+      // Ждём реального окна и поля, а не только активации приложения.
+      func settled(_ tries: Int) {
+        if tries == 0 || focusIsRight(target) { return then() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { settled(tries - 1) }
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { settled(30) }
     }
     func wait(_ tries: Int) {
       if tries == 0 || NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid {
@@ -1524,20 +1554,38 @@ final class DictationBridge: NSObject {
   /// - вторая диктовка до возврата не сохраняет «прежним» наш же текст,
   ///   а оставляет то, что было до первой.
   ///
-  /// Возвращает, дошло ли дело до нажатия ⌘V. Иное значит, что текст
-  /// в чужое окно не попал, и вызывающая сторона обязана этим заняться:
-  /// показать неудачу и оставить текст хотя бы в буфере обмена.
-  @discardableResult
-  private func paste(_ text: String, expecting target: PasteTarget? = nil) -> PasteResult {
-    guard !hud.isEditing else { return .failed }
-    guard !text.isEmpty else { return .failed }
-    // Без «Универсального доступа» событие клавиши не доходит никуда.
-    // Проверяем до того, как трогать буфер: иначе мы бы затёрли чужую
-    // копию ради нажатия, которое всё равно не состоится.
-    guard AXIsProcessTrusted() else { return .failed }
-    // Фокус вернули вслепую, не проверив, — и ⌘V мог уйти не в то поле.
-    // Не слать: буфер тоже не трогаем, Dart сам положит текст последним.
-    if let target, !focusIsRight(target) { return .focus }
+  /// Сверяем содержимое поля после одного ⌘V. Если проверить нельзя,
+  /// сохраняем текст в буфере и запрещаем автоматический Enter.
+  private func paste(_ text: String, expecting target: PasteTarget? = nil,
+                     then reply: @escaping (PasteResult) -> Void) {
+    pasted = nil; pastedElement = nil; pastedValue = nil
+    guard !hud.isEditing, !text.isEmpty, AXIsProcessTrusted() else { reply(.failed); return }
+    guard let app = NSWorkspace.shared.frontmostApplication,
+      app.processIdentifier != getpid() else { reply(.focus); return }
+    if let target, !focusIsRight(target) { reply(.focus); return }
+    let focus = readFocus(app.processIdentifier)
+    let destination = target ?? PasteTarget(
+      pid: app.processIdentifier, window: focus.window, element: focus.element,
+      range: nil, field: focus.state)
+    // Сохранённую позицию не удалось восстановить — не вставляем в другое место.
+    if let range = target?.range, let element = focus.element {
+      guard let current = Self.attribute(element, kAXSelectedTextRangeAttribute),
+        CFEqual(range, current) else { reply(.focus); return }
+    }
+    let element = focus.element
+    let destinationKnown = target == nil || {
+      guard let saved = target?.element, let element else { return false }
+      return CFEqual(saved, element)
+    }()
+    let before = element.flatMap { Self.attribute($0, kAXValueAttribute) as? String }
+    var selection = CFRange()
+    var expected: String?
+    if let before, let element,
+      let value = Self.attribute(element, kAXSelectedTextRangeAttribute),
+      CFGetTypeID(value) == AXValueGetTypeID(),
+      AXValueGetValue(value as! AXValue, .cfRange, &selection) {
+      expected = PasteVerification.expectedValue(before: before, selection: selection, text: text)
+    }
     let pb = NSPasteboard.general
     let stillOurs = pendingRestoreChange != nil && pb.changeCount == pendingRestoreChange
     if !stillOurs { savedPasteboard = snapshot(pb) }
@@ -1552,22 +1600,41 @@ final class DictationBridge: NSObject {
     pb.writeObjects([item])
     let change = pb.changeCount
     guard sendCommandV() else {
-      // Нажатие не состоялось: текст остаётся в буфере — вызывающая
-      // сторона на это и рассчитывает, — а возвращать уже нечего.
       savedPasteboard = []
-      return .failed
+      reply(.failed); return
     }
 
-    pasted = FrontWindow.current()
-    pendingRestoreChange = change
-    let work = DispatchWorkItem { [weak self] in self?.restorePasteboard() }
-    pendingRestore = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay, execute: work)
-    return .pasted
+    // Один ⌘V. При неизвестном результате не повторяем: иначе возможен дубль.
+    func verify(_ tries: Int) {
+      guard focusIsRight(destination) else {
+        savedPasteboard = []
+        reply(.unverified); return
+      }
+      let after = element.flatMap { Self.attribute($0, kAXValueAttribute) as? String }
+      if destinationKnown && PasteVerification.confirmed(before: before, after: after, expected: expected) {
+        pasted = FrontWindow.current()
+        pastedElement = element
+        pastedValue = after
+        pendingRestoreChange = change
+        let work = DispatchWorkItem { [weak self] in self?.restorePasteboard() }
+        pendingRestore = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay, execute: work)
+        reply(.pasted)
+      } else if tries > 0 {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { verify(tries - 1) }
+      } else {
+        // Буфер остаётся с результатом; Enter не разрешаем.
+        savedPasteboard = []
+        reply(.unverified)
+      }
+    }
+    verify(12)
   }
 
   /// Что было впереди сразу после ⌘V: Enter уйдёт только туда же.
   private var pasted: FrontWindow?
+  private var pastedElement: AXUIElement?
+  private var pastedValue: String?
 
   /// Приложение и окно впереди. Окно сравниваем, если оба удалось узнать:
   /// не у каждого приложения оно отдаётся через «Универсальный доступ».
@@ -1670,8 +1737,12 @@ final class DictationBridge: NSObject {
   /// что сразу после ⌘V: за паузу человек мог уйти, и тогда Enter попал бы
   /// в чужое поле. Возвращает, нажат ли он.
   private func pressReturn() -> Bool {
+    defer { pasted = nil; pastedElement = nil; pastedValue = nil }
     guard AXIsProcessTrusted(), !hud.isEditing, let was = pasted,
-      let now = FrontWindow.current(), was.sameAs(now)
+      let now = FrontWindow.current(), was.sameAs(now),
+      let element = pastedElement, let value = pastedValue,
+      let current = readFocus(now.pid).element, CFEqual(element, current),
+      (Self.attribute(current, kAXValueAttribute) as? String) == value
     else { return false }
     let source = CGEventSource(stateID: .combinedSessionState)
     source?.setLocalEventsFilterDuringSuppressionState(
@@ -1689,7 +1760,6 @@ final class DictationBridge: NSObject {
     up.flags = []
     down.post(tap: .cgAnnotatedSessionEventTap)
     up.post(tap: .cgAnnotatedSessionEventTap)
-    pasted = nil
     return true
   }
 

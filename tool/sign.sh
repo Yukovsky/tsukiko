@@ -16,6 +16,15 @@ set -e
 cd "$(dirname "$0")/.."
 
 APP=build/macos/Build/Products/Release/tsukiko.app
+# Проверочные ветки собираются без release-сертификата. В main этот режим
+# запрещён, даже если переменная случайно осталась в окружении.
+CANDIDATE=
+if [ "$TSUKIKO_CANDIDATE_BUILD" = "1" ] && [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+  case "$GITHUB_REF" in
+    refs/heads/main|refs/tags/*) ;;
+    refs/heads/*) CANDIDATE=1 ;;
+  esac
+fi
 # Строка «0 valid identities found» — итог, а не сертификат. Прежний awk
 # принимал слово `valid` за его идентификатор, и codesign закономерно падал.
 if [ -n "$TSUKIKO_SIGNING_KEYCHAIN" ]; then
@@ -36,8 +45,8 @@ ID=$(printf '%s\n' "$LINE" | awk '{print $2}')
 RUNTIME=
 case "$LINE" in *'Developer ID Application'*) RUNTIME="--options=runtime" ;; esac
 if [ -z "$ID" ]; then
-  if [ -n "$TSUKIKO_ADHOC_SIGN" ] && [ -z "$CI" ]; then
-    echo "Локальная тестовая сборка: ad-hoc подпись (-)."
+  if [ -n "$TSUKIKO_ADHOC_SIGN" ] && { [ -z "$CI" ] || [ "$CANDIDATE" = "1" ]; }; then
+    echo "Тестовая сборка: ad-hoc подпись (-); не предназначена для выпуска."
     ID="-"
   else
     echo "Нет сертификата для постоянной подписи. Сборка с ad-hoc подписью потеряет разрешение «Универсальный доступ» после обновления." >&2
@@ -196,7 +205,7 @@ if [ "$CLI_RC" -ge 128 ]; then
   exit 1
 fi
 SIGN_DETAILS=$(codesign -dv "$APP" 2>&1)
-if [ -n "$CI" ] && printf '%s\n' "$SIGN_DETAILS" | grep -q 'Signature=adhoc'; then
+if [ -n "$CI" ] && [ "$CANDIDATE" != "1" ] && printf '%s\n' "$SIGN_DETAILS" | grep -q 'Signature=adhoc'; then
   echo "Официальная macOS-сборка не может иметь ad-hoc подпись." >&2
   exit 1
 fi

@@ -12,6 +12,7 @@ void main() {
     test('"focus" — курсор не в поле', () {
       expect(PasteOutcome.parse('focus'), PasteOutcome.focusLost);
       expect(PasteOutcome.parse('что-то другое'), PasteOutcome.failed);
+      expect(PasteOutcome.parse('unverified'), PasteOutcome.unverified);
     });
   });
 
@@ -23,9 +24,18 @@ void main() {
     });
 
     test('карта с состоянием поля', () {
-      expect(MarkedTarget.parse({'id': 3, 'field': 'no'})!.field, FieldState.no);
-      expect(MarkedTarget.parse({'id': 3, 'field': 'yes'})!.field, FieldState.yes);
-      expect(MarkedTarget.parse({'id': 3, 'field': 'x'})!.field, FieldState.unknown);
+      expect(
+        MarkedTarget.parse({'id': 3, 'field': 'no'})!.field,
+        FieldState.no,
+      );
+      expect(
+        MarkedTarget.parse({'id': 3, 'field': 'yes'})!.field,
+        FieldState.yes,
+      );
+      expect(
+        MarkedTarget.parse({'id': 3, 'field': 'x'})!.field,
+        FieldState.unknown,
+      );
     });
 
     test('нечего запоминать', () {
@@ -35,18 +45,27 @@ void main() {
   });
 
   group('showFieldHint', () {
-    test('подсказка только при явном «не поле»', () {
+    test('подсказка при отсутствии поля и при неизвестном состоянии', () {
       expect(showFieldHint(FieldState.no, warn: true, hasTarget: true), isTrue);
-      expect(showFieldHint(FieldState.yes, warn: true, hasTarget: true), isFalse);
+      expect(
+        showFieldHint(FieldState.yes, warn: true, hasTarget: true),
+        isFalse,
+      );
       expect(
         showFieldHint(FieldState.unknown, warn: true, hasTarget: true),
-        isFalse,
+        isTrue,
       );
     });
 
     test('выключенная настройка или нет цели — без подсказки', () {
-      expect(showFieldHint(FieldState.no, warn: false, hasTarget: true), isFalse);
-      expect(showFieldHint(FieldState.no, warn: true, hasTarget: false), isFalse);
+      expect(
+        showFieldHint(FieldState.no, warn: false, hasTarget: true),
+        isFalse,
+      );
+      expect(
+        showFieldHint(FieldState.no, warn: true, hasTarget: false),
+        isFalse,
+      );
     });
   });
 }

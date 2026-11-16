@@ -19,6 +19,28 @@ struct HUDPlacementTests {
     assert(model.queueCount == 0)
     model.pending = 9; model.processing = true
     assert(model.queueCount == 9)
+    model.state = .transcribing
+    model.target = 41
+    assert(model.size.width == 508) // Queue badge and the destination action fit together.
+    model.pending = 0
+    assert(model.size.width == 460)
+    model.mode = .timer
+    assert(model.size.width == 122)
+    model.target = nil
+    assert(model.size.width == 92)
+    model.state = .transcribing; model.target = 41; model.fieldHint = true; model.field = "no"
+    for mode in IndicatorStyle.allCases {
+      model.mode = mode
+      assert(model.statusText.contains(model.destinationText))
+      assert(model.statusSymbol == (mode == .status ? "exclamationmark.bubble.fill" : nil))
+    }
+    model.mode = .status; model.fieldHint = false
+    assert(model.statusSymbol == "hourglass")
+    model.state = .done
+    assert(model.statusSymbol == "checkmark.circle.fill")
+    model.state = .copied
+    assert(model.statusText == "Текст в буфере · проверьте поле")
+    assert(model.statusSymbol == "doc.on.clipboard")
     var layout = HUDPlacement()
     let work = NSRect(x: -1920, y: -200, width: 1920, height: 1080)
     let size = NSSize(width: 372, height: 52)
@@ -87,6 +109,9 @@ struct HUDPlacementTests {
     hud.updateQueue(pending: 0, processing: true)
     assert(hud.previewFrame.width == 372)
     hud.transcribing()
+    let targetPanel = NSApp.windows.first { $0.isVisible && $0.frame.width == 372 && $0.frame.height == 52 }
+    assert(targetPanel != nil && !targetPanel!.canBecomeKey,
+           "Setting the destination must not take focus from its field")
     let singleCenter = NSPoint(x: hud.previewFrame.midX, y: hud.previewFrame.midY)
     hud.show() // A second recording has one dictation ahead of it.
     assert(hud.previewFrame.width == 420)
