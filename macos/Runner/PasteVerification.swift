@@ -20,6 +20,11 @@ enum PasteVerification {
     return value
   }
 
+  static func sameField(previousID: String?, currentID: String?, sameRole: Bool, sameParent: Bool) -> Bool {
+    if let previousID, !previousID.isEmpty { return previousID == currentID }
+    return sameRole && sameParent
+  }
+
   static func sameContent(_ a: String, _ b: String) -> Bool {
     normalized(a) == normalized(b)
   }

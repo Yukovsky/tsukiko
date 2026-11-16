@@ -45,12 +45,13 @@ enum PasteOutcome {
   /// Фокус не вернулся в поле цели: вслепую вставлять не стали.
   focusLost;
 
-  static PasteOutcome parse(Object? reply) => switch (reply) {
-    true => pasted,
-    'focus' => focusLost,
-    'unverified' => unverified,
-    _ => failed,
-  };
+  static PasteOutcome parse(Object? reply) =>
+      switch (reply is Map ? reply['outcome'] : reply) {
+        true => pasted,
+        'focus' => focusLost,
+        'unverified' => unverified,
+        _ => failed,
+      };
 }
 
 /// Показывать ли предупреждение: поле не найдено либо не удалось проверить,

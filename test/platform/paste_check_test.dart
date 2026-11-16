@@ -16,6 +16,18 @@ void main() {
     });
   });
 
+  test('diagnostic response keeps the paste outcome', () {
+    expect(
+      PasteOutcome.parse({'outcome': 'unverified', 'detail': 'field changed'}),
+      PasteOutcome.unverified,
+    );
+    expect(PasteOutcome.parse({'outcome': true}), PasteOutcome.pasted);
+    expect(
+      PasteOutcome.parse({'detail': 'invalid response'}),
+      PasteOutcome.failed,
+    );
+  });
+
   group('MarkedTarget.parse', () {
     test('число — как у Windows и прежних сборок', () {
       final t = MarkedTarget.parse(7)!;

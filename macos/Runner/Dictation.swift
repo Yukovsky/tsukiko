@@ -1317,11 +1317,12 @@ final class DictationBridge: NSObject {
 
   /// true — текст появился; unverified — нажатие ушло, результат не подтверждён.
   private enum PasteResult {
-    case pasted, failed, focus, unverified
+    case pasted, failed, focus
+    case unverified(String)
     var reply: Any {
       switch self {
       case .pasted: return true
-      case .unverified: return "unverified"
+      case .unverified(let detail): return ["outcome": "unverified", "detail": detail]
       case .failed: return false
       case .focus: return "focus"
       }
@@ -1366,6 +1367,34 @@ final class DictationBridge: NSObject {
       return text
     }
     return collect(element, depth: 0) ?? value
+  }
+
+  /// После вставки Chromium может пересоздать AX-объект того же редактора.
+  /// Запоминаем его идентификатор и родителя до изменения DOM.
+  private struct FieldIdentity {
+    let element: AXUIElement
+    let identifier: String?
+    let parent: AXUIElement?
+    let role: String?
+
+    init(_ element: AXUIElement) {
+      self.element = element
+      let identifier = (DictationBridge.attribute(element, "AXDOMIdentifier") as? String)
+        ?? (DictationBridge.attribute(element, kAXIdentifierAttribute) as? String)
+      self.identifier = identifier?.isEmpty == false ? identifier : nil
+      parent = DictationBridge.attribute(element, kAXParentAttribute).map { $0 as! AXUIElement }
+      role = DictationBridge.attribute(element, kAXRoleAttribute) as? String
+    }
+
+    func matches(_ current: AXUIElement) -> Bool {
+      if CFEqual(element, current) { return true }
+      let now = FieldIdentity(current)
+      let sameParent: Bool
+      if let parent, let other = now.parent { sameParent = CFEqual(parent, other) }
+      else { sameParent = false }
+      return PasteVerification.sameField(previousID: identifier, currentID: now.identifier,
+        sameRole: role != nil && role == now.role, sameParent: sameParent)
+    }
   }
 
   private static let fieldRoles: Set<String> = [
@@ -1594,7 +1623,7 @@ final class DictationBridge: NSObject {
   /// сохраняем текст в буфере и запрещаем автоматический Enter.
   private func paste(_ text: String, expecting target: PasteTarget? = nil,
                      then reply: @escaping (PasteResult) -> Void) {
-    pasted = nil; pastedElement = nil; pastedValue = nil
+    pasted = nil; pastedIdentity = nil; pastedValue = nil
     guard !hud.isEditing, !text.isEmpty, AXIsProcessTrusted() else { reply(.failed); return }
     guard let app = NSWorkspace.shared.frontmostApplication,
       app.processIdentifier != getpid() else { reply(.focus); return }
@@ -1613,6 +1642,7 @@ final class DictationBridge: NSObject {
       guard let saved = target?.element, let element else { return false }
       return CFEqual(saved, element)
     }()
+    let identity = element.map { FieldIdentity($0) }
     let before = focus.state == .yes ? element.flatMap { Self.textInField($0) } : nil
     var selection = CFRange()
     var expected: String?
@@ -1640,16 +1670,23 @@ final class DictationBridge: NSObject {
       reply(.failed); return
     }
 
-    // Один ⌘V. При неизвестном результате не повторяем: иначе возможен дубль.
+    // Один ⌘V. Перечитываем текущее поле: AX-объект может измениться при
+    // вставке, а дерево доступности — временно не отвечать во время рендера.
     func verify(_ tries: Int) {
-      guard focusIsRight(destination) else {
-        savedPasteboard = []
-        reply(.unverified); return
+      guard NSWorkspace.shared.frontmostApplication?.processIdentifier == destination.pid else {
+        savedPasteboard = []; reply(.unverified("foreground changed after paste")); return
       }
-      let after = focus.state == .yes ? element.flatMap { Self.textInField($0) } : nil
-      if destinationKnown && PasteVerification.confirmed(before: before, after: after, expected: expected, text: text) {
+      let now = readFocus(destination.pid)
+      if let window = destination.window, let current = now.window, !CFEqual(window, current) {
+        savedPasteboard = []; reply(.unverified("window changed after paste")); return
+      }
+      let windowKnown = destination.window == nil || now.window != nil
+      let sameField = now.element.map { identity?.matches($0) == true } ?? false
+      let after = now.state == .yes ? now.element.flatMap { Self.textInField($0) } : nil
+      if destinationKnown && windowKnown && sameField
+        && PasteVerification.confirmed(before: before, after: after, expected: expected, text: text) {
         pasted = FrontWindow.current()
-        pastedElement = element
+        pastedIdentity = now.element.map { FieldIdentity($0) }
         pastedValue = after
         pendingRestoreChange = change
         let work = DispatchWorkItem { [weak self] in self?.restorePasteboard() }
@@ -1659,15 +1696,10 @@ final class DictationBridge: NSObject {
       } else if tries > 0 {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { verify(tries - 1) }
       } else {
-        // Без содержимого: только размеры и тип поля для диагностики доставки.
-        let role = element.flatMap { Self.attribute($0, kAXRoleAttribute) as? String } ?? "unavailable"
-        NSLog("tsukiko: paste unverified pid=%d field=%@ role=%@ before=%ld after=%ld expected=%ld selection=%@ destination=%@",
-          destination.pid, focus.state.rawValue, role, before?.utf16.count ?? -1, after?.utf16.count ?? -1,
-          expected?.utf16.count ?? -1, expected == nil ? "unavailable" : "available",
-          destinationKnown ? "same" : "unknown")
-        // Буфер остаётся с результатом; Enter не разрешаем.
+        let role = now.element.flatMap { Self.attribute($0, kAXRoleAttribute) as? String } ?? "unavailable"
+        let detail = "field=\(now.state.rawValue) role=\(role) before=\(before?.utf16.count ?? -1) after=\(after?.utf16.count ?? -1) expected=\(expected?.utf16.count ?? -1) sameField=\(sameField) window=\(windowKnown) destination=\(destinationKnown)"
         savedPasteboard = []
-        reply(.unverified)
+        reply(.unverified(detail))
       }
     }
     verify(12)
@@ -1675,7 +1707,7 @@ final class DictationBridge: NSObject {
 
   /// Что было впереди сразу после ⌘V: Enter уйдёт только туда же.
   private var pasted: FrontWindow?
-  private var pastedElement: AXUIElement?
+  private var pastedIdentity: FieldIdentity?
   private var pastedValue: String?
 
   /// Приложение и окно впереди. Окно сравниваем, если оба удалось узнать:
@@ -1779,11 +1811,11 @@ final class DictationBridge: NSObject {
   /// что сразу после ⌘V: за паузу человек мог уйти, и тогда Enter попал бы
   /// в чужое поле. Возвращает, нажат ли он.
   private func pressReturn() -> Bool {
-    defer { pasted = nil; pastedElement = nil; pastedValue = nil }
+    defer { pasted = nil; pastedIdentity = nil; pastedValue = nil }
     guard AXIsProcessTrusted(), !hud.isEditing, let was = pasted,
       let now = FrontWindow.current(), was.sameAs(now),
-      let element = pastedElement, let value = pastedValue,
-      let current = readFocus(now.pid).element, CFEqual(element, current),
+      let identity = pastedIdentity, let value = pastedValue,
+      let current = readFocus(now.pid).element, identity.matches(current),
       let after = Self.textInField(current), PasteVerification.sameContent(after, value)
     else { return false }
     let source = CGEventSource(stateID: .combinedSessionState)

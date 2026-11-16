@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 import '../core/app_locale.dart';
+import '../core/logger.dart';
 import '../core/app_theme.dart';
 import '../core/cat_look.dart';
 import '../core/whisper_server.dart';
@@ -469,13 +470,15 @@ class NativeBridge {
     if (previous != null) await previous;
     var sent = false;
     try {
-      final outcome = PasteOutcome.parse(
-        await _channel.invokeMethod<Object>('paste', {
-          'text': text,
-          'target': ?target,
-          'requireTarget': requireTarget,
-        }),
-      );
+      final response = await _channel.invokeMethod<Object>('paste', {
+        'text': text,
+        'target': ?target,
+        'requireTarget': requireTarget,
+      });
+      if (response is Map && response['detail'] is String) {
+        Log.info('Dictation', 'Paste verification: ${response['detail']}');
+      }
+      final outcome = PasteOutcome.parse(response);
       sent = outcome == PasteOutcome.pasted;
       return outcome;
     } finally {

@@ -29,6 +29,14 @@ struct PasteVerificationTests {
     assert(!PasteVerification.confirmed(before: "old", after: "unrelated change", expected: nil, text: "new"))
     assert(!PasteVerification.confirmed(before: "old", after: "old new", expected: "new old", text: " new"))
     assert(!PasteVerification.confirmed(before: "old", after: "old\n", expected: nil, text: "\n"))
+    // A re-rendered editor keeps its identity; a different field must not inherit Enter.
+    assert(PasteVerification.sameField(previousID: "composer", currentID: "composer", sameRole: true, sameParent: false))
+    assert(!PasteVerification.sameField(previousID: "composer", currentID: "search", sameRole: true, sameParent: true))
+    assert(!PasteVerification.sameField(previousID: "composer", currentID: nil, sameRole: true, sameParent: true))
+    assert(PasteVerification.sameField(previousID: nil, currentID: nil, sameRole: true, sameParent: true))
+    assert(!PasteVerification.sameField(previousID: nil, currentID: nil, sameRole: false, sameParent: true))
+    assert(!PasteVerification.sameField(previousID: nil, currentID: nil, sameRole: true, sameParent: false))
+    assert(!PasteVerification.sameField(previousID: "", currentID: "", sameRole: true, sameParent: false))
     print("Paste verification checks passed")
   }
 }
