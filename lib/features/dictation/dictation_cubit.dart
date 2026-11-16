@@ -966,6 +966,10 @@ class DictationCubit extends Cubit<DictationState> {
                 target: job.target,
                 requireTarget: job.returnToTarget,
               );
+              Log.info(
+                'Dictation',
+                'Paste target=${job.target}, result=${outcome.name}, enter=${job.enter}',
+              );
               ok = outcome == PasteOutcome.pasted;
               // Родная сторона вернёт прежний буфер через 1,5 с, но только
               // если его никто не менял: наша запись это и отменяет.
@@ -976,7 +980,12 @@ class DictationCubit extends Cubit<DictationState> {
               if (ok && job.enter && !job.aborted) {
                 await Future<void>.delayed(_enterPause);
                 if (job.enter && !job.aborted && !isClosed) {
-                  if (!await bridge.pressReturn()) {
+                  final sent = await bridge.pressReturn();
+                  Log.info(
+                    'Dictation',
+                    'Enter target=${job.target}, sent=$sent',
+                  );
+                  if (!sent) {
                     await _copyResult(text);
                     failure = currentL10n().insertNotSent;
                     ok = false;

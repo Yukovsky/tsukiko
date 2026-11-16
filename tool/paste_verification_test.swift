@@ -20,6 +20,15 @@ struct PasteVerificationTests {
     assert(!PasteVerification.confirmed(before: nil, after: "x", expected: "x"))
     assert(!PasteVerification.confirmed(before: "", after: nil, expected: "x"))
     assert(!PasteVerification.confirmed(before: "x", after: "x", expected: "x"))
+    assert(PasteVerification.confirmed(before: "", after: "hello\n", expected: "hello"))
+    assert(PasteVerification.confirmed(before: "", after: "hello\n", expected: nil, text: "hello"))
+    assert(PasteVerification.confirmed(before: "hello", after: "hello world\n", expected: nil, text: " world"))
+    assert(PasteVerification.confirmed(before: "world", after: "hello world", expected: nil, text: "hello "))
+    assert(PasteVerification.confirmed(before: "", after: "hello\u{00a0}world\r\n", expected: "hello world"))
+    assert(!PasteVerification.confirmed(before: "hello world", after: "hello new world", expected: nil, text: "new "))
+    assert(!PasteVerification.confirmed(before: "old", after: "unrelated change", expected: nil, text: "new"))
+    assert(!PasteVerification.confirmed(before: "old", after: "old new", expected: "new old", text: " new"))
+    assert(!PasteVerification.confirmed(before: "old", after: "old\n", expected: nil, text: "\n"))
     print("Paste verification checks passed")
   }
 }

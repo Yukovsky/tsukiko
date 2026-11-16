@@ -1335,6 +1335,37 @@ final class DictationBridge: NSObject {
     return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
   }
 
+  /// У contenteditable текст бывает в дочерних AXStaticText вместо AXValue.
+  /// Читаем только уже определённое поле, не дерево окна или страницы целиком.
+  private static func textInField(_ element: AXUIElement) -> String? {
+    if let value = attribute(element, kAXValueAttribute) as? String { return value }
+    if let value = attribute(element, kAXValueAttribute) as? NSAttributedString { return value.string }
+    if let count = attribute(element, "AXNumberOfCharacters") as? Int, count >= 0, count <= 1_000_000 {
+      var range = CFRange(location: 0, length: count)
+      if let parameter = AXValueCreate(.cfRange, &range) {
+        var value: CFTypeRef?
+        if AXUIElementCopyParameterizedAttributeValue(element, "AXStringForRange" as CFString,
+            parameter, &value) == .success, let text = value as? String { return text }
+      }
+    }
+    var budget = 256
+    func collect(_ node: AXUIElement, depth: Int) -> String? {
+      guard budget > 0, depth < 12 else { return nil }
+      budget -= 1
+      let role = attribute(node, kAXRoleAttribute) as? String
+      if role == "AXStaticText" { return attribute(node, kAXValueAttribute) as? String }
+      if ["AXButton", "AXMenuButton", "AXPopUpButton", "AXImage"].contains(role ?? "") { return "" }
+      guard let children = attribute(node, kAXChildrenAttribute) as? [AXUIElement] else { return nil }
+      var text = ""
+      for child in children {
+        guard let part = collect(child, depth: depth + 1) else { return nil }
+        text += part
+      }
+      return text
+    }
+    return collect(element, depth: 0)
+  }
+
   private static let fieldRoles: Set<String> = [
     "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField", "AXTextView",
   ]
@@ -1577,7 +1608,7 @@ final class DictationBridge: NSObject {
       guard let saved = target?.element, let element else { return false }
       return CFEqual(saved, element)
     }()
-    let before = element.flatMap { Self.attribute($0, kAXValueAttribute) as? String }
+    let before = focus.state == .yes ? element.flatMap { Self.textInField($0) } : nil
     var selection = CFRange()
     var expected: String?
     if let before, let element,
@@ -1610,8 +1641,8 @@ final class DictationBridge: NSObject {
         savedPasteboard = []
         reply(.unverified); return
       }
-      let after = element.flatMap { Self.attribute($0, kAXValueAttribute) as? String }
-      if destinationKnown && PasteVerification.confirmed(before: before, after: after, expected: expected) {
+      let after = focus.state == .yes ? element.flatMap { Self.textInField($0) } : nil
+      if destinationKnown && PasteVerification.confirmed(before: before, after: after, expected: expected, text: text) {
         pasted = FrontWindow.current()
         pastedElement = element
         pastedValue = after
@@ -1623,6 +1654,12 @@ final class DictationBridge: NSObject {
       } else if tries > 0 {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { verify(tries - 1) }
       } else {
+        // Без содержимого: только размеры и тип поля для диагностики доставки.
+        let role = element.flatMap { Self.attribute($0, kAXRoleAttribute) as? String } ?? "unavailable"
+        NSLog("tsukiko: paste unverified pid=%d field=%@ role=%@ before=%ld after=%ld expected=%ld selection=%@ destination=%@",
+          destination.pid, focus.state.rawValue, role, before?.utf16.count ?? -1, after?.utf16.count ?? -1,
+          expected?.utf16.count ?? -1, expected == nil ? "unavailable" : "available",
+          destinationKnown ? "same" : "unknown")
         // Буфер остаётся с результатом; Enter не разрешаем.
         savedPasteboard = []
         reply(.unverified)
@@ -1742,7 +1779,7 @@ final class DictationBridge: NSObject {
       let now = FrontWindow.current(), was.sameAs(now),
       let element = pastedElement, let value = pastedValue,
       let current = readFocus(now.pid).element, CFEqual(element, current),
-      (Self.attribute(current, kAXValueAttribute) as? String) == value
+      let after = Self.textInField(current), PasteVerification.sameContent(after, value)
     else { return false }
     let source = CGEventSource(stateID: .combinedSessionState)
     source?.setLocalEventsFilterDuringSuppressionState(
