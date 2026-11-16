@@ -286,7 +286,7 @@ void main() {
     expect(find.text('Не распознано · запись сохранена'), findsOneWidget);
 
     await send(tester, HudState.copied);
-    expect(find.text('Не вставилось · текст в буфере, Ctrl+V'), findsOneWidget);
+    expect(find.text('Текст в буфере · проверьте поле'), findsOneWidget);
 
     await send(tester, HudState.cancelled);
     expect(find.text('Отменено · запись сохранена'), findsOneWidget);
