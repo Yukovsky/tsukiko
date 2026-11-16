@@ -1379,9 +1379,10 @@ final class DictationBridge: NSObject {
 
     init(_ element: AXUIElement) {
       self.element = element
-      let identifier = (DictationBridge.attribute(element, "AXDOMIdentifier") as? String)
-        ?? (DictationBridge.attribute(element, kAXIdentifierAttribute) as? String)
-      self.identifier = identifier?.isEmpty == false ? identifier : nil
+      identifier = [
+        DictationBridge.attribute(element, "AXDOMIdentifier") as? String,
+        DictationBridge.attribute(element, kAXIdentifierAttribute) as? String,
+      ].compactMap { $0 }.first { !$0.isEmpty }
       parent = DictationBridge.attribute(element, kAXParentAttribute).map { $0 as! AXUIElement }
       role = DictationBridge.attribute(element, kAXRoleAttribute) as? String
     }
