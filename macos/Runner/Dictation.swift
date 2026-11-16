@@ -1338,7 +1338,9 @@ final class DictationBridge: NSObject {
   /// У contenteditable текст бывает в дочерних AXStaticText вместо AXValue.
   /// Читаем только уже определённое поле, не дерево окна или страницы целиком.
   private static func textInField(_ element: AXUIElement) -> String? {
-    if let value = attribute(element, kAXValueAttribute) as? String { return value }
+    let value = attribute(element, kAXValueAttribute) as? String
+    let role = attribute(element, kAXRoleAttribute) as? String
+    if let value, !value.isEmpty || fieldRoles.contains(role ?? "") { return value }
     if let value = attribute(element, kAXValueAttribute) as? NSAttributedString { return value.string }
     if let count = attribute(element, "AXNumberOfCharacters") as? Int, count >= 0, count <= 1_000_000 {
       var range = CFRange(location: 0, length: count)
@@ -1363,7 +1365,7 @@ final class DictationBridge: NSObject {
       }
       return text
     }
-    return collect(element, depth: 0)
+    return collect(element, depth: 0) ?? value
   }
 
   private static let fieldRoles: Set<String> = [
@@ -1433,6 +1435,9 @@ final class DictationBridge: NSObject {
       return .yes
     }
     if (attribute(element, "AXEditable") as? Bool) == true { return .yes }
+    // У contenteditable может быть доступна замена выделения, но не всего AXValue.
+    if AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
+      settable.boolValue { return .yes }
     if role == "AXGroup" || role == "AXWebArea" { return chromium ? .unknown : .no }
     return notFieldRoles.contains(role) ? .no : .unknown
   }
