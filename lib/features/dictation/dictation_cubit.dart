@@ -673,11 +673,11 @@ class DictationCubit extends Cubit<DictationState> {
     }
   }
 
-  Future<void> start({bool startedByVoice = false, bool enter = false}) async {
+  Future<void> start({bool startedByVoice = false, bool? enter}) async {
     if (_finishingRecording != null) await _finishingRecording;
     if (isClosed || state.recording || _startingRecording != null) return;
     _finishAfterStart = null;
-    _recordEnter = enter;
+    _recordEnter = enter ?? (_settings.insert && _settings.sendAfterInsert);
     _startingRecording = _beginRecording(startedByVoice: startedByVoice);
     try {
       await _startingRecording;

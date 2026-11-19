@@ -3,40 +3,12 @@ import Foundation
 @main
 struct PasteVerificationTests {
   static func main() {
-    func expected(_ before: String, _ location: Int, _ length: Int, _ text: String) -> String? {
-      PasteVerification.expectedValue(
-        before: before, selection: CFRange(location: location, length: length), text: text)
-    }
-    assert(expected("ab", 1, 0, "текст") == "aтекстb")
-    assert(expected("hello world", 6, 5, "мир") == "hello мир")
-    assert(expected("🐈abc", 2, 1, "🌙") == "🐈🌙bc")
-    assert(expected("", 0, 0, "текст") == "текст")
-    assert(expected("ab", -1, 0, "x") == nil)
-    assert(expected("ab", 1, 2, "x") == nil)
-    assert(expected("ab", Int.max, Int.max, "x") == nil)
-    assert(PasteVerification.confirmed(before: "ab", after: "axb", expected: "axb"))
-    assert(!PasteVerification.confirmed(before: "ab", after: "ab", expected: "axb"))
-    assert(!PasteVerification.confirmed(before: "ab", after: "user edit", expected: "axb"))
-    assert(!PasteVerification.confirmed(before: nil, after: "x", expected: "x"))
-    assert(!PasteVerification.confirmed(before: "", after: nil, expected: "x"))
-    assert(!PasteVerification.confirmed(before: "x", after: "x", expected: "x"))
-    assert(PasteVerification.confirmed(before: "", after: "hello\n", expected: "hello"))
-    assert(PasteVerification.confirmed(before: "", after: "hello\n", expected: nil, text: "hello"))
-    assert(PasteVerification.confirmed(before: "hello", after: "hello world\n", expected: nil, text: " world"))
-    assert(PasteVerification.confirmed(before: "world", after: "hello world", expected: nil, text: "hello "))
-    assert(PasteVerification.confirmed(before: "", after: "hello\u{00a0}world\r\n", expected: "hello world"))
-    assert(!PasteVerification.confirmed(before: "hello world", after: "hello new world", expected: nil, text: "new "))
-    assert(!PasteVerification.confirmed(before: "old", after: "unrelated change", expected: nil, text: "new"))
-    assert(!PasteVerification.confirmed(before: "old", after: "old new", expected: "new old", text: " new"))
-    assert(!PasteVerification.confirmed(before: "old", after: "old\n", expected: nil, text: "\n"))
-    // A re-rendered editor keeps its identity; a different field must not inherit Enter.
-    assert(PasteVerification.sameField(previousID: "composer", currentID: "composer", sameRole: true, sameParent: false))
-    assert(!PasteVerification.sameField(previousID: "composer", currentID: "search", sameRole: true, sameParent: true))
-    assert(!PasteVerification.sameField(previousID: "composer", currentID: nil, sameRole: true, sameParent: true))
-    assert(PasteVerification.sameField(previousID: nil, currentID: nil, sameRole: true, sameParent: true))
-    assert(!PasteVerification.sameField(previousID: nil, currentID: nil, sameRole: false, sameParent: true))
-    assert(!PasteVerification.sameField(previousID: nil, currentID: nil, sameRole: true, sameParent: false))
-    assert(!PasteVerification.sameField(previousID: "", currentID: "", sameRole: true, sameParent: false))
+    // Пустое поле Codex отдаёт подсказку как значение: важно лишь, что поле изменилось.
+    assert(PasteVerification.verdict(before: "Ask Codex anything", after: "привет") == .pasted)
+    assert(PasteVerification.verdict(before: "#0", after: "#6") == .pasted)
+    assert(PasteVerification.verdict(before: "ab", after: "ab") == .unchanged)
+    assert(PasteVerification.verdict(before: nil, after: "x") == .unknown)
+    assert(PasteVerification.verdict(before: "x", after: nil) == .unknown)
     print("Paste verification checks passed")
   }
 }

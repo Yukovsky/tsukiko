@@ -587,6 +587,12 @@ class _SettingsBodyState extends State<SettingsBody>
     ),
     if (s.insert) ...[
       Check(
+        l10n.checkSendAfterInsert,
+        s.sendAfterInsert,
+        _cubit.setSendAfterInsert,
+      ),
+      Hint(l10n.hintSendAfterInsert, under: true),
+      Check(
         l10n.checkReturnToTarget,
         s.returnToTarget,
         _cubit.setReturnToTarget,

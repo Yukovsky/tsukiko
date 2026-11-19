@@ -68,6 +68,7 @@ class SettingsState extends Equatable {
     this.idleSeconds = 180,
     this.insert = true,
     this.keepClipboard = false,
+    this.sendAfterInsert = false,
     this.returnToTarget = true,
     this.warnNoField = true,
     this.hud = true,
@@ -216,7 +217,12 @@ class SettingsState extends Equatable {
   final List<VocabularyItem> vocabulary;
   final bool vocabularyDictationEnabled, vocabularyTranscriberEnabled;
   final int idleSeconds;
-  final bool insert, keepClipboard, returnToTarget, warnNoField, hud;
+  final bool insert,
+      keepClipboard,
+      sendAfterInsert,
+      returnToTarget,
+      warnNoField,
+      hud;
   DictationDelivery get delivery => !insert
       ? DictationDelivery.clipboard
       : keepClipboard
@@ -327,6 +333,7 @@ class SettingsState extends Equatable {
     int? idleSeconds,
     bool? insert,
     bool? keepClipboard,
+    bool? sendAfterInsert,
     bool? returnToTarget,
     bool? warnNoField,
     bool? hud,
@@ -405,6 +412,7 @@ class SettingsState extends Equatable {
     idleSeconds: idleSeconds ?? this.idleSeconds,
     insert: insert ?? this.insert,
     keepClipboard: keepClipboard ?? this.keepClipboard,
+    sendAfterInsert: sendAfterInsert ?? this.sendAfterInsert,
     returnToTarget: returnToTarget ?? this.returnToTarget,
     warnNoField: warnNoField ?? this.warnNoField,
     hud: hud ?? this.hud,
@@ -478,6 +486,7 @@ class SettingsState extends Equatable {
     idleSeconds,
     insert,
     keepClipboard,
+    sendAfterInsert,
     returnToTarget,
     warnNoField,
     hud,

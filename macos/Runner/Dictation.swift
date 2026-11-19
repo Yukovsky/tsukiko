@@ -635,8 +635,10 @@ final class DictationBridge: NSObject {
           reply(PasteResult.focus.reply); return
         }
         // Возвращаемся даже после «не поле»: оценка могла быть неточной.
-        returnTo(target) { [weak self] in
-          guard let self else { reply(false); return }
+        returnTo(target) { [weak self] inFront in
+          guard let self else { return reply(false) }
+          // Вслепую в другое окно не вставляем: Dart положит текст в буфер.
+          guard inFront else { return reply(PasteResult.focus.reply) }
           self.paste(text, expecting: target) { reply($0.reply) }
         }
       } else if (args?["requireTarget"] as? Bool) == true {
@@ -1336,68 +1338,6 @@ final class DictationBridge: NSObject {
     return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
   }
 
-  /// У contenteditable текст бывает в дочерних AXStaticText вместо AXValue.
-  /// Читаем только уже определённое поле, не дерево окна или страницы целиком.
-  private static func textInField(_ element: AXUIElement) -> String? {
-    let value = attribute(element, kAXValueAttribute) as? String
-    let role = attribute(element, kAXRoleAttribute) as? String
-    if let value, !value.isEmpty || fieldRoles.contains(role ?? "") { return value }
-    if let value = attribute(element, kAXValueAttribute) as? NSAttributedString { return value.string }
-    if let count = attribute(element, "AXNumberOfCharacters") as? Int, count >= 0, count <= 1_000_000 {
-      var range = CFRange(location: 0, length: count)
-      if let parameter = AXValueCreate(.cfRange, &range) {
-        var value: CFTypeRef?
-        if AXUIElementCopyParameterizedAttributeValue(element, "AXStringForRange" as CFString,
-            parameter, &value) == .success, let text = value as? String { return text }
-      }
-    }
-    var budget = 256
-    func collect(_ node: AXUIElement, depth: Int) -> String? {
-      guard budget > 0, depth < 12 else { return nil }
-      budget -= 1
-      let role = attribute(node, kAXRoleAttribute) as? String
-      if role == "AXStaticText" { return attribute(node, kAXValueAttribute) as? String }
-      if ["AXButton", "AXMenuButton", "AXPopUpButton", "AXImage"].contains(role ?? "") { return "" }
-      guard let children = attribute(node, kAXChildrenAttribute) as? [AXUIElement] else { return nil }
-      var text = ""
-      for child in children {
-        guard let part = collect(child, depth: depth + 1) else { return nil }
-        text += part
-      }
-      return text
-    }
-    return collect(element, depth: 0) ?? value
-  }
-
-  /// После вставки Chromium может пересоздать AX-объект того же редактора.
-  /// Запоминаем его идентификатор и родителя до изменения DOM.
-  private struct FieldIdentity {
-    let element: AXUIElement
-    let identifier: String?
-    let parent: AXUIElement?
-    let role: String?
-
-    init(_ element: AXUIElement) {
-      self.element = element
-      identifier = [
-        DictationBridge.attribute(element, "AXDOMIdentifier") as? String,
-        DictationBridge.attribute(element, kAXIdentifierAttribute) as? String,
-      ].compactMap { $0 }.first { !$0.isEmpty }
-      parent = DictationBridge.attribute(element, kAXParentAttribute).map { $0 as! AXUIElement }
-      role = DictationBridge.attribute(element, kAXRoleAttribute) as? String
-    }
-
-    func matches(_ current: AXUIElement) -> Bool {
-      if CFEqual(element, current) { return true }
-      let now = FieldIdentity(current)
-      let sameParent: Bool
-      if let parent, let other = now.parent { sameParent = CFEqual(parent, other) }
-      else { sameParent = false }
-      return PasteVerification.sameField(previousID: identifier, currentID: now.identifier,
-        sameRole: role != nil && role == now.role, sameParent: sameParent)
-    }
-  }
-
   private static let fieldRoles: Set<String> = [
     "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField", "AXTextView",
   ]
@@ -1510,16 +1450,15 @@ final class DictationBridge: NSObject {
     channel?.invokeMethod("pasteTargetChanged", arguments: ["id": id, "field": destination.field.rawValue])
   }
 
-  private func focusIsRight(_ target: PasteTarget) -> Bool {
+  /// Впереди приложение и окно цели? Само поле не сравниваем: Chromium
+  /// пересоздаёт AX-объекты при каждом рендере, сравнение давало ложные отказы.
+  /// Окно, которое не читается, не повод отказывать.
+  private func targetInFront(_ target: PasteTarget) -> Bool {
     guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return false }
-    let now = readFocus(target.pid)
-    if let was = target.window {
-      guard let current = now.window, CFEqual(was, current) else { return false }
-    }
-    if target.field == .yes, let was = target.element {
-      guard let current = now.element, CFEqual(was, current) else { return false }
-    }
-    return true
+    guard let was = target.window,
+      let now = Self.attribute(AXUIElementCreateApplication(target.pid), kAXFocusedWindowAttribute)
+    else { return true }
+    return CFEqual(was, now)
   }
 
   /// Запомнить место вставки. [probe] — заодно определить, поле ли это
@@ -1553,46 +1492,48 @@ final class DictationBridge: NSObject {
   }
 
   /// Вывести приложение цели вперёд, поднять окно, вернуть фокус в поле
-  /// и курсор на место, потом [then]. ⌘V идёт тому, кто впереди, поэтому
-  /// ждём, пока приложение действительно станет активным. Уже активное
-  /// не активируем заново: Chromium от этого теряет фокус поля.
-  private func returnTo(_ target: PasteTarget, then: @escaping () -> Void) {
+  /// и курсор на место. [then] получает, оказалась ли цель впереди.
+  /// Уже активное приложение не активируем заново: Chromium от этого
+  /// теряет фокус поля.
+  private func returnTo(_ target: PasteTarget, then: @escaping (Bool) -> Void) {
     guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated else {
-      return then()
+      return then(false)
     }
-    let root = AXUIElementCreateApplication(target.pid)
     if NSWorkspace.shared.frontmostApplication?.processIdentifier != target.pid {
       if app.isHidden { app.unhide() }
       // Фоновому приложению macOS 14+ обычный activate часто отказывает;
       // через «Универсальный доступ» — нет. activate остаётся запасным.
-      AXUIElementSetAttributeValue(root, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+      AXUIElementSetAttributeValue(AXUIElementCreateApplication(target.pid),
+        kAXFrontmostAttribute as CFString, kCFBooleanTrue)
       app.activate(options: [])
     }
-    func focus() {
+    func focusField() {
       if let window = target.window {
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
       }
-      // Контейнер Chromium ещё не является полем: его фокусировка может
-      // убрать курсор из редактора, который приложение восстановило само.
-      if let element = target.element, target.field == .yes || target.range != nil {
+      // Фокусируем только настоящее поле: контейнер Chromium от этого
+      // забирает курсор у редактора, который приложение вернуло само.
+      if target.field == .yes, let element = target.element {
         AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         if let range = target.range {
           AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, range)
         }
       }
-      // Ждём реального окна и поля, а не только активации приложения.
-      func settled(_ tries: Int) {
-        if tries == 0 || focusIsRight(target) { return then() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { settled(tries - 1) }
-      }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { settled(30) }
     }
+    // Ждём, пока цель окажется впереди (до ~1,5 с), потом даём фокусу
+    // дойти до поля раньше нажатия.
     func wait(_ tries: Int) {
-      if tries == 0 || NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid {
-        return focus()
+      if targetInFront(target) {
+        focusField()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+          then(self?.targetInFront(target) ?? false)
+        }
+      } else if tries == 0 {
+        then(false)
+      } else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { wait(tries - 1) }
       }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { wait(tries - 1) }
     }
     wait(50)
   }
@@ -1620,39 +1561,19 @@ final class DictationBridge: NSObject {
   /// - вторая диктовка до возврата не сохраняет «прежним» наш же текст,
   ///   а оставляет то, что было до первой.
   ///
-  /// Сверяем содержимое поля после одного ⌘V. Если проверить нельзя,
-  /// сохраняем текст в буфере и запрещаем автоматический Enter.
+  /// После ⌘V смотрим, изменилось ли поле. Не читается — верим нажатию,
+  /// как все диктовки (VoiceInk, Superwhisper). Читается, но не изменилось —
+  /// текст остаётся в буфере, Enter не жмём.
   private func paste(_ text: String, expecting target: PasteTarget? = nil,
                      then reply: @escaping (PasteResult) -> Void) {
-    pasted = nil; pastedIdentity = nil; pastedValue = nil
-    guard !hud.isEditing, !text.isEmpty, AXIsProcessTrusted() else { reply(.failed); return }
+    pasted = nil
+    guard !hud.isEditing, !text.isEmpty, AXIsProcessTrusted() else { return reply(.failed) }
     guard let app = NSWorkspace.shared.frontmostApplication,
-      app.processIdentifier != getpid() else { reply(.focus); return }
-    if let target, !focusIsRight(target) { reply(.focus); return }
-    let focus = readFocus(app.processIdentifier)
-    let destination = target ?? PasteTarget(
-      pid: app.processIdentifier, window: focus.window, element: focus.element,
-      range: nil, field: focus.state)
-    // Сохранённую позицию не удалось восстановить — не вставляем в другое место.
-    if let range = target?.range, let element = focus.element {
-      guard let current = Self.attribute(element, kAXSelectedTextRangeAttribute),
-        CFEqual(range, current) else { reply(.focus); return }
-    }
-    let element = focus.element
-    let destinationKnown = target == nil || {
-      guard let saved = target?.element, let element else { return false }
-      return CFEqual(saved, element)
-    }()
-    let identity = element.map { FieldIdentity($0) }
-    let before = focus.state == .yes ? element.flatMap { Self.textInField($0) } : nil
-    var selection = CFRange()
-    var expected: String?
-    if let before, let element,
-      let value = Self.attribute(element, kAXSelectedTextRangeAttribute),
-      CFGetTypeID(value) == AXValueGetTypeID(),
-      AXValueGetValue(value as! AXValue, .cfRange, &selection) {
-      expected = PasteVerification.expectedValue(before: before, selection: selection, text: text)
-    }
+      app.processIdentifier != getpid() else { return reply(.focus) }
+    if let target, !targetInFront(target) { return reply(.focus) }
+    let pid = app.processIdentifier
+    let before = fieldSnapshot(pid)
+
     let pb = NSPasteboard.general
     let stillOurs = pendingRestoreChange != nil && pb.changeCount == pendingRestoreChange
     if !stillOurs { savedPasteboard = snapshot(pb) }
@@ -1668,48 +1589,47 @@ final class DictationBridge: NSObject {
     let change = pb.changeCount
     guard sendCommandV() else {
       savedPasteboard = []
-      reply(.failed); return
+      return reply(.failed)
     }
+    let front = FrontWindow.current()
 
-    // Один ⌘V. Перечитываем текущее поле: AX-объект может измениться при
-    // вставке, а дерево доступности — временно не отвечать во время рендера.
-    func verify(_ tries: Int) {
-      guard NSWorkspace.shared.frontmostApplication?.processIdentifier == destination.pid else {
-        savedPasteboard = []; reply(.unverified("foreground changed after paste")); return
-      }
-      let now = readFocus(destination.pid)
-      if let window = destination.window, let current = now.window, !CFEqual(window, current) {
-        savedPasteboard = []; reply(.unverified("window changed after paste")); return
-      }
-      let windowKnown = destination.window == nil || now.window != nil
-      let sameField = now.element.map { identity?.matches($0) == true } ?? false
-      let after = now.state == .yes ? now.element.flatMap { Self.textInField($0) } : nil
-      if destinationKnown && windowKnown && sameField
-        && PasteVerification.confirmed(before: before, after: after, expected: expected, text: text) {
-        pasted = FrontWindow.current()
-        pastedIdentity = now.element.map { FieldIdentity($0) }
-        pastedValue = after
+    // Один ⌘V, без повторов: иначе возможен дубль.
+    func done(_ result: PasteResult) {
+      if case .pasted = result {
+        pasted = front
         pendingRestoreChange = change
         let work = DispatchWorkItem { [weak self] in self?.restorePasteboard() }
         pendingRestore = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay, execute: work)
-        reply(.pasted)
-      } else if tries > 0 {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { verify(tries - 1) }
       } else {
-        let role = now.element.flatMap { Self.attribute($0, kAXRoleAttribute) as? String } ?? "unavailable"
-        let detail = "field=\(now.state.rawValue) role=\(role) before=\(before?.utf16.count ?? -1) after=\(after?.utf16.count ?? -1) expected=\(expected?.utf16.count ?? -1) sameField=\(sameField) window=\(windowKnown) destination=\(destinationKnown)"
-        savedPasteboard = []
-        reply(.unverified(detail))
+        savedPasteboard = []  // буфер остаётся с текстом
+      }
+      reply(result)
+    }
+    func check(_ tries: Int) {
+      switch PasteVerification.verdict(before: before, after: fieldSnapshot(pid)) {
+      case .pasted: done(.pasted)
+      case .unknown where tries == 0: done(.pasted)
+      case .unchanged where tries == 0: done(.unverified("field unchanged after paste"))
+      default:
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { check(tries - 1) }
       }
     }
-    verify(12)
+    // Поле, которое не читается вовсе, ждать незачем.
+    if before == nil { done(.pasted) } else { check(15) }
+  }
+
+  /// Текст поля в фокусе (или число символов, если текст не отдают).
+  /// nil — приложение о поле не рассказывает.
+  private func fieldSnapshot(_ pid: pid_t) -> String? {
+    guard let element = readFocus(pid).element else { return nil }
+    if let value = Self.attribute(element, kAXValueAttribute) as? String { return value }
+    if let count = Self.attribute(element, "AXNumberOfCharacters") as? Int { return "#\(count)" }
+    return nil
   }
 
   /// Что было впереди сразу после ⌘V: Enter уйдёт только туда же.
   private var pasted: FrontWindow?
-  private var pastedIdentity: FieldIdentity?
-  private var pastedValue: String?
 
   /// Приложение и окно впереди. Окно сравниваем, если оба удалось узнать:
   /// не у каждого приложения оно отдаётся через «Универсальный доступ».
@@ -1812,12 +1732,9 @@ final class DictationBridge: NSObject {
   /// что сразу после ⌘V: за паузу человек мог уйти, и тогда Enter попал бы
   /// в чужое поле. Возвращает, нажат ли он.
   private func pressReturn() -> Bool {
-    defer { pasted = nil; pastedIdentity = nil; pastedValue = nil }
+    defer { pasted = nil }
     guard AXIsProcessTrusted(), !hud.isEditing, let was = pasted,
-      let now = FrontWindow.current(), was.sameAs(now),
-      let identity = pastedIdentity, let value = pastedValue,
-      let current = readFocus(now.pid).element, identity.matches(current),
-      let after = Self.textInField(current), PasteVerification.sameContent(after, value)
+      let now = FrontWindow.current(), was.sameAs(now)
     else { return false }
     let source = CGEventSource(stateID: .combinedSessionState)
     source?.setLocalEventsFilterDuringSuppressionState(

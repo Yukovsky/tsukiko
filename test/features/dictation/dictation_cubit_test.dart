@@ -60,6 +60,51 @@ void main() {
   }
 
   group('доставка в сохранённое поле', () {
+    Future<void> autoSend({bool insert = true}) async {
+      final settings = DictationSettings.load();
+      settings.sendAfterInsert = true;
+      settings.insert = insert;
+      settings.save();
+      await cubit.reloadSettingsForTesting();
+    }
+
+    test(
+      'обычная остановка отправляет Enter при постоянной настройке',
+      () async {
+        await autoSend();
+        await cubit.start();
+        expect(native.hudArguments.last['enter'], isTrue);
+        await cubit.stop();
+        expect(native.calls, contains('pressReturn'));
+        expect(cubit.state.failure, isNull);
+      },
+    );
+
+    test('разовую отметку можно снять при постоянной отправке', () async {
+      await autoSend();
+      await cubit.start();
+      await nativeEvent('hotkey', {'id': 'send', 'down': true});
+      await cubit.stop();
+      expect(native.calls, isNot(contains('pressReturn')));
+    });
+
+    test('постоянная отправка не обходит подтверждение вставки', () async {
+      await autoSend();
+      native.pasteOutcome = 'unverified';
+      await cubit.start();
+      await cubit.stop();
+      expect(native.calls, isNot(contains('pressReturn')));
+      expect(native.hudStates.last, 'copied');
+    });
+
+    test('режим буфера не отправляет Enter при постоянной настройке', () async {
+      await autoSend(insert: false);
+      await cubit.start();
+      await cubit.stop();
+      expect(native.calls, isNot(contains('pressReturn')));
+      expect(native.pastes, isEmpty);
+    });
+
     test('цель фиксируется до ожидания остановки микрофона', () async {
       native.stopGate = Completer<void>();
       await cubit.start();

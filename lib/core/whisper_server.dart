@@ -969,6 +969,7 @@ class DictationSettings {
     this.idleSeconds = 180,
     this.insert = true,
     this.keepClipboard = false,
+    this.sendAfterInsert = false,
     this.returnToTarget = true,
     this.warnNoField = true,
     bool hud = true,
@@ -1017,6 +1018,9 @@ class DictationSettings {
   /// После вставки оставить надиктованное в буфере обмена последним.
   /// Имеет смысл только при [insert].
   bool keepClipboard;
+
+  /// Для новых диктовок сразу включать отметку Enter; разово её можно снять.
+  bool sendAfterInsert;
 
   /// Вставлять туда, где стоял курсор, когда запись остановили: вернуть
   /// то окно вперёд, даже если человек успел уйти в другое.
@@ -1078,6 +1082,7 @@ class DictationSettings {
         idleSeconds: (j['idleSeconds'] as int?) ?? 180,
         insert: (j['insert'] as bool?) ?? true,
         keepClipboard: (j['keepClipboard'] as bool?) ?? false,
+        sendAfterInsert: (j['sendAfterInsert'] as bool?) ?? false,
         returnToTarget: (j['returnToTarget'] as bool?) ?? true,
         warnNoField: (j['warnNoField'] as bool?) ?? true,
         indicatorMode: IndicatorMode.fromValue(j['indicatorMode'], legacyHud: (j['hud'] as bool?) ?? true),
@@ -1117,6 +1122,7 @@ class DictationSettings {
         'idleSeconds': idleSeconds,
         'insert': insert,
         'keepClipboard': keepClipboard,
+        'sendAfterInsert': sendAfterInsert,
         'returnToTarget': returnToTarget,
         'warnNoField': warnNoField,
         'hud': hud,

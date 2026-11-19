@@ -959,5 +959,7 @@
   "hudRetargetHelp": "Place the cursor in the desired field, then click to save the paste destination. It stays saved when you switch windows.",
   "insertUnverified": "Could not confirm the paste. The text is on the clipboard. Check the field before pasting again; Enter was not pressed.",
   "insertNotSent": "Text was inserted, but Enter was not sent: the focus or field content changed. The result is saved on the clipboard.",
-  "hudRetargetMenu": "Save the field focused before opening this menu"
+  "hudRetargetMenu": "Save the field focused before opening this menu",
+  "checkSendAfterInsert": "Press Enter after pasting",
+  "hintSendAfterInsert": "New dictations start with sending enabled. Use the Send shortcut to turn the ⏎ mark off for an individual recording."
 }

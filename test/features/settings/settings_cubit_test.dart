@@ -63,6 +63,22 @@ void main() {
   });
 
   group('настройки диктовки', () {
+    test(
+      'постоянная отправка сохраняется и переживает перечитывание',
+      () async {
+        expect(DictationSettings.load().sendAfterInsert, isFalse);
+        cubit.setSendAfterInsert(true);
+        await settle();
+        expect(cubit.state.sendAfterInsert, isTrue);
+        expect(DictationSettings.load().sendAfterInsert, isTrue);
+        expect(native.calls, contains('settingsChanged'));
+        cubit.setSendAfterInsert(false);
+        await settle();
+        expect(cubit.state.sendAfterInsert, isFalse);
+        expect(DictationSettings.load().sendAfterInsert, isFalse);
+      },
+    );
+
     test('правка уходит на диск и соседям — перечитать', () async {
       cubit.setThreads(8);
       await settle();
@@ -134,16 +150,19 @@ void main() {
       expect(cubit.state.hold.mods, ['leftctrl']);
     });
 
-    test('без универсального доступа назначение сразу объясняет причину', () async {
-      if (!Platform.isMacOS) return;
-      native.permitted = false;
-      await cubit.reassign('hold');
+    test(
+      'без универсального доступа назначение сразу объясняет причину',
+      () async {
+        if (!Platform.isMacOS) return;
+        native.permitted = false;
+        await cubit.reassign('hold');
 
-      expect(native.calls, isNot(contains('capture')));
-      expect(native.calls, contains('requestPermission'));
-      expect(cubit.state.allowed, isFalse);
-      expect(cubit.state.problem, contains('Универсальный доступ'));
-    });
+        expect(native.calls, isNot(contains('capture')));
+        expect(native.calls, contains('requestPermission'));
+        expect(cubit.state.allowed, isFalse);
+        expect(cubit.state.problem, contains('Универсальный доступ'));
+      },
+    );
   });
 
   group('модели', () {
@@ -402,25 +421,28 @@ void main() {
   });
 
   group('журналирование', () {
-    test('по умолчанию включено, сохраняется и синхронизирует Log.enabled', () async {
-      expect(cubit.state.loggingEnabled, isTrue);
-      expect(Log.enabled, isTrue);
+    test(
+      'по умолчанию включено, сохраняется и синхронизирует Log.enabled',
+      () async {
+        expect(cubit.state.loggingEnabled, isTrue);
+        expect(Log.enabled, isTrue);
 
-      cubit.setLoggingEnabled(false);
-      await settle();
+        cubit.setLoggingEnabled(false);
+        await settle();
 
-      expect(cubit.state.loggingEnabled, isFalse);
-      expect(Log.enabled, isFalse);
-      expect(Settings.load()['loggingEnabled'], isFalse);
-      expect(native.calls, contains('settingsChanged'));
+        expect(cubit.state.loggingEnabled, isFalse);
+        expect(Log.enabled, isFalse);
+        expect(Settings.load()['loggingEnabled'], isFalse);
+        expect(native.calls, contains('settingsChanged'));
 
-      cubit.setLoggingEnabled(true);
-      await settle();
+        cubit.setLoggingEnabled(true);
+        await settle();
 
-      expect(cubit.state.loggingEnabled, isTrue);
-      expect(Log.enabled, isTrue);
-      expect(Settings.load()['loggingEnabled'], isTrue);
-    });
+        expect(cubit.state.loggingEnabled, isTrue);
+        expect(Log.enabled, isTrue);
+        expect(Settings.load()['loggingEnabled'], isTrue);
+      },
+    );
   });
 }
 

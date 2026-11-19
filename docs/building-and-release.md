@@ -113,6 +113,12 @@ branch. A manual run performs the same tests and full distribution build, allowi
 validation before merging a pull request. Only successful builds pushed to `main`
 reserve version tags; manual candidate builds do not consume the version.
 
+Feature-branch builds use the isolated `candidate` environment and an ad-hoc
+signature, without access to the `release` signing certificate. They are test
+artifacts: use the existing developer signing identity before replacing an
+installed app to preserve its macOS Accessibility permission. Builds from `main`
+use the protected `release` environment.
+
 ```sh
 gh workflow run macos.yml --ref my-branch
 gh workflow run windows.yml --ref my-branch
