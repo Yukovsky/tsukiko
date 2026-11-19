@@ -1521,14 +1521,31 @@ final class DictationBridge: NSObject {
         }
       }
     }
-    // Ждём, пока цель окажется впереди (до ~1,5 с), потом даём фокусу
-    // дойти до поля раньше нажатия.
-    func wait(_ tries: Int) {
+    // Курсор уже там, где его оставили: ждать нечего.
+    let inPlace = targetInFront(target) && {
+      guard let was = target.element, let now = readFocus(target.pid).element else { return false }
+      return CFEqual(was, now)
+    }()
+    // Приложение впереди: поднимаем окно и поле, потом ждём, пока окно
+    // цели действительно окажется впереди (до ~0,5 с).
+    func settle(_ tries: Int) {
       if targetInFront(target) {
-        focusField()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+        if inPlace { return then(true) }
+        // Фокусу нужно мгновение, чтобы дойти до поля раньше нажатия.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
           then(self?.targetInFront(target) ?? false)
         }
+      } else if tries == 0 {
+        then(false)
+      } else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { settle(tries - 1) }
+      }
+    }
+    // Ждём активации приложения (до ~1,5 с).
+    func wait(_ tries: Int) {
+      if NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid {
+        if !inPlace { focusField() }
+        settle(25)
       } else if tries == 0 {
         then(false)
       } else {
@@ -1612,11 +1629,11 @@ final class DictationBridge: NSObject {
       case .unknown where tries == 0: done(.pasted)
       case .unchanged where tries == 0: done(.unverified("field unchanged after paste"))
       default:
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { check(tries - 1) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { check(tries - 1) }
       }
     }
     // Поле, которое не читается вовсе, ждать незачем.
-    if before == nil { done(.pasted) } else { check(15) }
+    if before == nil { done(.pasted) } else { check(30) }
   }
 
   /// Текст поля в фокусе (или число символов, если текст не отдают).
