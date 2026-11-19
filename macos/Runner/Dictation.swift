@@ -1354,33 +1354,44 @@ final class DictationBridge: NSObject {
     "company.thebrowser.Browser", "org.chromium.Chromium", "com.vivaldi.Vivaldi",
     "com.operasoftware.Opera",
   ]
-  private static let chromiumFrameworks = [
-    "Electron", "Chromium", "Google Chrome", "Microsoft Edge", "Brave Browser", "Arc",
-    // Codex поставляет Chromium под своим именем (в том числе внутри ChatGPT.app).
-    "Codex",
+  /// Свой движок (Rust, Java) почти ничего не рассказывает о поле: фокус
+  /// у них AXGroup или пусто, хотя курсор в редакторе. Для них «не поле»
+  /// не утверждаем. ponytail: список по bundle id, дополнять по жалобам.
+  private static let opaqueEditorIds = [
+    "dev.zed.Zed", "dev.warp.", "com.mitchellh.ghostty", "com.github.wez.wezterm",
+    "net.kovidgoyal.kitty", "org.alacritty", "com.jetbrains.", "com.google.android.studio",
   ]
   private var chromiumPids: [pid_t: Bool] = [:]
   private var preparedPids: Set<pid_t> = []
 
   /// Chromium или Electron: сами дерево доступности не строят, пока
-  /// им не скажут, что оно кому-то нужно.
+  /// им не скажут, что оно кому-то нужно. Узнаём по устройству пакета, а не
+  /// по имени: движок лежит в «<Имя> Framework.framework» с папкой Helpers,
+  /// и имя бывает любым (у Codex — «Codex Framework»).
   private func isChromium(_ pid: pid_t) -> Bool {
     if let known = chromiumPids[pid] { return known }
     var result = false
     if let app = NSRunningApplication(processIdentifier: pid) {
       let id = app.bundleIdentifier ?? ""
       result = Self.browserIds.contains { id.hasPrefix($0) }
-      if !result, let dir = app.bundleURL?.appendingPathComponent("Contents/Frameworks").path,
-        let names = try? FileManager.default.contentsOfDirectory(atPath: dir)
+      if !result, let dir = app.bundleURL?.appendingPathComponent("Contents/Frameworks"),
+        let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path)
       {
         result = names.contains { name in
-          name.hasSuffix(" Framework.framework")
-            && Self.chromiumFrameworks.contains { name.hasPrefix($0) }
+          name.hasSuffix(" Framework.framework") && FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent(name).appendingPathComponent("Helpers").path)
         }
       }
     }
     chromiumPids[pid] = result
     return result
+  }
+
+  /// Приложение, по дереву доступности которого «не поле» не докажешь.
+  private func isOpaque(_ pid: pid_t) -> Bool {
+    if isChromium(pid) { return true }
+    let id = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
+    return Self.opaqueEditorIds.contains { id.hasPrefix($0) }
   }
 
   /// Один раз на pid просим приложение построить дерево доступности.
@@ -1418,7 +1429,7 @@ final class DictationBridge: NSObject {
     let root = AXUIElementCreateApplication(pid)
     // Зависшее приложение не должно вешать нас на шесть секунд, как по умолчанию.
     AXUIElementSetMessagingTimeout(root, 0.5)
-    let chromium = isChromium(pid)
+    let chromium = isOpaque(pid)
     let window = Self.attribute(root, kAXFocusedWindowAttribute).map { $0 as! AXUIElement }
     var value: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &value)
