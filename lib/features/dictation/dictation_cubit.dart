@@ -999,6 +999,8 @@ class DictationCubit extends Cubit<DictationState> {
                 failure = switch (outcome) {
                   PasteOutcome.focusLost => currentL10n().insertNoField,
                   PasteOutcome.unverified => currentL10n().insertUnverified,
+                  _ when os.platformId == 'windows' =>
+                    currentL10n().insertFailedWindows,
                   _ => currentL10n().insertFailed(os.accessibilityName),
                 };
               }

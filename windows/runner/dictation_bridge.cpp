@@ -634,6 +634,14 @@ void DictationBridge::RegisterHandler(
       result->Success(flutter::EncodableValue(mic_live_.load()));
     } else if (method == "pressReturn") {
       result->Success(flutter::EncodableValue(PressReturn()));
+    } else if (method == "forgetTarget") {
+      if (const auto* args = std::get_if<flutter::EncodableMap>(call.arguments())) {
+        auto it = args->find(flutter::EncodableValue("target"));
+        if (it != args->end()) {
+          if (const auto* id = std::get_if<int32_t>(&it->second)) paste_targets_.erase(*id);
+        }
+      }
+      result->Success();
     } else if (method == "markTarget") {
       const int id = MarkPasteTarget();
       result->Success(id ? flutter::EncodableValue(id) : flutter::EncodableValue());
@@ -657,6 +665,17 @@ void DictationBridge::RegisterHandler(
                   SetTimer(main_window_, ID_PASTE_TIMER, 20, nullptr);
                   return;
                 }
+                // Цель уже забыта: вслепую в чужое окно не вставляем.
+                result->Success(flutter::EncodableValue(std::string("focus")));
+                return;
+              }
+            }
+            // Возврат к цели включён, а цели нет (впереди были мы сами).
+            auto requireIt = args->find(flutter::EncodableValue("requireTarget"));
+            if (requireIt != args->end()) {
+              if (const auto* require = std::get_if<bool>(&requireIt->second); require && *require) {
+                result->Success(flutter::EncodableValue(std::string("focus")));
+                return;
               }
             }
             result->Success(flutter::EncodableValue(PasteText(*text)));
@@ -2062,8 +2081,8 @@ int DictationBridge::MarkPasteTarget() {
   info.cbSize = sizeof(info);
   HWND focus = GetGUIThreadInfo(thread, &info) ? info.hwndFocus : nullptr;
   paste_targets_[++last_paste_target_] = {top, focus};
-  // Цели отменённых записей никто не заберёт — держим только свежие.
-  while (paste_targets_.size() > 16) paste_targets_.erase(paste_targets_.begin());
+  // Dart освобождает цели сам (forgetTarget); предел только от утечки.
+  while (paste_targets_.size() > 64) paste_targets_.erase(paste_targets_.begin());
   return last_paste_target_;
 }
 
@@ -2113,9 +2132,40 @@ void DictationBridge::FinishPendingPaste() {
   paste.result->Success(flutter::EncodableValue(PasteText(paste.text)));
 }
 
+namespace {
+bool TokenElevated(HANDLE process, bool* elevated) {
+  HANDLE token = nullptr;
+  if (!OpenProcessToken(process, TOKEN_QUERY, &token)) return false;
+  TOKEN_ELEVATION value{};
+  DWORD size = 0;
+  const bool ok = GetTokenInformation(token, TokenElevation, &value, sizeof(value), &size);
+  CloseHandle(token);
+  if (ok) *elevated = value.TokenIsElevated != 0;
+  return ok;
+}
+
+/// Окно запущено от администратора, а мы нет: Windows (UIPI) молча
+/// выбрасывает наши нажатия, хотя SendInput сообщает об успехе.
+bool InputBlockedByElevation(HWND window) {
+  bool self = false;
+  if (!window || !TokenElevated(GetCurrentProcess(), &self) || self) return false;
+  DWORD pid = 0;
+  GetWindowThreadProcessId(window, &pid);
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!process) return false;
+  bool target = false;
+  // Не прочитали — не знаем: вставку не запрещаем.
+  const bool read = TokenElevated(process, &target);
+  CloseHandle(process);
+  return read && target;
+}
+}  // namespace
+
 bool DictationBridge::PasteText(const std::string& text) {
   if (hud_ && hud_->editing()) return false;
   if (text.empty()) return true;
+  // Текст остаётся в буфере: Dart положит его туда и скажет об этом.
+  if (InputBlockedByElevation(GetForegroundWindow())) return false;
 
   if (!OpenClipboardPatiently(main_window_)) return false;
 
