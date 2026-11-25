@@ -16,6 +16,7 @@ class AdaptiveNoiseFilter {
 
   double _noiseFloorDb = -50.0;
   double _meterLevel = 0.0;
+  double _speechLevel = 0.0;
   DateTime? _lastUpdate;
 
   double get noiseFloorDb => _noiseFloorDb;
@@ -25,6 +26,7 @@ class AdaptiveNoiseFilter {
   void reset() {
     _noiseFloorDb = -50.0;
     _meterLevel = 0.0;
+    _speechLevel = 0.0;
     _lastUpdate = null;
   }
 
@@ -67,6 +69,7 @@ class AdaptiveNoiseFilter {
     final target = top > bottom
         ? ((db - bottom) / (top - bottom)).clamp(0.0, 1.0)
         : 0.0;
+    _speechLevel = target;
 
     // Баллистика: атака 20 мс, спад 300 мс (время интеграции VU-метра)
     final tau = target > _meterLevel ? 0.02 : 0.3;
@@ -76,8 +79,13 @@ class AdaptiveNoiseFilter {
   }
 
   /// Проверить, звучит ли в данном фрагменте человеческая речь выше фонового шума.
-  bool isSpeech(Float32List samples, {double threshold = 0.08}) {
+  bool isSpeech(
+    Float32List samples, {
+    double threshold = 0.08,
+    bool immediate = false,
+  }) {
+    if (samples.isEmpty) return false;
     final level = update(samples);
-    return level >= threshold;
+    return (immediate ? _speechLevel : level) >= threshold;
   }
 }

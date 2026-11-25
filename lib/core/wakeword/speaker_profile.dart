@@ -8,7 +8,7 @@ import '../../platform/os.dart' show os;
 import 'keyword_tokenizer.dart';
 import 'personal_keyword_spotter.dart';
 
-/// Персональные акустические шаблоны обоих ключевых слов и созвучных слов.
+/// Персональные акустические шаблоны ключевых слов и созвучных слов.
 /// Старые эмбеддинги сохраняются только для чтения прежних профилей.
 class SpeakerProfile {
   const SpeakerProfile({
@@ -17,12 +17,16 @@ class SpeakerProfile {
     required this.embeddings,
     this.wakeWord = 'Джеф',
     this.closeWord = '',
+    this.enterWord = '',
     this.wakeTemplates = const [],
     this.closeTemplates = const [],
+    this.enterTemplates = const [],
     this.wakeNegatives = const [],
     this.closeNegatives = const [],
+    this.enterNegatives = const [],
     this.wakeSpellings = const [],
     this.closeSpellings = const [],
+    this.enterSpellings = const [],
     this.threshold = 0.60,
     this.createdAt,
   });
@@ -32,10 +36,13 @@ class SpeakerProfile {
   final List<Float32List> embeddings;
   final String wakeWord;
   final String closeWord;
+  final String enterWord;
   final List<KeywordTemplate> wakeTemplates;
   final List<KeywordTemplate> closeTemplates;
+  final List<KeywordTemplate> enterTemplates;
   final List<KeywordTemplate> wakeNegatives;
   final List<KeywordTemplate> closeNegatives;
+  final List<KeywordTemplate> enterNegatives;
 
   /// Как распознаватель второго этапа пишет слово, сказанное этим человеком:
   /// «Джев» он пишет «джефф», японское слово — то каной, то иероглифами.
@@ -44,6 +51,7 @@ class SpeakerProfile {
   /// Пусто — профиль старше этой проверки.
   final List<String> wakeSpellings;
   final List<String> closeSpellings;
+  final List<String> enterSpellings;
   final double threshold;
   final DateTime? createdAt;
 
@@ -61,6 +69,12 @@ class SpeakerProfile {
       KeywordTokenizer.normalizeKeywordText(closeWord) ==
           KeywordTokenizer.normalizeKeywordText(close);
 
+  bool hasEnterTemplatesFor(String enter) =>
+      enter.trim().isNotEmpty &&
+      enterTemplates.length >= 3 &&
+      KeywordTokenizer.normalizeKeywordText(enterWord) ==
+          KeywordTokenizer.normalizeKeywordText(enter);
+
   bool hasPersonalKeywordsFor(String wake, [String close = '']) =>
       hasWakeTemplatesFor(wake) &&
       (close.trim().isEmpty ||
@@ -73,12 +87,16 @@ class SpeakerProfile {
     List<Float32List>? embeddings,
     String? wakeWord,
     String? closeWord,
+    String? enterWord,
     List<KeywordTemplate>? wakeTemplates,
     List<KeywordTemplate>? closeTemplates,
+    List<KeywordTemplate>? enterTemplates,
     List<KeywordTemplate>? wakeNegatives,
     List<KeywordTemplate>? closeNegatives,
+    List<KeywordTemplate>? enterNegatives,
     List<String>? wakeSpellings,
     List<String>? closeSpellings,
+    List<String>? enterSpellings,
     double? threshold,
     DateTime? createdAt,
   }) => SpeakerProfile(
@@ -87,31 +105,38 @@ class SpeakerProfile {
     embeddings: embeddings ?? this.embeddings,
     wakeWord: wakeWord ?? this.wakeWord,
     closeWord: closeWord ?? this.closeWord,
+    enterWord: enterWord ?? this.enterWord,
     wakeTemplates: wakeTemplates ?? this.wakeTemplates,
     closeTemplates: closeTemplates ?? this.closeTemplates,
+    enterTemplates: enterTemplates ?? this.enterTemplates,
     wakeNegatives: wakeNegatives ?? this.wakeNegatives,
     closeNegatives: closeNegatives ?? this.closeNegatives,
+    enterNegatives: enterNegatives ?? this.enterNegatives,
     wakeSpellings: wakeSpellings ?? this.wakeSpellings,
     closeSpellings: closeSpellings ?? this.closeSpellings,
+    enterSpellings: enterSpellings ?? this.enterSpellings,
     threshold: threshold ?? this.threshold,
     createdAt: createdAt ?? this.createdAt,
   );
 
   /// Удалить калибровку слова активации, сохранив слово завершения (если есть).
   bool clearWakeCalibration([String? path]) {
-    if (closeTemplates.isEmpty && embeddings.isEmpty) {
+    if (closeTemplates.isEmpty &&
+        enterTemplates.isEmpty &&
+        embeddings.isEmpty) {
       return delete(path);
     }
     return copyWith(
       wakeTemplates: const [],
       wakeNegatives: const [],
       wakeSpellings: const [],
+      createdAt: DateTime.now(),
     ).save(path);
   }
 
   /// Удалить калибровку слова завершения, сохранив слово активации (если есть).
   bool clearCloseCalibration([String? path]) {
-    if (wakeTemplates.isEmpty && embeddings.isEmpty) {
+    if (wakeTemplates.isEmpty && enterTemplates.isEmpty && embeddings.isEmpty) {
       return delete(path);
     }
     return copyWith(
@@ -119,6 +144,20 @@ class SpeakerProfile {
       closeTemplates: const [],
       closeNegatives: const [],
       closeSpellings: const [],
+      createdAt: DateTime.now(),
+    ).save(path);
+  }
+
+  bool clearEnterCalibration([String? path]) {
+    if (wakeTemplates.isEmpty && closeTemplates.isEmpty && embeddings.isEmpty) {
+      return delete(path);
+    }
+    return copyWith(
+      enterWord: '',
+      enterTemplates: const [],
+      enterNegatives: const [],
+      enterSpellings: const [],
+      createdAt: DateTime.now(),
     ).save(path);
   }
 
@@ -151,7 +190,8 @@ class SpeakerProfile {
       final profile = SpeakerProfile.fromJson(json);
       if (profile.embeddings.isEmpty &&
           profile.wakeTemplates.isEmpty &&
-          profile.closeTemplates.isEmpty) {
+          profile.closeTemplates.isEmpty &&
+          profile.enterTemplates.isEmpty) {
         return null;
       }
       return profile;
@@ -178,12 +218,20 @@ class SpeakerProfile {
     'dimension': dimension,
     'wakeWord': wakeWord,
     'closeWord': closeWord,
+    'enterWord': enterWord,
     'wakeTemplates': wakeTemplates
         .map((template) => template.toJson())
         .toList(),
     'closeTemplates': closeTemplates
         .map((template) => template.toJson())
         .toList(),
+    'enterTemplates': enterTemplates
+        .map((template) => template.toJson())
+        .toList(),
+    'enterNegatives': enterNegatives
+        .map((template) => template.toJson())
+        .toList(),
+    'enterSpellings': enterSpellings,
     'wakeNegatives': wakeNegatives
         .map((template) => template.toJson())
         .toList(),
@@ -249,6 +297,10 @@ class SpeakerProfile {
       embeddings: embeddingsList,
       wakeWord: wakeWord,
       closeWord: (json['closeWord'] as String?) ?? '',
+      enterWord: (json['enterWord'] as String?) ?? '',
+      enterTemplates: readTemplates(json['enterTemplates']),
+      enterNegatives: readTemplates(json['enterNegatives']),
+      enterSpellings: readStrings(json['enterSpellings']),
       wakeTemplates: readTemplates(json['wakeTemplates']),
       closeTemplates: readTemplates(json['closeTemplates']),
       wakeNegatives: readTemplates(json['wakeNegatives']),

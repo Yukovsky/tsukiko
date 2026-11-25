@@ -161,19 +161,32 @@ void main() {
   });
 
   group('SpeechVerifier Keyword Matching', () {
-    test('второй этап: слово активации — с допуском, завершение — одно', () {
-      // Spellings whisper base produced for the spoken wake word "Джев".
-      for (final heard in ['Дев', 'Джев.', '- Джеев.', 'Древ.', 'Джефф,']) {
-        expect(SpeechVerifier.matchesSpokenKeyword(heard, 'Джев'), isTrue);
-      }
-      expect(SpeechVerifier.matchesSpokenKeyword('Джинсы', 'Джев'), isFalse);
-      expect(SpeechVerifier.matchesSpokenKeyword('М-м-м', 'Джев'), isFalse);
-      expect(SpeechVerifier.matchesOnlyCommand('Пока.', 'Пока'), isTrue);
-      expect(SpeechVerifier.matchesOnlyCommand('Пока. Пока!', 'Пока'), isTrue);
-      for (final phrase in ['Всем пока.', 'Я пока', 'Пока что', 'Пора']) {
-        expect(SpeechVerifier.matchesOnlyCommand(phrase, 'Пока'), isFalse);
-      }
-    });
+    test(
+      'второй этап: точные варианты активации и отдельное слово завершения',
+      () {
+        for (final heard in ['Джев.', '- Джеев.', 'Джефф,', 'Jeff']) {
+          expect(SpeechVerifier.matchesSpokenKeyword(heard, 'Джев'), isTrue);
+        }
+        for (final heard in [
+          'Дев',
+          'Древ',
+          'Джеп',
+          'Джек',
+          'Джинсы',
+          'М-м-м',
+        ]) {
+          expect(SpeechVerifier.matchesSpokenKeyword(heard, 'Джев'), isFalse);
+        }
+        expect(SpeechVerifier.matchesOnlyCommand('Пока.', 'Пока'), isTrue);
+        expect(
+          SpeechVerifier.matchesOnlyCommand('Пока. Пока!', 'Пока'),
+          isTrue,
+        );
+        for (final phrase in ['Всем пока.', 'Я пока', 'Пока что', 'Пора']) {
+          expect(SpeechVerifier.matchesOnlyCommand(phrase, 'Пока'), isFalse);
+        }
+      },
+    );
 
     test(
       'с выученными написаниями слово принимается только точно и первым',
@@ -196,7 +209,7 @@ void main() {
       },
     );
 
-    test('без написаний старый допуск только для первого слова', () {
+    test('без калиброванных написаний проверяется начало фразы', () {
       expect(
         SpeechVerifier.matchesSpokenKeyword('Джеев, привет', 'Джев'),
         isTrue,

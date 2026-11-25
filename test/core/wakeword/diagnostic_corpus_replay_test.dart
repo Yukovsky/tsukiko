@@ -164,6 +164,11 @@ void main() {
             candidate.audio,
             mode == 'close' ? closeWord : wakeWord,
             isClose: mode == 'close',
+            spellings:
+                (mode == 'close'
+                    ? profile?.closeSpellings
+                    : profile?.wakeSpellings) ??
+                const [],
           );
           if (confirmed ?? candidate.strict) detections[mode]!.add(at);
         }

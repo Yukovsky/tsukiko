@@ -725,10 +725,28 @@ class _SettingsBodyState extends State<SettingsBody>
         word: s.closeWord,
         isCalibrated: s.closeProfileExists,
         isWordEmpty: s.closeWord.trim().isEmpty,
-        onCalibrate: () => _openCloseCalibration(s.closeWord),
+        onCalibrate: () => _openCompletionCalibration(s.closeWord),
         onDelete: () => _cubit.deleteCloseProfile(),
         l10n: l10n,
       ),
+      if (effectiveEnterWord(
+        s.enterWord,
+        s.wakeWord,
+        s.closeWord,
+      ).isNotEmpty) ...[
+        const SizedBox(height: Gap.inner),
+        _buildCalibrationCard(
+          context: context,
+          title: l10n.calibrationEnterTitle,
+          word: s.enterWord,
+          isCalibrated: s.enterProfileExists,
+          isWordEmpty: false,
+          onCalibrate: () =>
+              _openCompletionCalibration(s.enterWord, enter: true),
+          onDelete: _cubit.deleteEnterProfile,
+          l10n: l10n,
+        ),
+      ],
     ],
     ..._ownVoiceSection(s),
     SectionTitle(l10n.wakeDiagnosticsTitle),
@@ -1013,13 +1031,21 @@ class _SettingsBodyState extends State<SettingsBody>
     }
   }
 
-  Future<bool?> _openCloseCalibration(String closeWord) async {
+  Future<bool?> _openCompletionCalibration(
+    String word, {
+    bool enter = false,
+  }) async {
     await _cubit.bridge.setCalibrationActive(true);
     try {
       if (!mounted) return null;
-      final result = await VoiceCalibrationSheet.showClose(
+      final result = await VoiceCalibrationSheet.show(
         context,
-        closeWord: closeWord,
+        target: enter
+            ? VoiceCalibrationTarget.enter
+            : VoiceCalibrationTarget.close,
+        wakeWord: '',
+        closeWord: enter ? '' : word,
+        enterWord: enter ? word : '',
         bridge: _cubit.bridge,
         onProfileCreated: _cubit.refreshSpeakerProfile,
       );

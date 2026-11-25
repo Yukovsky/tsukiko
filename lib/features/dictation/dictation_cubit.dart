@@ -28,7 +28,7 @@ import '../../core/wakeword/wakeword_service.dart';
 import '../../core/wakeword/speaker_profile.dart';
 import '../../core/wakeword/speech_verifier.dart';
 import '../../core/wakeword/keyword_tokenizer.dart'
-    show effectiveEnterWord, stripTrailingCloseWord, takeTrailingEnterWord;
+    show stripTrailingCloseWord;
 import '../../core/diarization/own_voice.dart';
 import '../../core/diarization/own_voice_models.dart';
 
@@ -180,10 +180,7 @@ class DictationCubit extends Cubit<DictationState> {
         if (!_settings.wakeWordEnabled || _calibrating) {
           return {'recording': false, 'error': 'wake_disabled'};
         }
-        if (!(SpeakerProfile.load()?.hasPersonalKeywordsFor(
-              _settings.wakeWord,
-              _settings.closeWord,
-            ) ??
+        if (!(SpeakerProfile.load()?.hasWakeTemplatesFor(_settings.wakeWord) ??
             false)) {
           return {'recording': false, 'error': 'profile'};
         }
@@ -233,11 +230,13 @@ class DictationCubit extends Cubit<DictationState> {
         start(startedByVoice: true);
       }
     };
-    s.onCloseWordTriggered = () {
-      if (state.recording) {
-        stop();
-      }
-    };
+    void finishSpokenCommand({required bool enter}) {
+      if (!state.recording || state.conversation) return;
+      _stop(spokenCompletion: s.completionSpellings(enter: enter), send: enter);
+    }
+
+    s.onCloseWordTriggered = () => finishSpokenCommand(enter: false);
+    s.onEnterWordTriggered = () => finishSpokenCommand(enter: true);
     s.onSilenceTimeoutTriggered = () {
       if (state.recording) {
         stop();
@@ -755,9 +754,15 @@ class DictationCubit extends Cubit<DictationState> {
     _wav = path;
   }
 
-  Future<void> stop() async {
+  Future<void> stop() => _stop();
+
+  Future<void> _stop({
+    List<String> spokenCompletion = const [],
+    bool send = false,
+  }) async {
     if (_startingRecording != null) {
-      _finishAfterStart ??= stop;
+      _finishAfterStart ??= () =>
+          _stop(spokenCompletion: spokenCompletion, send: send);
       return;
     }
     if (_finishingRecording != null || !state.recording) return;
@@ -781,7 +786,7 @@ class DictationCubit extends Cubit<DictationState> {
         job = _DictationJob(
           path,
           _options,
-          _settings.closeWord,
+          spokenCompletion,
           _settings.insert,
           _settings.keepClipboard,
           _commandsEnabled,
@@ -791,11 +796,6 @@ class DictationCubit extends Cubit<DictationState> {
           target: marked?.id,
           returnToTarget: returnToTarget,
           field: marked?.field ?? FieldState.unknown,
-          enterWord: effectiveEnterWord(
-            _settings.enterWord,
-            _settings.wakeWord,
-            _settings.closeWord,
-          ),
           fieldHint: showFieldHint(
             marked?.field ?? FieldState.unknown,
             warn: _settings.warnNoField,
@@ -805,7 +805,7 @@ class DictationCubit extends Cubit<DictationState> {
         // Enter остаётся только у последнего задания — решаем здесь, в миг
         // постановки в очередь, а не при начале записи.
         clearEnterBefore([?_active, ..._pending]);
-        job.enter = _recordEnter && _settings.insert;
+        job.enter = (_recordEnter || send) && job.insert;
         _pending.add(job);
       }
       _emit(state.copyWith(phase: _restingPhase));
@@ -929,25 +929,14 @@ class DictationCubit extends Cubit<DictationState> {
         } else {
           _discard(path);
           var text = recognized;
-          if (job.closeWord.trim().isNotEmpty) {
-            text = stripTrailingCloseWord(text, job.closeWord);
-          }
-          // Слово «с Enter» — то же, что «Отправить», но голосом. Пометка
-          // ставится по тем же правилам: только со вставкой и только если
-          // за этим заданием в очереди нет более нового, иначе Enter упал бы
-          // в середину чужой серии вставок.
-          final (rest, enterSpoken) = takeTrailingEnterWord(
-            text,
-            job.enterWord,
-          );
-          if (enterSpoken) {
+          // Only a confirmed live voice command may remove dictated text.
+          final spellings = job.spokenCompletion.toList()
+            ..sort((a, b) => b.length.compareTo(a.length));
+          for (final word in spellings) {
+            final rest = stripTrailingCloseWord(text, word);
+            if (rest == text) continue;
             text = rest;
-            if (job.insert &&
-                !job.aborted &&
-                _pending.every((j) => !j.markable)) {
-              job.enter = true;
-              unawaited(_showActivity());
-            }
+            break;
           }
           if (job.commandsEnabled) {
             text = applyVocabularyReplacements(text, job.vocabulary).text;
@@ -1566,7 +1555,7 @@ class _DictationJob extends EnterMark {
   _DictationJob(
     this.path,
     this.options,
-    this.closeWord,
+    this.spokenCompletion,
     this.insert,
     this.keepClipboard,
     this.commandsEnabled,
@@ -1577,7 +1566,6 @@ class _DictationJob extends EnterMark {
     this.returnToTarget = false,
     this.field = FieldState.unknown,
     this.fieldHint = false,
-    this.enterWord = '',
   });
   final String path;
 
@@ -1592,10 +1580,7 @@ class _DictationJob extends EnterMark {
   final bool ownVoiceOnly;
   final double ownVoiceThreshold;
   final RunOptions options;
-  final String closeWord;
-
-  /// Допустимое слово «с Enter» (пусто — выключено).
-  final String enterWord;
+  final List<String> spokenCompletion;
   final bool insert, keepClipboard, commandsEnabled;
   final List<VocabularyItem> vocabulary;
   final done = Completer<void>();

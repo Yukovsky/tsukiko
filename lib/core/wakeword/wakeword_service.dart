@@ -38,7 +38,7 @@ class WakeWordService {
   /// acoustic detections count.
   final SpeechVerifier? verifier;
   bool _verifierReady = false;
-  bool _verifying = false;
+  int? _verifyingEpoch;
   int _stateEpoch = 0;
 
   WakeWordListeningState _state = WakeWordListeningState.disabled;
@@ -55,6 +55,7 @@ class WakeWordService {
   static const int _maxRapidRestarts = 3;
   DictationSettings? _settings;
   SpeakerProfile? _profile;
+  String _enterWord = '';
   WakeDiagnosticsSession? _diagnostics;
 
   bool get isDiagnosing => _diagnostics != null;
@@ -67,12 +68,7 @@ class WakeWordService {
       wakeWord: _settings!.wakeWord,
       closeWord: _settings!.closeWord,
       profile: _profile,
-      detector:
-          _profile?.hasPersonalKeywordsFor(
-                _settings!.wakeWord,
-                _settings!.closeWord,
-              ) ??
-              false
+      detector: (_profile?.hasWakeTemplatesFor(_settings!.wakeWord) ?? false)
           ? 'personal-mfcc-dtw'
           : 'sherpa-onnx',
       root: root,
@@ -108,10 +104,23 @@ class WakeWordService {
   /// locking the detector until the next manual recording.
   bool Function()? canTriggerWakeWord;
   void Function()? onCloseWordTriggered;
+  void Function()? onEnterWordTriggered;
   void Function()? onSilenceTimeoutTriggered;
   void Function(String error)? onError;
 
-  /// Время последней зафиксированной речи для таймера тишины (2.0 секунды).
+  List<String> completionSpellings({required bool enter}) {
+    final word = enter ? _enterWord : _settings?.closeWord ?? '';
+    final profile = _profile;
+    return [
+      word,
+      if (enter && (profile?.hasEnterTemplatesFor(word) ?? false))
+        ...profile!.enterSpellings,
+      if (!enter && (profile?.hasCloseTemplatesFor(word) ?? false))
+        ...profile!.closeSpellings,
+    ];
+  }
+
+  /// Последняя зафиксированная речь, для таймера тишины (2 с).
   DateTime? _lastSpeechTime;
   static const Duration silenceThreshold = Duration(milliseconds: 2000);
 
@@ -139,10 +148,24 @@ class WakeWordService {
     }
 
     final nextProfile = profile ?? SpeakerProfile.load();
+    final configuredEnter = settings.insert
+        ? effectiveEnterWord(
+            settings.enterWord,
+            settings.wakeWord,
+            settings.closeWord,
+          )
+        : '';
+    final verifierAvailable = verifier?.isAvailable ?? false;
+    final enterWord =
+        verifierAvailable &&
+            (nextProfile?.hasEnterTemplatesFor(configuredEnter) ?? false)
+        ? configuredEnter
+        : '';
     // A new calibration changes the detector itself, so rebuild its stream.
     if (_state != WakeWordListeningState.disabled &&
         _settings?.wakeWord == settings.wakeWord &&
         _settings?.closeWord == settings.closeWord &&
+        _enterWord == enterWord &&
         _profile?.createdAt == nextProfile?.createdAt) {
       _settings = settings;
       _profile = nextProfile;
@@ -155,6 +178,7 @@ class WakeWordService {
 
     _settings = settings;
     _profile = nextProfile;
+    _enterWord = enterWord;
 
     final hasPerm = await _audioSource.hasPermission();
     if (_operationGeneration != generation) return false;
@@ -168,6 +192,7 @@ class WakeWordService {
     final kwsOk = await _engine.initKeywordSpotter(
       wakeWord: settings.wakeWord,
       closeWord: settings.closeWord,
+      enterWord: _enterWord,
       profile: _profile,
     );
     if (_operationGeneration != generation) return false;
@@ -178,15 +203,11 @@ class WakeWordService {
       return false;
     }
 
-    // Only the personal detector proposes short candidate windows; the
-    // legacy Sherpa path keeps its own decisions.
+    // The personal detector proposes short candidate windows for verification.
     _verifierReady =
-        (_profile?.hasPersonalKeywordsFor(
-              settings.wakeWord,
-              settings.closeWord,
-            ) ??
-            false) &&
-        (verifier?.isAvailable ?? false);
+        verifierAvailable &&
+        ((_profile?.hasWakeTemplatesFor(settings.wakeWord) ?? false) ||
+            _enterWord.isNotEmpty);
     if (_engine is StreamingSherpaEngine) {
       _engine.setProposeCandidates(_verifierReady);
     }
@@ -195,7 +216,9 @@ class WakeWordService {
       unawaited(
         verifier!.prepare(
           wakeWord: settings.wakeWord,
-          closeWord: settings.closeWord,
+          closeWord: SpeechVerifier.isRussian(settings.closeWord)
+              ? settings.closeWord
+              : _enterWord,
         ),
       );
     }
@@ -271,6 +294,7 @@ class WakeWordService {
   Future<void> pauseForSleep() async {
     if (_isSuspendedForSleep || _state == WakeWordListeningState.disabled) return;
     _isSuspendedForSleep = true;
+    _stateEpoch++;
     _audioWatchdog?.cancel();
     _audioWatchdog = null;
     // Рестарт потока мог уже идти (после пробуждения вотчдог срабатывает
@@ -477,7 +501,12 @@ class WakeWordService {
     _engine.acceptAudio(samples);
 
     final now = DateTime.now();
-    final bool isSpeech = _engine.isSpeech(samples);
+    // The VAD's trailing envelope tracks silence timeout. During verification
+    // only fresh microphone energy should invalidate an isolated command.
+    final isSpeech = _engine.isSpeech(
+      samples,
+      immediate: _verifyingEpoch == _stateEpoch,
+    );
     if (isSpeech) {
       _lastSpeechTime = now;
     }
@@ -529,43 +558,54 @@ class WakeWordService {
         settings.closeWord,
       );
 
-      // Проверка на CloseWord
-      if (closeWord.isNotEmpty &&
-          (mode == PhraseCompletionMode.closeWordOnly ||
-              mode == PhraseCompletionMode.hybrid)) {
-        if (!_triggeredInCurrentState) {
-          final detection = _engine.detectKeyword();
-          if (detection != null) {
-            final detected = KeywordTokenizer.normalizeKeywordText(
-              detection.keyword,
-            );
-            if (detected == closeWord) {
-              _confirm(
-                detection,
-                isClose: true,
-                fire: () {
-                  _diagnostics?.event('close_triggered', {'keyword': detected});
-                  Log.info('WakeWord', 'CloseWord "$closeWord" detected');
-                  _triggeredInCurrentState = true;
-                  _lastCompletionAt = DateTime.now();
+      final enterWord = _verifierReady
+          ? KeywordTokenizer.normalizeKeywordText(_enterWord)
+          : '';
+      final hasCompletionWord = closeWord.isNotEmpty || enterWord.isNotEmpty;
+      if (hasCompletionWord &&
+          mode != PhraseCompletionMode.silenceOnly &&
+          !_triggeredInCurrentState) {
+        final detection = _engine.detectKeyword();
+        if (detection != null) {
+          final detected = KeywordTokenizer.normalizeKeywordText(
+            detection.keyword,
+          );
+          final isEnter = enterWord.isNotEmpty && detected == enterWord;
+          if (isEnter || (closeWord.isNotEmpty && detected == closeWord)) {
+            _confirm(
+              detection,
+              isClose: true,
+              isEnter: isEnter,
+              fire: () {
+                if (_settings?.completionMode ==
+                        PhraseCompletionMode.silenceOnly ||
+                    (isEnter && _settings?.insert != true)) {
+                  return;
+                }
+                _diagnostics?.event(
+                  isEnter ? 'enter_triggered' : 'close_triggered',
+                  {'keyword': detected},
+                );
+                Log.info('WakeWord', 'Completion keyword "$detected" detected');
+                _triggeredInCurrentState = true;
+                _lastCompletionAt = DateTime.now();
+                if (isEnter) {
+                  onEnterWordTriggered?.call();
+                } else {
                   onCloseWordTriggered?.call();
-                },
-              );
-              return;
-            }
+                }
+              },
+            );
+            return;
           }
         }
       }
 
-      // Проверка на тишину (2.0 секунды).
-      // ВАЖНО: Согласно правилам tsukiko, таймаут тишины/простоя (2-3 сек)
-      // работает ТОЛЬКО если запись была инициирована голосом (startedByVoice).
-      // Если запись была начата с клавиатуры или UI, таймаут тишины НЕ должен
-      // останавливать диктовку!
+      // Give an isolated command time for verification before stopping on silence.
       if (_startedByVoice &&
-          (mode == PhraseCompletionMode.silenceOnly ||
-              mode == PhraseCompletionMode.hybrid ||
-              closeWord.isEmpty)) {
+          !_triggeredInCurrentState &&
+          _verifyingEpoch != _stateEpoch &&
+          (mode != PhraseCompletionMode.closeWordOnly || !hasCompletionWord)) {
         if (_lastSpeechTime != null) {
           final silenceDuration = now.difference(_lastSpeechTime!);
           if (silenceDuration >= silenceThreshold) {
@@ -590,55 +630,64 @@ class WakeWordService {
   void _confirm(
     KeywordDetection detection, {
     required bool isClose,
+    bool isEnter = false,
     required void Function() fire,
   }) {
     final audio = detection.samples;
     final v = verifier;
-    if (!_verifierReady || v == null || audio == null) {
-      if (detection.strict) fire();
+    final hasPersonalWake =
+        _profile?.hasWakeTemplatesFor(_settings?.wakeWord ?? '') ?? false;
+    if (!_verifierReady ||
+        (!isEnter && !hasPersonalWake) ||
+        v == null ||
+        audio == null) {
+      if (!isEnter && detection.strict) fire();
       return;
     }
-    if (_verifying) return;
-    _verifying = true;
-    final generation = _operationGeneration;
     final epoch = _stateEpoch;
-    final word = isClose
+    if (_verifyingEpoch == epoch) return;
+    _verifyingEpoch = epoch;
+    final lastSpeech = _lastSpeechTime;
+    final word = isEnter
+        ? _enterWord
+        : isClose
         ? _settings?.closeWord ?? ''
         : _settings?.wakeWord ?? '';
     final profile = _profile;
-    final spellings = profile == null
-        ? const <String>[]
-        : isClose
-        ? (profile.hasCloseTemplatesFor(word)
-              ? profile.closeSpellings
-              : const <String>[])
-        : (profile.hasWakeTemplatesFor(word)
-              ? profile.wakeSpellings
-              : const <String>[]);
-    unawaited(
-      v
-          .confirmKeyword(audio, word, isClose: isClose, spellings: spellings)
-          .then((confirmed) {
-            _verifying = false;
-            if (generation != _operationGeneration ||
-                epoch != _stateEpoch ||
-                _triggeredInCurrentState ||
-                _state == WakeWordListeningState.disabled) {
-              return;
-            }
-            // A broken recognizer must not disable voice activation entirely.
-            final accept = confirmed ?? detection.strict;
-            _diagnostics?.event('verified', {
-              'close': isClose,
-              'strict': detection.strict,
-              'confirmed': confirmed,
-              // Что услышал второй этап — без этого разбор ложных
-              // срабатываний приходится восстанавливать по звуку.
-              'heard': v.lastHeard,
-            });
-            if (accept) fire();
-          }),
-    );
+    final spellings = isClose
+        ? completionSpellings(enter: isEnter)
+        : (profile?.hasWakeTemplatesFor(word) ?? false)
+        ? profile!.wakeSpellings
+        : const <String>[];
+    unawaited(() async {
+      bool? confirmed;
+      try {
+        confirmed = await v.confirmKeyword(
+          audio,
+          word,
+          isClose: isClose,
+          spellings: spellings,
+        );
+      } catch (e, st) {
+        Log.error('WakeWord', 'Keyword verification failed: $e', e, st);
+      } finally {
+        if (_verifyingEpoch == epoch) _verifyingEpoch = null;
+      }
+      if (epoch != _stateEpoch ||
+          _triggeredInCurrentState ||
+          _state == WakeWordListeningState.disabled ||
+          (isClose && _lastSpeechTime != lastSpeech)) {
+        return;
+      }
+      _diagnostics?.event('verified', {
+        'close': isClose,
+        'enter': isEnter,
+        'strict': detection.strict,
+        'confirmed': confirmed,
+        'heard': v.lastHeard,
+      });
+      if (confirmed ?? (!isEnter && detection.strict)) fire();
+    }());
   }
 
   /// Остановить сервис.

@@ -1,8 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tsukiko/core/wakeword/audio_stream_source.dart';
 import 'package:tsukiko/core/wakeword/sherpa_engine.dart';
+import 'package:tsukiko/core/wakeword/personal_keyword_spotter.dart';
+import 'package:tsukiko/core/wakeword/speaker_profile.dart';
+import 'package:tsukiko/core/wakeword/speech_verifier.dart';
 import 'package:tsukiko/core/wakeword/wakeword_service.dart';
 import 'package:tsukiko/core/whisper.dart';
 import 'package:tsukiko/core/whisper_server.dart';
@@ -32,6 +37,7 @@ void main() {
     wakeWordService = WakeWordService(
       audioSource: audioSource,
       engine: engine,
+      verifier: _EnterVerifier(),
     );
 
     NativeBridge.debugReset();
@@ -105,11 +111,78 @@ void main() {
     wakeWordService.onCloseWordTriggered?.call();
     await cubit.stream.firstWhere((s) => s.phase == Phase.idle);
 
-    expect(cubit.state.recording, isFalse);
-    // Хвостовое слово «стоп.» должно быть отрезано из итогового текста
-    expect(cubit.state.last, 'Запиши встречу на завтра');
-    expect(native.pasted, 'Запиши встречу на завтра');
-  });
+      expect(cubit.state.recording, isFalse);
+      // Хвостовое слово «стоп.» должно быть отрезано из итогового текста
+      expect(cubit.state.last, 'Запиши встречу на завтра');
+      expect(native.pasted, 'Запиши встречу на завтра');
+    },
+  );
+
+  test(
+    'center останавливает запись и отправляет текст ровно один раз',
+    () async {
+      final sample = KeywordTemplate(
+        durationSamples: 8000,
+        frames: [for (var i = 0; i < 20; i++) Float32List(12)],
+      );
+      expect(
+        SpeakerProfile(
+          name: 'user',
+          dimension: 192,
+          embeddings: const [],
+          enterWord: 'center',
+          enterTemplates: [sample, sample, sample],
+          enterSpellings: ['centre'],
+        ).save(),
+        isTrue,
+      );
+      DictationSettings(
+        wakeWordEnabled: true,
+        closeWord: 'стоп',
+        enterWord: 'center',
+        completionMode: PhraseCompletionMode.closeWordOnly,
+      ).save();
+      await cubit.reloadSettingsForTesting();
+      await settle();
+      expect(engine.configuredEnterWord, 'center');
+      server.text = 'Найди документ. Centre.';
+      await cubit.start();
+      expect(cubit.state.recording, isTrue);
+      final completed = cubit.stream.firstWhere(
+        (s) => s.phase == Phase.idle && s.last == 'Найди документ.',
+      );
+      engine.queuedDetection = KeywordDetection(
+        keyword: 'center',
+        samples: Float32List(8000),
+      );
+      audioSource.pushSamples(Float32List(1600));
+      await completed.timeout(const Duration(seconds: 4));
+      expect(native.pasted, 'Найди документ.');
+      expect(native.calls.where((c) => c == 'pressReturn'), hasLength(1));
+      expect(
+        native.calls.indexOf('paste'),
+        lessThan(native.calls.indexOf('pressReturn')),
+      );
+    },
+  );
+
+  test(
+    'при ручной остановке обычное слово в конце не отправляет текст',
+    () async {
+      DictationSettings(
+        wakeWordEnabled: true,
+        closeWord: 'стоп',
+        enterWord: 'center',
+        completionMode: PhraseCompletionMode.closeWordOnly,
+      ).save();
+      await cubit.reloadSettingsForTesting();
+      server.text = 'Go to the center.';
+      await cubit.start();
+      await cubit.stop();
+      expect(native.pasted, 'Go to the center.');
+      expect(native.calls, isNot(contains('pressReturn')));
+    },
+  );
 
   test('таймаут тишины останавливает запись', () async {
     server.text = 'Привет мир';
@@ -263,6 +336,25 @@ class _FakeServer extends WhisperServer {
   Future<int> footprintMb() async => 0;
 }
 
+class _EnterVerifier extends SpeechVerifier {
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<void> prepare({
+    required String wakeWord,
+    String closeWord = '',
+  }) async {}
+
+  @override
+  Future<bool?> confirmKeyword(
+    Float32List samples,
+    String keyword, {
+    required bool isClose,
+    List<String> spellings = const [],
+  }) async => isClose && keyword == 'center' && spellings.contains('centre');
+}
+
 class _FakeNative {
   final calls = <String>[];
   String? pasted;
@@ -271,25 +363,27 @@ class _FakeNative {
   void install() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, (call) async {
-      calls.add(call.method);
-      switch (call.method) {
-        case 'record':
-          return '/tmp/test_dict.wav';
-        case 'stopRecord':
-          return null;
-        case 'level':
-          return 0.2;
-        case 'permissions':
-          return true;
-        case 'paste':
-          pasted = (call.arguments as Map)['text'] as String?;
-          return true;
-        case 'hud':
-          return null;
-        default:
-          return null;
-      }
-    });
+          calls.add(call.method);
+          switch (call.method) {
+            case 'record':
+              return '/tmp/test_dict.wav';
+            case 'stopRecord':
+              return null;
+            case 'level':
+              return 0.2;
+            case 'permissions':
+              return true;
+            case 'pressReturn':
+              return true;
+            case 'paste':
+              pasted = (call.arguments as Map)['text'] as String?;
+              return true;
+            case 'hud':
+              return null;
+            default:
+              return null;
+          }
+        });
   }
 
   void remove() {

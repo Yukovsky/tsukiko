@@ -360,11 +360,13 @@ class PersonalKeywordSpotter {
             (isolated && strongNegativeMargin)) &&
         negative > wake + 0.04 &&
         voiced;
+    final rawWake = !accepted && proposeCandidates && voiced
+        ? _rawDistance(candidate, wakeTemplates)
+        : double.infinity;
     final loose =
-        !accepted &&
-        proposeCandidates &&
-        voiced &&
-        _rawDistance(candidate, wakeTemplates) < looseWakeGate;
+        rawWake < looseWakeGate &&
+        negative + 0.05 >= rawWake &&
+        close + 0.05 >= rawWake;
     onScore?.call(
       KeywordScore(
         wake: wake,
@@ -393,6 +395,7 @@ class PersonalKeywordSpotter {
       _candidate = KeywordCandidate(
         keyword: KeywordTokenizer.normalizeKeywordText(wakeWord),
         strict: accepted,
+        distance: rawWake,
         audio: _verificationAudio(start, end),
       );
     }
@@ -472,9 +475,12 @@ class PersonalKeywordSpotter {
             : (isolated && negative > close + 0.06)
             ? math.min(1.01, closeThreshold)
             : math.min(0.99, closeThreshold);
+        final rawClose = _rawDistance(candidate, closeTemplates);
         final looseOk =
             proposeCandidates &&
-            _rawDistance(candidate, closeTemplates) < looseCloseGate &&
+            rawClose < looseCloseGate &&
+            negative + 0.05 >= rawClose &&
+            (wake >= wakeThreshold || wake + 0.05 >= rawClose) &&
             _hasVoicedFrames(start, end);
         if (close >= threshold || length > 16000 * 0.9) {
           reason = looseOk ? 'candidate' : 'score';
@@ -492,6 +498,7 @@ class PersonalKeywordSpotter {
           _candidate = KeywordCandidate(
             keyword: KeywordTokenizer.normalizeKeywordText(closeWord),
             strict: reason == 'accepted',
+            distance: rawClose,
             audio: _verificationAudio(start, end),
           );
         }
@@ -748,6 +755,7 @@ class KeywordCandidate {
   const KeywordCandidate({
     required this.keyword,
     required this.strict,
+    required this.distance,
     required this.audio,
   });
 
@@ -755,6 +763,7 @@ class KeywordCandidate {
 
   /// Passed the standalone acoustic thresholds (used without a verifier).
   final bool strict;
+  final double distance;
   final Float32List audio;
 }
 

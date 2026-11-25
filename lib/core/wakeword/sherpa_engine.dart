@@ -39,6 +39,7 @@ abstract class SherpaEngine {
   Future<bool> initKeywordSpotter({
     required String wakeWord,
     String closeWord = '',
+    String enterWord = '',
     SpeakerProfile? profile,
   });
 
@@ -51,8 +52,7 @@ abstract class SherpaEngine {
   /// Передать порцию сэмплов в движок (16 кГц, моно).
   void acceptAudio(Float32List samples);
 
-  /// Проверить наличие речи в аудио.
-  bool isSpeech(Float32List samples);
+  bool isSpeech(Float32List samples, {bool immediate = false});
 
   /// Проверить, сработало ли ключевое слово на текущем шаге.
   KeywordDetection? detectKeyword();
@@ -74,6 +74,8 @@ abstract class SherpaEngine {
 /// needed to finalize a keyword. No WAV creation or subprocess is on this path.
 class StreamingSherpaEngine extends AcousticSpeakerEngine {
   PersonalKeywordSpotter? _personal;
+  PersonalKeywordSpotter? _personalEnter;
+  bool _listeningForClose = false;
   sherpa.KeywordSpotter? _spotter;
   sherpa.OnlineStream? _stream;
   KeywordDetection? _pending;
@@ -82,37 +84,49 @@ class StreamingSherpaEngine extends AcousticSpeakerEngine {
   static const _maxRecentSamples = 16000 * 2;
 
   void setScoreListener(void Function(KeywordScore)? listener) {
-    if (_personal != null) _personal!.onScore = listener;
+    _personal?.onScore = listener;
+    _personalEnter?.onScore = listener;
   }
 
   void setListeningForClose(bool value) {
-    if (_personal != null) _personal!.listenForClose = value;
+    _listeningForClose = value;
+    _personal?.listenForClose = value;
   }
 
   void setProposeCandidates(bool value) {
-    if (_personal != null) _personal!.proposeCandidates = value;
+    _personal?.proposeCandidates = value;
+    _personalEnter?.proposeCandidates = value;
   }
 
   @override
   Future<bool> initKeywordSpotter({
     required String wakeWord,
     String closeWord = '',
+    String enterWord = '',
     SpeakerProfile? profile,
   }) async {
     dispose();
     if (KeywordTokenizer.normalizeKeywordText(wakeWord).isEmpty) return false;
-    if (profile?.hasPersonalKeywordsFor(wakeWord, closeWord) ?? false) {
+    if (profile != null && profile.hasEnterTemplatesFor(enterWord)) {
+      _personalEnter = PersonalKeywordSpotter(
+        wakeWord: wakeWord,
+        closeWord: enterWord,
+        wakeTemplates: profile.hasWakeTemplatesFor(wakeWord)
+            ? profile.wakeTemplates
+            : const [],
+        closeTemplates: profile.enterTemplates,
+        closeNegatives: profile.enterNegatives,
+      )..listenForClose = true;
+    }
+    if (profile != null && profile.hasWakeTemplatesFor(wakeWord)) {
+      final hasClose = profile.hasCloseTemplatesFor(closeWord);
       _personal = PersonalKeywordSpotter(
         wakeWord: wakeWord,
         closeWord: closeWord,
-        wakeTemplates: profile!.wakeTemplates,
-        closeTemplates: closeWord.trim().isEmpty
-            ? const []
-            : profile.closeTemplates,
+        wakeTemplates: profile.wakeTemplates,
+        closeTemplates: hasClose ? profile.closeTemplates : const [],
         wakeNegatives: profile.wakeNegatives,
-        closeNegatives: closeWord.trim().isEmpty
-            ? const []
-            : profile.closeNegatives,
+        closeNegatives: hasClose ? profile.closeNegatives : const [],
       );
       await super.initKeywordSpotter(wakeWord: wakeWord, closeWord: closeWord);
       Log.info('WakeWord', 'Personal wake and close word templates loaded');
@@ -163,6 +177,7 @@ class StreamingSherpaEngine extends AcousticSpeakerEngine {
 
   @override
   void acceptAudio(Float32List samples) {
+    if (_listeningForClose) _personalEnter?.acceptAudio(samples);
     final personal = _personal;
     if (personal != null) {
       personal.acceptAudio(samples);
@@ -200,16 +215,25 @@ class StreamingSherpaEngine extends AcousticSpeakerEngine {
 
   @override
   KeywordDetection? detectKeyword() {
-    final personal = _personal;
-    if (personal != null) {
-      final candidate = personal.takeCandidate();
-      return candidate == null
-          ? null
-          : KeywordDetection(
-              keyword: candidate.keyword,
-              samples: candidate.audio,
-              strict: candidate.strict,
-            );
+    final closeOrWake = _personal?.takeCandidate();
+    final enter = _personalEnter?.takeCandidate();
+    if (closeOrWake != null || enter != null) {
+      // Prefer a strict match over a loose one. A tie favors stopping without
+      // submitting unless the Enter template is acoustically closer.
+      final candidate = switch ((closeOrWake, enter)) {
+        (null, final send?) => send,
+        (final close?, final send?)
+            when send.strict && !close.strict ||
+                send.strict == close.strict && send.distance < close.distance =>
+          send,
+        _ => closeOrWake!,
+      };
+      _pending = null;
+      return KeywordDetection(
+        keyword: candidate.keyword,
+        samples: candidate.audio,
+        strict: candidate.strict,
+      );
     }
     final result = _pending;
     _pending = null;
@@ -219,6 +243,7 @@ class StreamingSherpaEngine extends AcousticSpeakerEngine {
   @override
   void resetKeywordStream() {
     _personal?.reset();
+    _personalEnter?.reset();
     final spotter = _spotter;
     final stream = _stream;
     if (spotter != null && stream != null) spotter.reset(stream);
@@ -230,7 +255,10 @@ class StreamingSherpaEngine extends AcousticSpeakerEngine {
   @override
   void dispose() {
     _personal?.reset();
+    _personalEnter?.reset();
     _personal = null;
+    _personalEnter = null;
+    _listeningForClose = false;
     _stream?.free();
     _stream = null;
     _spotter?.free();
@@ -259,6 +287,7 @@ class AcousticSpeakerEngine implements SherpaEngine {
   Future<bool> initKeywordSpotter({
     required String wakeWord,
     String closeWord = '',
+    String enterWord = '',
     SpeakerProfile? profile,
   }) async {
     _ready = true;
@@ -285,7 +314,8 @@ class AcousticSpeakerEngine implements SherpaEngine {
   void acceptAudio(Float32List samples) {}
 
   @override
-  bool isSpeech(Float32List samples) => _noiseFilter.isSpeech(samples);
+  bool isSpeech(Float32List samples, {bool immediate = false}) =>
+      _noiseFilter.isSpeech(samples, immediate: immediate);
 
   @override
   KeywordDetection? detectKeyword() => null;
@@ -346,6 +376,7 @@ class FakeSherpaEngine implements SherpaEngine {
 
   String configuredWakeWord = '';
   String configuredCloseWord = '';
+  String configuredEnterWord = '';
   KeywordDetection? queuedDetection;
   bool speechDetected = false;
   double? forcedVerificationResult;
@@ -357,10 +388,12 @@ class FakeSherpaEngine implements SherpaEngine {
   Future<bool> initKeywordSpotter({
     required String wakeWord,
     String closeWord = '',
+    String enterWord = '',
     SpeakerProfile? profile,
   }) async {
     configuredWakeWord = wakeWord;
     configuredCloseWord = closeWord;
+    configuredEnterWord = enterWord;
     spotterInitialized = true;
     return true;
   }
@@ -383,7 +416,8 @@ class FakeSherpaEngine implements SherpaEngine {
   void acceptAudio(Float32List samples) {}
 
   @override
-  bool isSpeech(Float32List samples) => speechDetected;
+  bool isSpeech(Float32List samples, {bool immediate = false}) =>
+      speechDetected;
 
   @override
   KeywordDetection? detectKeyword() {

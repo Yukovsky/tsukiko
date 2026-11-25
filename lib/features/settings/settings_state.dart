@@ -82,6 +82,7 @@ class SettingsState extends Equatable {
     this.speakerProfileExists = false,
     this.wakeProfileExists = false,
     this.closeProfileExists = false,
+    this.enterProfileExists = false,
     this.calibrationOutdated = false,
     this.speakerThreshold = 0.60,
     this.ownVoiceOnly = false,
@@ -238,6 +239,7 @@ class SettingsState extends Equatable {
   final bool speakerProfileExists;
   final bool wakeProfileExists;
   final bool closeProfileExists;
+  final bool enterProfileExists;
 
   /// Образцы есть, а написаний слова в них нет: стоит перезаписать.
   final bool calibrationOutdated;
@@ -347,6 +349,7 @@ class SettingsState extends Equatable {
     bool? speakerProfileExists,
     bool? wakeProfileExists,
     bool? closeProfileExists,
+    bool? enterProfileExists,
     bool? calibrationOutdated,
     double? speakerThreshold,
     bool? ownVoiceOnly,
@@ -427,6 +430,7 @@ class SettingsState extends Equatable {
     speakerProfileExists: speakerProfileExists ?? this.speakerProfileExists,
     wakeProfileExists: wakeProfileExists ?? this.wakeProfileExists,
     closeProfileExists: closeProfileExists ?? this.closeProfileExists,
+    enterProfileExists: enterProfileExists ?? this.enterProfileExists,
     calibrationOutdated: calibrationOutdated ?? this.calibrationOutdated,
     speakerThreshold: speakerThreshold ?? this.speakerThreshold,
     ownVoiceOnly: ownVoiceOnly ?? this.ownVoiceOnly,
@@ -500,6 +504,7 @@ class SettingsState extends Equatable {
     speakerProfileExists,
     wakeProfileExists,
     closeProfileExists,
+    enterProfileExists,
     calibrationOutdated,
     speakerThreshold,
     ownVoiceOnly,

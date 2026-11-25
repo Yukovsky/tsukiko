@@ -323,19 +323,9 @@ class SpeechVerifier {
         : matchesSpokenKeyword(text, keyword, spellings: spellings);
   }
 
-  static List<String> _words(String text) => _cleanWhisperText(text)
-      .toLowerCase()
-      .replaceAll('ё', 'е')
-      .split(' ')
-      .where((w) => w.isNotEmpty)
-      .toList();
-
-  /// Ключ для сравнения написаний на любом языке: без регистра, знаков и
-  /// повторов букв («Джефф» и «джеф», «heyyy» и «hey» — одно), «ё» как
-  /// «е». Правил произношения конкретных языков здесь нет и не нужно:
-  /// оглушение на конце, редукция гласных, кана против иероглифов — всё
-  /// это уже есть в написаниях, которые распознаватель выдал на образцах
-  /// при калибровке.
+  /// Ключ сравнения написаний на любом языке: без регистра, знаков и
+  /// повторов букв («Джефф» и «джеф», «heyyy» и «hey»), «ё» как «е».
+  /// Правил произношения не нужно: они уже есть в написаниях из калибровки.
   static String spellingKey(String text) => _cleanWhisperText(text)
       .toLowerCase()
       .replaceAll('ё', 'е')
@@ -377,33 +367,18 @@ class SpeechVerifier {
     return false;
   }
 
-  /// Слово активации в начале услышанного.
-  ///
-  /// С написаниями из калибровки — строгое сравнение с ними. Без них
-  /// (профиль старше этой проверки) — прежнее мягкое: одна буква на слово
-  /// и «Джефф»/«Jeff» за «Джев», но тоже только в начале фразы. Мягкое
-  /// пропускало «Джеп», «Джем», «Джек», «Джес» — замер на диагностике
-  /// 2026-10-25: 12 ложных срабатываний на 30 созвучных словах; оно
-  /// остаётся только до новой калибровки.
+  /// Without calibrated spellings, keep the established Jeff variants.
+  /// An edit-distance allowance also accepts ordinary confusable words.
   static bool matchesSpokenKeyword(
     String recognizedText,
     String keyword, {
     List<String> spellings = const [],
   }) {
-    if (spellings.isNotEmpty) {
-      return startsWithKeyword(recognizedText, [keyword, ...spellings]);
-    }
-    final target = _words(keyword);
-    final words = _words(recognizedText);
-    if (target.isEmpty || words.length < target.length) return false;
-    const jeff = {'джеф', 'джефф', 'джев', 'jeff', 'geoff'};
-    bool same(String heard, String expected) =>
-        (jeff.contains(expected) && jeff.contains(heard)) ||
-        _editDistance(heard, expected) <= (expected.length >= 4 ? 1 : 0);
-    for (var j = 0; j < target.length; j++) {
-      if (!same(words[j], target[j])) return false;
-    }
-    return true;
+    const jeff = {'джеф', 'джев', 'jef', 'geof'};
+    final accepted = spellings.isEmpty && jeff.contains(spellingKey(keyword))
+        ? jeff
+        : [keyword, ...spellings];
+    return startsWithKeyword(recognizedText, accepted);
   }
 
   /// A close word is a common word ("пока"), so it must be exact and be the
@@ -425,24 +400,7 @@ class SpeechVerifier {
     return false;
   }
 
-  static int _editDistance(String a, String b) {
-    var previous = List<int>.generate(b.length + 1, (i) => i);
-    for (var i = 1; i <= a.length; i++) {
-      final current = [i];
-      for (var j = 1; j <= b.length; j++) {
-        current.add(
-          math.min(
-            math.min(previous[j] + 1, current[j - 1] + 1),
-            previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1),
-          ),
-        );
-      }
-      previous = current;
-    }
-    return previous[b.length];
-  }
-
-  /// Проверить порцию аудиосэмплов Float32List (сохраняет временный WAV и проверяет).
+  /// Проверить отсчёты через временный WAV.
   Future<SpeechVerificationResult> verifySamples(
     Float32List samples, {
     required String targetWord,

@@ -558,6 +558,8 @@ void main() {
       embeddings: const [],
       wakeWord: 'Джев',
       closeWord: 'Пока',
+      enterWord: 'center',
+      enterTemplates: [template, template, template],
       wakeTemplates: [template, template, template],
       closeTemplates: [template, template, template],
     );
@@ -565,6 +567,7 @@ void main() {
       wakeWordEnabled: true,
       wakeWord: 'Джев',
       closeWord: 'Пока',
+      enterWord: 'center',
       completionMode: PhraseCompletionMode.closeWordOnly,
     );
 
@@ -578,6 +581,56 @@ void main() {
       await verified.start(settings: settings, profile: profile);
       return (verified, verifier);
     }
+
+    test('самостоятельное завершение с Enter требует подтверждения', () async {
+      final (verified, verifier) = await startWith(null);
+      var sent = 0;
+      verified.onCloseWordTriggered = () => fail('unexpected regular stop');
+      verified.onEnterWordTriggered = () => sent++;
+      verified.notifyRecordingStarted(startedByVoice: true);
+
+      Future<void> speakCenter() async {
+        engine.queuedDetection = KeywordDetection(
+          keyword: 'center',
+          samples: makeAudio(length: 8000),
+        );
+        audioSource.pushSamples(makeSilence());
+        await pumpEventQueue();
+      }
+
+      await speakCenter();
+      expect(sent, 0);
+      verifier.answer = false;
+      await speakCenter();
+      expect(sent, 0);
+      verifier.answer = true;
+      await speakCenter();
+      expect(sent, 1);
+      await speakCenter();
+      expect(sent, 1);
+      expect(verifier.calls, [true, true, true]);
+      await verified.dispose();
+    });
+
+    test('устаревший Enter игнорируется после возобновления речи', () async {
+      final (verified, verifier) = await startWith(true);
+      verifier.gate = Completer<void>();
+      verified.onEnterWordTriggered = () => fail('stale command submitted');
+      verified.notifyRecordingStarted();
+      engine.queuedDetection = KeywordDetection(
+        keyword: 'center',
+        samples: makeAudio(length: 8000),
+      );
+      audioSource.pushSamples(makeSilence());
+      await pumpEventQueue();
+      expect(verifier.calls, [true]);
+      engine.speechDetected = true;
+      audioSource.pushSamples(makeAudio());
+      await pumpEventQueue();
+      verifier.gate!.complete();
+      await pumpEventQueue();
+      await verified.dispose();
+    });
 
     test('отклонённый верификатором строгий кандидат не будит', () async {
       final (verified, verifier) = await startWith(false);

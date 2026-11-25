@@ -149,56 +149,67 @@ void main() {
     },
   );
 
-  test(
-    'раздельная калибровка и удаление профилей активации и завершения',
-    () async {
-      cubit.setWakeWord('Джеф');
-      cubit.setCloseWord('готово');
-      await settle();
-      expect(cubit.state.wakeProfileExists, isFalse);
-      expect(cubit.state.closeProfileExists, isFalse);
-      expect(cubit.state.speakerProfileExists, isFalse);
+  test('раздельная калибровка и удаление трёх голосовых команд', () async {
+    cubit.setWakeWord('Джеф');
+    cubit.setCloseWord('готово');
+    cubit.setEnterWord('center');
+    await settle();
+    expect(cubit.state.wakeProfileExists, isFalse);
+    expect(cubit.state.closeProfileExists, isFalse);
+    expect(cubit.state.enterProfileExists, isFalse);
+    expect(cubit.state.speakerProfileExists, isFalse);
 
-      // Сохраняем профиль с обоими словами
-      final dummyTemplate = KeywordTemplate(
-        durationSamples: 8000,
-        frames: [for (var f = 0; f < 20; f++) Float32List(12)],
-      );
-      final profile = SpeakerProfile(
-        name: 'user',
-        dimension: 192,
-        embeddings: const [],
-        wakeWord: 'Джеф',
-        closeWord: 'готово',
-        wakeTemplates: [dummyTemplate, dummyTemplate, dummyTemplate],
-        closeTemplates: [dummyTemplate, dummyTemplate, dummyTemplate],
-      );
-      profile.save();
+    final dummyTemplate = KeywordTemplate(
+      durationSamples: 8000,
+      frames: [for (var f = 0; f < 20; f++) Float32List(12)],
+    );
+    final profile = SpeakerProfile(
+      name: 'user',
+      dimension: 192,
+      embeddings: const [],
+      wakeWord: 'Джеф',
+      closeWord: 'готово',
+      enterWord: 'center',
+      wakeTemplates: [dummyTemplate, dummyTemplate, dummyTemplate],
+      closeTemplates: [dummyTemplate, dummyTemplate, dummyTemplate],
+      enterTemplates: [dummyTemplate, dummyTemplate, dummyTemplate],
+    );
+    profile.save();
 
-      cubit.refreshSpeakerProfile();
-      await settle();
-      expect(cubit.state.wakeProfileExists, isTrue);
-      expect(cubit.state.closeProfileExists, isTrue);
-      expect(cubit.state.speakerProfileExists, isTrue);
+    cubit.refreshSpeakerProfile();
+    await settle();
+    expect(cubit.state.wakeProfileExists, isTrue);
+    expect(cubit.state.closeProfileExists, isTrue);
+    expect(cubit.state.enterProfileExists, isTrue);
+    expect(cubit.state.speakerProfileExists, isTrue);
 
-      // Удаляем только слово завершения: активация должна сохраниться
-      cubit.deleteCloseProfile();
-      await settle();
-      expect(cubit.state.wakeProfileExists, isTrue);
-      expect(cubit.state.closeProfileExists, isFalse);
-      // Если closeWord не пуст, но профиль удалён, speakerProfileExists отражает готовность
-      final loaded = SpeakerProfile.load();
-      expect(loaded, isNotNull);
-      expect(loaded!.hasWakeCalibration, isTrue);
-      expect(loaded.hasCloseCalibration, isFalse);
+    // Удаляем только слово завершения: активация должна сохраниться
+    cubit.deleteCloseProfile();
+    await settle();
+    expect(cubit.state.wakeProfileExists, isTrue);
+    expect(cubit.state.closeProfileExists, isFalse);
+    // Если closeWord не пуст, но профиль удалён, speakerProfileExists отражает готовность
+    final loaded = SpeakerProfile.load();
+    expect(loaded, isNotNull);
+    expect(loaded!.hasWakeCalibration, isTrue);
+    expect(loaded.hasCloseCalibration, isFalse);
+    expect(loaded.hasEnterTemplatesFor('center'), isTrue);
 
-      // Удаляем слово активации
-      cubit.deleteWakeProfile();
-      await settle();
-      expect(cubit.state.wakeProfileExists, isFalse);
-      expect(SpeakerProfile.load()?.hasWakeCalibration ?? false, isFalse);
-    },
-  );
+    // Удаляем слово активации
+    cubit.deleteWakeProfile();
+    await settle();
+    expect(cubit.state.wakeProfileExists, isFalse);
+    expect(SpeakerProfile.load()?.hasWakeCalibration ?? false, isFalse);
+    expect(cubit.state.enterProfileExists, isTrue);
+
+    cubit.setEnterWord('submit');
+    expect(cubit.state.enterProfileExists, isFalse);
+    cubit.setEnterWord('center');
+    expect(cubit.state.enterProfileExists, isTrue);
+    cubit.deleteEnterProfile();
+    expect(cubit.state.enterProfileExists, isFalse);
+    expect(SpeakerProfile.exists(), isFalse);
+  });
 }
 
 class _FakeNative {

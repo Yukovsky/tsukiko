@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tsukiko/core/wakeword/personal_keyword_spotter.dart';
 import 'package:tsukiko/core/wakeword/speaker_profile.dart';
+import 'package:tsukiko/core/wakeword/sherpa_engine.dart';
 
 Float32List utterance(List<double> tones, {double speed = 1}) {
   const sampleRate = 16000;
@@ -24,6 +25,63 @@ Float32List utterance(List<double> tones, {double speed = 1}) {
 }
 
 void main() {
+  test(
+    'the streaming engine recognizes both independent completion words',
+    () async {
+      final engine = StreamingSherpaEngine();
+      addTearDown(engine.dispose);
+      const wake = [210.0, 370.0, 270.0];
+      const close = [430.0, 250.0, 390.0];
+      const enter = [510.0, 470.0, 530.0];
+      List<KeywordTemplate> templates(List<double> tones) => [
+        for (final speed in [0.92, 1.0, 1.08])
+          KeywordTemplate.fromAudio(utterance(tones, speed: speed))!,
+      ];
+      expect(
+        await engine.initKeywordSpotter(
+          wakeWord: 'Вока',
+          closeWord: 'Отбой',
+          enterWord: 'center',
+          profile: SpeakerProfile(
+            name: 'user',
+            dimension: 192,
+            embeddings: const [],
+            wakeWord: 'Вока',
+            closeWord: 'Отбой',
+            enterWord: 'center',
+            wakeTemplates: templates(wake),
+            closeTemplates: templates(close),
+            enterTemplates: templates(enter),
+          ),
+        ),
+        isTrue,
+      );
+
+      List<String> speak(List<double> tones) {
+        engine.resetKeywordStream();
+        final audio = utterance(tones);
+        final detected = <String>[];
+        for (var i = 0; i < audio.length; i += 1600) {
+          engine.acceptAudio(
+            Float32List.sublistView(
+              audio,
+              i,
+              (i + 1600).clamp(0, audio.length),
+            ),
+          );
+          final keyword = engine.detectKeyword()?.keyword;
+          if (keyword != null) detected.add(keyword);
+        }
+        return detected;
+      }
+
+      expect(speak(enter), isEmpty);
+      engine.setListeningForClose(true);
+      expect(speak(enter), ['center']);
+      expect(speak(close), ['отбой']);
+    },
+  );
+
   test(
     'time ordered templates distinguish wake and close and survive JSON',
     () {

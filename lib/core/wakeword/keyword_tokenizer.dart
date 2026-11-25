@@ -287,12 +287,3 @@ String effectiveEnterWord(String enterWord, String wakeWord, String closeWord) {
   }
   return enterWord;
 }
-
-/// Вырезать слово «с Enter» из конца текста. Слово считается только как
-/// последнее в фразе (как закрывающее): в середине предложения оно остаётся
-/// обычным словом. Возвращает текст без слова и признак, что оно было.
-(String, bool) takeTrailingEnterWord(String text, String enterWord) {
-  if (enterWord.trim().isEmpty) return (text, false);
-  final rest = stripTrailingCloseWord(text, enterWord);
-  return (rest, rest != text);
-}

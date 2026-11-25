@@ -24,6 +24,7 @@ import '../../core/skill_install.dart';
 import '../../platform/bridge.dart';
 import '../../platform/os.dart';
 import '../../core/wakeword/speaker_profile.dart';
+import '../../core/wakeword/keyword_tokenizer.dart' show effectiveEnterWord;
 import '../../core/diarization/own_voice.dart';
 import 'settings_state.dart';
 
@@ -159,6 +160,15 @@ class SettingsCubit extends Cubit<SettingsState> {
         profile?.hasWakeTemplatesFor(_dictation.wakeWord) ?? false;
     final closeExists =
         profile?.hasCloseTemplatesFor(_dictation.closeWord) ?? false;
+    final enterExists =
+        profile?.hasEnterTemplatesFor(
+          effectiveEnterWord(
+            _dictation.enterWord,
+            _dictation.wakeWord,
+            _dictation.closeWord,
+          ),
+        ) ??
+        false;
     final profileExists =
         wakeExists && (_dictation.closeWord.trim().isEmpty || closeExists);
     // Образцы, записанные до того, как калибровка запоминала написания:
@@ -195,6 +205,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         speakerProfileExists: profileExists,
         wakeProfileExists: wakeExists,
         closeProfileExists: closeExists,
+        enterProfileExists: enterExists,
         calibrationOutdated: spellingsMissing,
         ownVoiceOnly: _dictation.ownVoiceOnly && ownVoice != null,
         ownVoiceThreshold: _dictation.ownVoiceThreshold,
@@ -454,6 +465,11 @@ class SettingsCubit extends Cubit<SettingsState> {
   void deleteCloseProfile() {
     final profile = SpeakerProfile.load();
     profile?.clearCloseCalibration();
+    _saveDictation((d) {});
+  }
+
+  void deleteEnterProfile() {
+    SpeakerProfile.load()?.clearEnterCalibration();
     _saveDictation((d) {});
   }
 

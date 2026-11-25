@@ -24,13 +24,7 @@ enum CalibrationPhase {
   failed,
 }
 
-/// Мастер калибровки голоса пользователя (Voiceprint Enrollment Wizard).
-///
-/// Цель калибровки: слово активации (wake word) или слово завершения (close word).
-enum VoiceCalibrationTarget {
-  wake,
-  close,
-}
+enum VoiceCalibrationTarget { wake, close, enter }
 
 /// Мастер калибровки голоса пользователя (Voiceprint Enrollment Wizard).
 ///
@@ -43,6 +37,7 @@ class VoiceCalibrationSheet extends StatefulWidget {
     this.target = VoiceCalibrationTarget.wake,
     required this.wakeWord,
     this.closeWord = '',
+    this.enterWord = '',
     this.bridge,
     this.audioSource,
     this.onProfileCreated,
@@ -51,6 +46,7 @@ class VoiceCalibrationSheet extends StatefulWidget {
   final VoiceCalibrationTarget target;
   final String wakeWord;
   final String closeWord;
+  final String enterWord;
   final NativeBridge? bridge;
   final AudioStreamSource? audioSource;
   final VoidCallback? onProfileCreated;
@@ -73,30 +69,12 @@ class VoiceCalibrationSheet extends StatefulWidget {
     ),
   );
 
-  static Future<bool?> showClose(
-    BuildContext context, {
-    required String closeWord,
-    NativeBridge? bridge,
-    AudioStreamSource? audioSource,
-    VoidCallback? onProfileCreated,
-  }) => showMacosSheet<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (sheetContext) => VoiceCalibrationSheet(
-      target: VoiceCalibrationTarget.close,
-      wakeWord: '',
-      closeWord: closeWord,
-      bridge: bridge,
-      audioSource: audioSource,
-      onProfileCreated: onProfileCreated,
-    ),
-  );
-
   static Future<bool?> show(
     BuildContext context, {
     VoiceCalibrationTarget target = VoiceCalibrationTarget.wake,
     required String wakeWord,
     String closeWord = '',
+    String enterWord = '',
     NativeBridge? bridge,
     AudioStreamSource? audioSource,
     VoidCallback? onProfileCreated,
@@ -107,6 +85,7 @@ class VoiceCalibrationSheet extends StatefulWidget {
       target: target,
       wakeWord: wakeWord,
       closeWord: closeWord,
+      enterWord: enterWord,
       bridge: bridge,
       audioSource: audioSource,
       onProfileCreated: onProfileCreated,
@@ -126,8 +105,11 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
   static const int _totalSteps = 4;
   int get _visibleStep => _currentStep;
   bool get _isNegativeStep => _currentStep == 3;
-  bool get _isCloseStep => widget.target == VoiceCalibrationTarget.close;
-  String get _targetWord => _isCloseStep ? widget.closeWord : widget.wakeWord;
+  String get _targetWord => switch (widget.target) {
+    VoiceCalibrationTarget.wake => widget.wakeWord,
+    VoiceCalibrationTarget.close => widget.closeWord,
+    VoiceCalibrationTarget.enter => widget.enterWord,
+  };
 
   CalibrationPhase _phase = CalibrationPhase.idle;
   String? _errorMessage;
@@ -164,11 +146,14 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
     }
     final previous = SpeakerProfile.load();
     if (previous != null) {
-      if (_isCloseStep) {
-        _otherTemplates.addAll(previous.wakeTemplates);
-      } else {
-        _otherTemplates.addAll(previous.closeTemplates);
-      }
+      _otherTemplates.addAll([
+        if (widget.target != VoiceCalibrationTarget.wake)
+          ...previous.wakeTemplates,
+        if (widget.target != VoiceCalibrationTarget.close)
+          ...previous.closeTemplates,
+        if (widget.target != VoiceCalibrationTarget.enter)
+          ...previous.enterTemplates,
+      ]);
     }
   }
 
@@ -352,7 +337,8 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
     final key = SpeechVerifier.spellingKey(heard);
     if (key.isEmpty) return null;
     final words = SpeechVerifier.spellingKey(_targetWord).split(' ').length;
-    return key.split(' ').length <= words + 1 ? key : null;
+    final allowance = widget.target == VoiceCalibrationTarget.enter ? 0 : 1;
+    return key.split(' ').length <= words + allowance ? key : null;
   }
 
   void _handleSuccessfulSample(KeywordTemplate template, [String? heard]) {
@@ -420,54 +406,39 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
   }
 
   void _finishAndSaveProfile() {
-    final previous = SpeakerProfile.load();
+    final previous =
+        SpeakerProfile.load() ??
+        const SpeakerProfile(
+          name: 'user',
+          dimension: 192,
+          embeddings: [],
+          wakeWord: '',
+        );
     final spellings = _spellings.difference(_negativeSpellings).toList();
-    final SpeakerProfile profile;
-    if (_isCloseStep) {
-      profile = previous != null
-          ? previous.copyWith(
-              closeWord: widget.closeWord,
-              closeTemplates: _templates,
-              closeNegatives: _negatives,
-              closeSpellings: spellings,
-              createdAt: DateTime.now(),
-            )
-          : SpeakerProfile(
-              name: 'user',
-              dimension: 192,
-              embeddings: const [],
-              wakeWord: '',
-              closeWord: widget.closeWord,
-              wakeTemplates: const [],
-              closeTemplates: _templates,
-              wakeNegatives: const [],
-              closeNegatives: _negatives,
-              closeSpellings: spellings,
-              createdAt: DateTime.now(),
-            );
-    } else {
-      profile = previous != null
-          ? previous.copyWith(
-              wakeWord: widget.wakeWord,
-              wakeTemplates: _templates,
-              wakeNegatives: _negatives,
-              wakeSpellings: spellings,
-              createdAt: DateTime.now(),
-            )
-          : SpeakerProfile(
-              name: 'user',
-              dimension: 192,
-              embeddings: const [],
-              wakeWord: widget.wakeWord,
-              closeWord: '',
-              wakeTemplates: _templates,
-              closeTemplates: const [],
-              wakeNegatives: _negatives,
-              closeNegatives: const [],
-              wakeSpellings: spellings,
-              createdAt: DateTime.now(),
-            );
-    }
+    final createdAt = DateTime.now();
+    final profile = switch (widget.target) {
+      VoiceCalibrationTarget.wake => previous.copyWith(
+        wakeWord: _targetWord,
+        wakeTemplates: _templates,
+        wakeNegatives: _negatives,
+        wakeSpellings: spellings,
+        createdAt: createdAt,
+      ),
+      VoiceCalibrationTarget.close => previous.copyWith(
+        closeWord: _targetWord,
+        closeTemplates: _templates,
+        closeNegatives: _negatives,
+        closeSpellings: spellings,
+        createdAt: createdAt,
+      ),
+      VoiceCalibrationTarget.enter => previous.copyWith(
+        enterWord: _targetWord,
+        enterTemplates: _templates,
+        enterNegatives: _negatives,
+        enterSpellings: spellings,
+        createdAt: createdAt,
+      ),
+    };
     if (!profile.save()) {
       setState(() {
         _phase = CalibrationPhase.failed;
@@ -529,17 +500,24 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _isCloseStep
-                              ? l10n.calibrationCloseTitle
-                              : l10n.calibrationWakeTitle,
-                          style: Type.emptyTitle,
-                        ),
+                        Text(switch (widget.target) {
+                          VoiceCalibrationTarget.wake =>
+                            l10n.calibrationWakeTitle,
+                          VoiceCalibrationTarget.close =>
+                            l10n.calibrationCloseTitle,
+                          VoiceCalibrationTarget.enter =>
+                            l10n.calibrationEnterTitle,
+                        }, style: Type.emptyTitle),
                         const SizedBox(height: Gap.hint),
                         Text(
-                          _isCloseStep
-                              ? l10n.calibrationCloseSubtitle
-                              : l10n.calibrationWakeSubtitle,
+                          switch (widget.target) {
+                            VoiceCalibrationTarget.wake =>
+                              l10n.calibrationWakeSubtitle,
+                            VoiceCalibrationTarget.close =>
+                              l10n.calibrationCloseSubtitle,
+                            VoiceCalibrationTarget.enter =>
+                              l10n.calibrationEnterSubtitle,
+                          },
                           style: Type.caption.copyWith(
                             color:
                                 MacosTheme.brightnessOf(context) ==
@@ -752,7 +730,11 @@ class _VoiceCalibrationSheetState extends State<VoiceCalibrationSheet>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            _isCloseStep ? l10n.fieldCloseWord : l10n.fieldWakeWord,
+            switch (widget.target) {
+              VoiceCalibrationTarget.wake => l10n.fieldWakeWord,
+              VoiceCalibrationTarget.close => l10n.fieldCloseWord,
+              VoiceCalibrationTarget.enter => l10n.fieldEnterWord,
+            },
             style: Type.caption,
             textAlign: TextAlign.center,
           ),
